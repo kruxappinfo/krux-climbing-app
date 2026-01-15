@@ -225,6 +225,15 @@ button.secondary:hover {
   background: #ffffff;
   border-left: none;
   border-right: none;
+  /* Mobile: padding para nav inferior */
+  padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Desktop: sin padding inferior (solo pantallas grandes) */
+@media (min-width: 1025px) {
+  .content {
+    padding-bottom: 0;
+  }
 }
 
 #map {
@@ -5792,121 +5801,199 @@ button.secondary:hover {
    BOTTOM NAVIGATION (Floating Pill)
    ================================ */
 
+/* Mobile-first: navegación inferior por defecto */
 .bottom-nav {
   position: fixed;
-  bottom: auto;
-  top: 50%;
-  left: 20px;
-  transform: translateY(-50%);
-  width: auto;
-  min-width: 180px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  top: auto;
+  transform: none;
+  width: 100%;
+  min-width: unset;
   height: auto;
-  background: transparent;
-  border: none;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: stretch;
-  gap: 6px;
-  z-index: 10000;
-  padding: 20px 16px;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-/* Estilo de cajón blanco cuando está en vista de mapa */
-body.map-active .bottom-nav {
   background: #ffffff;
-  border-radius: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  padding: 20px 16px;
   border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  align-items: center;
+  gap: 0;
+  z-index: 10000;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px;
+  border-radius: 0;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
 }
 
+/* Desktop: navegación lateral izquierda (>1024px) - Solo en pantallas grandes */
+@media (min-width: 1025px) {
+  .bottom-nav {
+    position: fixed;
+    bottom: auto;
+    top: 50%;
+    left: 20px;
+    right: auto;
+    transform: translateY(-50%);
+    width: auto;
+    min-width: 180px;
+    height: auto;
+    background: transparent;
+    border: none;
+    border-top: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+    gap: 6px;
+    padding: 20px 16px;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+/* Mobile-first: nav-item vertical (icono arriba, texto abajo) */
 .nav-item {
   background: none;
   border: none;
   box-shadow: none;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
-  color: #1a1a1a;
-  font-size: 14px;
+  justify-content: center;
+  gap: 2px;
+  color: #8e8e8e;
+  font-size: 10px;
   font-weight: 500;
-  padding: 12px 16px;
+  padding: 6px 8px;
   cursor: pointer;
   transition: all var(--transition-fast);
-  border-radius: 12px;
-  width: 100%;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+  min-width: 56px;
+  width: auto;
+  text-shadow: none;
 }
 
 .nav-item svg {
-  width: 22px;
-  height: 22px;
-  stroke: #1a1a1a;
-  stroke-width: 1.8px;
+  width: 24px;
+  height: 24px;
+  stroke: #8e8e8e;
+  stroke-width: 1.5px;
   transition: all var(--transition-fast);
   flex-shrink: 0;
-  filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.8));
+  filter: none;
 }
 
 .nav-item span {
   white-space: nowrap;
-  display: inline-block;
+  display: block;
+  font-size: 10px;
 }
 
 .nav-item.active {
-  color: #000000;
-  background: rgba(255, 255, 255, 0.15);
+  color: #1a1a1a;
+  background: transparent;
   font-weight: 600;
 }
 
 .nav-item.active svg {
-  stroke: #000000;
+  stroke: #1a1a1a;
+  stroke-width: 2px;
   fill: none;
-  transform: scale(1.05);
+  transform: none;
 }
 
-.nav-item:hover {
+.nav-item:hover,
+.nav-item:active {
   transform: none;
-  background: rgba(255, 255, 255, 0.2);
-  color: #000000;
+  background: rgba(0, 0, 0, 0.04);
+  color: #1a1a1a;
 }
 
 .nav-item:hover svg {
-  stroke: #000000;
+  stroke: #1a1a1a;
 }
 
-/* Estilos cuando el fondo es blanco (vista de mapa) */
-body.map-active .nav-item {
-  color: var(--text-muted);
-  text-shadow: none;
-}
+/* Desktop (>1024px): nav-item horizontal - Solo en pantallas grandes */
+@media (min-width: 1025px) {
+  .nav-item {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    color: #1a1a1a;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 12px 16px;
+    border-radius: 12px;
+    width: 100%;
+    min-width: unset;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+  }
 
-body.map-active .nav-item svg {
-  stroke: currentColor;
-  filter: none;
-}
+  .nav-item svg {
+    width: 22px;
+    height: 22px;
+    stroke: #1a1a1a;
+    stroke-width: 1.8px;
+    filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.8));
+  }
 
-body.map-active .nav-item.active {
-  color: #2d2d2d;
-  background: transparent;
-}
+  .nav-item span {
+    display: inline-block;
+    font-size: 14px;
+  }
 
-body.map-active .nav-item.active svg {
-  stroke: #2d2d2d;
-}
+  .nav-item.active {
+    color: #000000;
+    background: rgba(255, 255, 255, 0.15);
+  }
 
-body.map-active .nav-item:hover {
-  background: transparent;
-  color: #2d2d2d;
-}
+  .nav-item.active svg {
+    stroke: #000000;
+    transform: scale(1.05);
+  }
 
-body.map-active .nav-item:hover svg {
-  stroke: #2d2d2d;
+  .nav-item:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #000000;
+  }
+
+  /* Estilo de cajón blanco cuando está en vista de mapa (solo desktop) */
+  body.map-active .bottom-nav {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    padding: 20px 16px;
+    border: none;
+  }
+
+  body.map-active .nav-item {
+    color: var(--text-muted);
+    text-shadow: none;
+  }
+
+  body.map-active .nav-item svg {
+    stroke: currentColor;
+    filter: none;
+  }
+
+  body.map-active .nav-item.active {
+    color: #2d2d2d;
+    background: transparent;
+  }
+
+  body.map-active .nav-item.active svg {
+    stroke: #2d2d2d;
+  }
+
+  body.map-active .nav-item:hover {
+    background: transparent;
+    color: #2d2d2d;
+  }
+
+  body.map-active .nav-item:hover svg {
+    stroke: #2d2d2d;
+  }
 }
 
 .nav-item:focus {
@@ -13634,7 +13721,7 @@ body.pwa-standalone .feed-header {
 /* ========================================
    RESPONSIVE - Solo móvil
    ======================================== */
-@media (min-width: 769px) {
+@media (min-width: 1025px) {
 
   .bottom-sheet,
   .bottom-sheet-overlay {
@@ -14705,5 +14792,116 @@ body.pwa-standalone .feed-header {
     right: 16px;
     transform: none;
     max-width: none;
+  }
+}
+
+/* ================================
+   BOTTOM NAVIGATION - WEB MOBILE
+   Estilo tipo app nativa para navegadores móviles
+   ================================ */
+
+@media (max-width: 768px) {
+  /* Navegación inferior estilo app */
+  .bottom-nav {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    min-width: unset !important;
+    height: auto !important;
+    background: #ffffff !important;
+    border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
+    border-radius: 0 !important;
+    flex-direction: row !important;
+    justify-content: space-around !important;
+    align-items: center !important;
+    gap: 0 !important;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px !important;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05) !important;
+  }
+
+  /* Forzar estilo consistente en mapa también */
+  body.map-active .bottom-nav {
+    background: #ffffff !important;
+    border-radius: 0 !important;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05) !important;
+  }
+
+  /* Items de navegación - layout vertical (icono arriba, texto abajo) */
+  .nav-item {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    padding: 6px 8px !important;
+    border-radius: 8px !important;
+    min-width: 56px !important;
+    width: auto !important;
+    font-size: 10px !important;
+    color: #8e8e8e !important;
+    background: transparent !important;
+    text-shadow: none !important;
+  }
+
+  .nav-item svg {
+    width: 24px !important;
+    height: 24px !important;
+    stroke: #8e8e8e !important;
+    stroke-width: 1.5px !important;
+    filter: none !important;
+  }
+
+  .nav-item span {
+    font-size: 10px !important;
+    font-weight: 500 !important;
+    white-space: nowrap !important;
+    display: block !important;
+  }
+
+  /* Item activo */
+  .nav-item.active {
+    color: #1a1a1a !important;
+    background: transparent !important;
+    font-weight: 600 !important;
+  }
+
+  .nav-item.active svg {
+    stroke: #1a1a1a !important;
+    stroke-width: 2px !important;
+  }
+
+  /* Hover/tap state */
+  .nav-item:hover,
+  .nav-item:active {
+    background: rgba(0, 0, 0, 0.04) !important;
+    transform: none !important;
+  }
+
+  /* Avatar en nav si existe */
+  .nav-avatar-placeholder {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  /* Ajustes de contenido para no quedar tapado por la nav inferior */
+  .content {
+    padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  #feed-view,
+  #profile-view,
+  #activity-view,
+  #search-view,
+  #map-view {
+    padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Ajustar modales y toasts para que no queden detrás de la nav */
+  .modal-sheet,
+  .bottom-sheet {
+    margin-bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
   }
 }
