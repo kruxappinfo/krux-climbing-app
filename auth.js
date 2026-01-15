@@ -310,6 +310,83 @@ function signOut() {
         });
 }
 
+// Delete user account with double confirmation
+async function deleteAccount() {
+    const user = firebase.auth().currentUser;
+
+    if (!user) {
+        showToast('No hay sesión activa', 'error');
+        return false;
+    }
+
+    // Primera confirmación
+    const firstConfirm = await showConfirm(
+        '¿Estás seguro de que quieres eliminar tu cuenta? Esta acción es IRREVERSIBLE.',
+        '⚠️ Eliminar cuenta'
+    );
+
+    if (!firstConfirm) return false;
+
+    // Segunda confirmación (más explícita)
+    const secondConfirm = await showConfirm(
+        'ÚLTIMA ADVERTENCIA: Se eliminarán todos tus datos, favoritos, proyectos y ascensos. ¿Deseas continuar?',
+        '🗑️ Confirmar eliminación'
+    );
+
+    if (!secondConfirm) return false;
+
+    try {
+        const uid = user.uid;
+
+        // 1. Eliminar datos del usuario en Firestore
+        const userRef = db.collection('users').doc(uid);
+
+        // Eliminar subcolecciones (favorites, projects, ascents)
+        const subCollections = ['favorites', 'projects', 'ascents'];
+        for (const subCol of subCollections) {
+            const snapshot = await userRef.collection(subCol).get();
+            const batch = db.batch();
+            snapshot.docs.forEach(doc => batch.delete(doc.ref));
+            if (snapshot.docs.length > 0) {
+                await batch.commit();
+            }
+        }
+
+        // Eliminar documento principal del usuario
+        await userRef.delete();
+
+        // 2. Eliminar de la colección de admins si existe
+        try {
+            await db.collection('admins').doc(uid).delete();
+        } catch (e) {
+            // Ignorar si no existe
+        }
+
+        // 3. Eliminar la cuenta de Firebase Auth
+        await user.delete();
+
+        showToast('Cuenta eliminada correctamente', 'success');
+
+        // Recargar la página para mostrar la pantalla de login
+        setTimeout(() => {
+            window.location.reload();
+        }, 1500);
+
+        return true;
+
+    } catch (error) {
+        console.error('Error eliminando cuenta:', error);
+
+        // Si el error es que requiere re-autenticación
+        if (error.code === 'auth/requires-recent-login') {
+            showToast('Por seguridad, cierra sesión y vuelve a iniciar antes de eliminar la cuenta', 'error');
+        } else {
+            showToast('Error al eliminar la cuenta: ' + error.message, 'error');
+        }
+        return false;
+    }
+}
+
 // Update UI based on auth state
 function updateAuthUI(user) {
     const landingPage = document.getElementById('landing-page');

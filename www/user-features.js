@@ -48,14 +48,30 @@ function showConfirm(message, title = 'Confirmar') {
         const cancelBtn = document.getElementById('confirm-cancel');
         const okBtn = document.getElementById('confirm-ok');
 
+        if (!modal || !titleEl || !messageEl || !cancelBtn || !okBtn) {
+            console.error('Confirm modal elements not found');
+            resolve(false);
+            return;
+        }
+
+        // Limpiar cualquier estado previo
+        modal.classList.add('hidden');
+
+        // Clonar botones para eliminar listeners anteriores
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        const newOkBtn = okBtn.cloneNode(true);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+        okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+
         titleEl.textContent = title;
         messageEl.textContent = message;
-        modal.classList.remove('hidden');
+
+        let resolved = false;
 
         function cleanup() {
+            if (resolved) return;
+            resolved = true;
             modal.classList.add('hidden');
-            cancelBtn.removeEventListener('click', handleCancel);
-            okBtn.removeEventListener('click', handleOk);
         }
 
         function handleCancel() {
@@ -68,15 +84,18 @@ function showConfirm(message, title = 'Confirmar') {
             resolve(true);
         }
 
-        cancelBtn.addEventListener('click', handleCancel);
-        okBtn.addEventListener('click', handleOk);
+        newCancelBtn.addEventListener('click', handleCancel, { once: true });
+        newOkBtn.addEventListener('click', handleOk, { once: true });
 
         // Close on outside click
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
+            if (e.target === modal && !resolved) {
                 handleCancel();
             }
         }, { once: true });
+
+        // Mostrar modal después de configurar todo
+        modal.classList.remove('hidden');
     });
 }
 

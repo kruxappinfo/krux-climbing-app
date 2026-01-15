@@ -4117,92 +4117,112 @@ function initEditProfile() {
 }
 
 // ================== SETTINGS DROPDOWN ==================
+let settingsDropdownInitialized = false;
+
+// Handler global para settings dropdown (definido fuera para referencia estable)
+async function handleSettingsItemClick(e) {
+  const dropdown = document.getElementById('settings-dropdown');
+  const item = e.target.closest('.settings-menu-item');
+  if (!item || !dropdown) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  dropdown.classList.add('hidden');
+
+  const itemId = item.id;
+
+  try {
+    switch (itemId) {
+      case 'settings-edit-profile':
+        const editModal = document.getElementById('edit-profile-modal');
+        if (editModal) editModal.classList.remove('hidden');
+        break;
+
+      case 'settings-notifications':
+        showToast('Configuración de notificaciones próximamente', 'info');
+        break;
+
+      case 'settings-privacy':
+        showToast('Configuración de privacidad próximamente', 'info');
+        break;
+
+      case 'settings-help':
+        showToast('Centro de ayuda próximamente', 'info');
+        break;
+
+      case 'settings-logout':
+        const confirmLogout = await showConfirm('¿Estás seguro de que quieres cerrar sesión?', 'Cerrar sesión');
+        if (confirmLogout) {
+          try {
+            await firebase.auth().signOut();
+            showToast('Sesión cerrada', 'success');
+            window.location.reload();
+          } catch (error) {
+            console.error('Error signing out:', error);
+            showToast('Error al cerrar sesión', 'error');
+          }
+        }
+        break;
+
+      case 'settings-delete-account':
+        if (typeof deleteAccount === 'function') {
+          await deleteAccount();
+        } else {
+          showToast('Error: función no disponible', 'error');
+        }
+        break;
+
+      case 'settings-admin-panel':
+        const isCapacitor = window.Capacitor !== undefined;
+        if (isCapacitor) {
+          openAdminPanelModal();
+        } else {
+          window.location.href = 'admin.html';
+        }
+        break;
+    }
+  } catch (error) {
+    console.error('Error en settings menu:', error);
+    showToast('Error al ejecutar la acción', 'error');
+  }
+}
+
 function initSettingsDropdown() {
   const btn = document.getElementById('profile-settings-btn');
   const dropdown = document.getElementById('settings-dropdown');
 
   if (!btn || !dropdown) return;
 
-  // Toggle dropdown on button click
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    dropdown.classList.toggle('hidden');
-  });
+  // Solo inicializar listeners globales una vez
+  if (!settingsDropdownInitialized) {
+    // Toggle dropdown on button click
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle('hidden');
+    });
 
-  // Close on outside click
-  document.addEventListener('click', (e) => {
-    if (!dropdown.contains(e.target) && !btn.contains(e.target)) {
-      dropdown.classList.add('hidden');
-    }
-  });
-
-  // Edit Profile
-  document.getElementById('settings-edit-profile')?.addEventListener('click', () => {
-    dropdown.classList.add('hidden');
-    const editModal = document.getElementById('edit-profile-modal');
-    if (editModal) editModal.classList.remove('hidden');
-  });
-
-  // Notifications (placeholder - just show toast for now)
-  document.getElementById('settings-notifications')?.addEventListener('click', () => {
-    dropdown.classList.add('hidden');
-    showToast('Configuración de notificaciones próximamente', 'info');
-  });
-
-  // Privacy (placeholder)
-  document.getElementById('settings-privacy')?.addEventListener('click', () => {
-    dropdown.classList.add('hidden');
-    showToast('Configuración de privacidad próximamente', 'info');
-  });
-
-  // Help (placeholder)
-  document.getElementById('settings-help')?.addEventListener('click', () => {
-    dropdown.classList.add('hidden');
-    showToast('Centro de ayuda próximamente', 'info');
-  });
-
-  // Logout
-  document.getElementById('settings-logout')?.addEventListener('click', async () => {
-    dropdown.classList.add('hidden');
-    const confirmed = await showConfirm('¿Estás seguro de que quieres cerrar sesión?', 'Cerrar sesión');
-    if (confirmed) {
-      try {
-        await firebase.auth().signOut();
-        showToast('Sesión cerrada', 'success');
-        // Redirect to login or show login view
-        window.location.reload();
-      } catch (error) {
-        console.error('Error signing out:', error);
-        showToast('Error al cerrar sesión', 'error');
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target) && !btn.contains(e.target)) {
+        dropdown.classList.add('hidden');
       }
-    }
-  });
+    });
 
-  // Admin Panel - Solo para super admin (krux.app.info@gmail.com)
+    // Añadir handler de clicks del menú (solo una vez)
+    dropdown.addEventListener('click', handleSettingsItemClick);
+
+    settingsDropdownInitialized = true;
+  }
+
+  // Admin Panel - Mostrar/ocultar según el usuario (solo para super admin)
   const adminPanelBtn = document.getElementById('settings-admin-panel');
   if (adminPanelBtn) {
-    // Mostrar/ocultar según el usuario
     firebase.auth().onAuthStateChanged((user) => {
       if (user && user.email === 'krux.app.info@gmail.com') {
         adminPanelBtn.classList.remove('hidden');
       } else {
         adminPanelBtn.classList.add('hidden');
-      }
-    });
-
-    // Manejar clic
-    adminPanelBtn.addEventListener('click', () => {
-      dropdown.classList.add('hidden');
-
-      // Detectar si estamos en Capacitor (móvil nativo)
-      const isCapacitor = window.Capacitor !== undefined;
-
-      if (isCapacitor) {
-        // En móvil: abrir modal de admin
-        openAdminPanelModal();
-      } else {
-        // En web: navegar a admin.html
-        window.location.href = 'admin.html';
       }
     });
   }
