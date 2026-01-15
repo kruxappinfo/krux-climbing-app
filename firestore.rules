@@ -1,0 +1,224 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      // Allow owner full write, OR allow any authenticated user to update stats or savedPosts
+      allow update: if isOwner(userId) || 
+                      (isAuthenticated() && 
+                       (onlyStatsChanged() || onlySavedPostsChanged()));
+      allow delete: if isOwner(userId);
+      
+      // Helper to check if only stats fields are being modified
+      function onlyStatsChanged() {
+        let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+        return changedKeys.hasOnly(['stats']) || 
+               changedKeys.hasOnly(['stats.followersCount']) ||
+               changedKeys.hasOnly(['stats.followingCount']) ||
+               changedKeys.hasOnly(['stats.followersCount', 'stats.followingCount']);
+      }
+      
+      // Helper to check if only savedPosts field is being modified (for bookmarks)
+      function onlySavedPostsChanged() {
+        let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+        return changedKeys.hasOnly(['savedPosts']);
+      }
+
+      match /favorites/{favoriteId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      match /projects/{projectId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /ascents/{ascentId} {
+        allow read: if isAuthenticated();
+        allow write: if isOwner(userId);
+      }
+
+      match /following/{followedUserId} {
+        allow read: if isAuthenticated();
+        allow write: if isOwner(userId);
+      }
+      
+      match /followers/{followerUserId} {
+        allow read: if isAuthenticated();
+        allow create, delete: if isAuthenticated() && request.auth.uid == followerUserId;
+      }
+      
+      match /notifications/{notificationId} {
+        // Allow read: owner can read all, others can only read notifications they created
+        // Note: For non-existent docs, resource.data is null, so we check notificationId pattern
+        allow read: if isOwner(userId) ||
+                      (isAuthenticated() &&
+                       (resource == null || resource.data.fromUserId == request.auth.uid));
+        // Allow update only for owner
+        allow update: if isOwner(userId);
+        // Allow delete: owner OR creator (check resource.data.fromUserId)
+        allow delete: if isOwner(userId) ||
+                        (isAuthenticated() && resource.data.fromUserId == request.auth.uid);
+        // Allow create: any authenticated user can create for others
+        // The notificationId contains the creator's uid for idempotency
+        allow create: if isAuthenticated() &&
+                        request.resource.data.fromUserId == request.auth.uid;
+      }
+    }
+
+    match /ascents/{ascentId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /comments/{commentId} {
+      allow read: if true; // Anyone can read comments
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid; // Users can create their own comments
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid; // Users can update their own comments
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid; // Users can delete their own comments
+    }
+
+    match /route-photos/{photoId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    // Posts collection - allows authenticated users to create posts and update likes/commentsCount
+    match /posts/{postId} {
+      allow read: if true; // Anyone can read posts
+      allow create: if isAuthenticated(); // Any authenticated user can create posts
+      // Allow owner to update/delete, OR allow any authenticated user to update likes/commentsCount
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || // Owner can update anything
+        onlyLikesOrCommentsChanged() // Anyone can update likes/commentsCount
+      );
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      
+      // Helper to check if only likes or commentsCount fields are being modified
+      function onlyLikesOrCommentsChanged() {
+        let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+        return changedKeys.hasOnly(['likes']) || 
+               changedKeys.hasOnly(['commentsCount']) ||
+               changedKeys.hasOnly(['likes', 'commentsCount']);
+     }
+// Comments subcollection - allow comment author to edit, comment/post author to delete
+      match /comments/{commentId} {
+        allow read: if true; // Anyone can read comments
+        allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+        // Allow update if: comment author (full edit) OR any authenticated user (likes/repliesCount)
+        allow update: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid || // Author can update anything
+          onlyCommentInteractionChanged() // Anyone can update likes or repliesCount
+        );
+        // Allow delete if user is comment author OR post author
+        allow delete: if isAuthenticated() &&
+                       (resource.data.userId == request.auth.uid ||
+                        get(/databases/$(database)/documents/posts/$(postId)).data.userId == request.auth.uid);
+
+        // Helper to check if only likes or repliesCount fields are being modified
+        function onlyCommentInteractionChanged() {
+          let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+          return changedKeys.hasOnly(['likes']) ||
+                 changedKeys.hasOnly(['repliesCount']) ||
+                 changedKeys.hasOnly(['likes', 'repliesCount']);
+        }
+
+        // Replies subcollection - nested comments
+        match /replies/{replyId} {
+          allow read: if true; // Anyone can read replies
+          allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+          // Allow update if: reply author (full edit) OR any authenticated user (only likes)
+          allow update: if isAuthenticated() && (
+            resource.data.userId == request.auth.uid ||
+            onlyReplyLikesChanged()
+          );
+          // Allow delete if: reply author, parent comment author, or post author
+          allow delete: if isAuthenticated() && (
+            resource.data.userId == request.auth.uid ||
+            get(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId)).data.userId == request.auth.uid ||
+            get(/databases/$(database)/documents/posts/$(postId)).data.userId == request.auth.uid
+          );
+
+          function onlyReplyLikesChanged() {
+            let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+            return changedKeys.hasOnly(['likes']);
+          }
+        }
+      }
+    }
+
+    
+
+    match /admins/{userId} {
+      // Permitir leer su propio documento O si es super admin
+      allow read: if request.auth.uid == userId ||
+                    (isAuthenticated() && request.auth.token.email == 'krux.app.info@gmail.com');
+      // Permitir escribir solo al super admin
+      allow write: if isAuthenticated() && request.auth.token.email == 'krux.app.info@gmail.com';
+    }
+
+    // Sector images metadata
+    match /sector_images/{imageId} {
+      allow read: if true; // Anyone can read sector images metadata
+      allow write: if isAuthenticated() && isAdmin(); // Only admins can upload/delete
+    }
+
+    // Route drawings on sector images
+    match /sector_route_drawings/{drawingId} {
+      allow read: if true; // Anyone can see route drawings
+      allow write: if isAuthenticated() && isAdmin(); // Only admins can draw routes
+    }
+
+    // Pending routes (vías pendientes de aprobación)
+    match /pending_routes/{routeId} {
+      // Permitir leer vías aprobadas a TODOS (incluso sin autenticación)
+      // Permitir leer vías pendientes solo a admins
+      allow read: if resource.data.status == 'approved' ||
+        (isAuthenticated() && (isAdmin() || isSuperAdmin()));
+      allow create: if isAuthenticated() && isAdmin();
+      allow update, delete: if isAuthenticated() && (isAdmin() || isSuperAdmin());
+    }
+
+    // Helper function to check if user is super admin
+    function isSuperAdmin() {
+      return request.auth.token.email == 'krux.app.info@gmail.com';
+    }
+
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /conversations/{conversationId} {
+      function isParticipant() {
+        return isAuthenticated() && request.auth.uid in resource.data.participants;
+      }
+      
+      function willBeParticipant() {
+        return isAuthenticated() && request.auth.uid in request.resource.data.participants;
+      }
+
+      allow read: if isParticipant();
+      allow create: if willBeParticipant();
+      allow update, delete: if isParticipant();
+
+      match /messages/{messageId} {
+        allow read, delete: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        allow create: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants && request.resource.data.senderId == request.auth.uid;
+      }
+    }
+  }
+}

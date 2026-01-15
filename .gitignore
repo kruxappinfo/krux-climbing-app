@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+.npm
+
+# Capacitor native projects (regenerables con `cap add`)
+ios/
+android/
+
+# Build outputs
+dist/
+build/
+www/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Coverage
+coverage/
+
+# Generated resources (pueden regenerarse)
+resources/icon/
+resources/splash/
+resources/android/

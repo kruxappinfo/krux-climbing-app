@@ -1,0 +1,757 @@
+/* ================================
+   APP-MOBILE.CSS
+   Estilos específicos para la app móvil (iOS/Android)
+   Este archivo NO se carga en la versión web
+   ================================ */
+
+/* ===== VARIABLES MÓVIL ===== */
+.platform-mobile {
+  --mobile-bottom-nav-height: 70px;
+  --mobile-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --mobile-safe-area-top: env(safe-area-inset-top, 0px);
+}
+
+/* ===== OCULTAR LANDING PAGE WEB EN MÓVIL ===== */
+.platform-mobile #landing-page {
+  display: none !important;
+}
+
+/* ===== BARRA SUPERIOR COMPACTA ===== */
+.platform-mobile .top-bar-wrapper {
+  top: calc(10px + var(--mobile-safe-area-top));
+  left: 50%;
+  transform: translateX(-50%);
+  gap: 8px;
+}
+
+.platform-mobile .top-bar {
+  padding: 8px 12px;
+  border-radius: 20px;
+}
+
+.platform-mobile .search-form {
+  width: calc(100vw - 120px);
+  max-width: 400px;
+}
+
+/* ===== BOTONES TÁCTILES MÁS GRANDES ===== */
+.platform-mobile #locateBtn,
+.platform-mobile .reset-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 12px;
+}
+
+/* ===== AJUSTES DEL MAPA ===== */
+.platform-mobile #map {
+  height: calc(100vh - var(--mobile-bottom-nav-height) - var(--mobile-safe-area-bottom));
+}
+
+/* ===== NAVEGACIÓN INFERIOR ===== */
+.platform-mobile .bottom-nav {
+  display: flex !important;
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: auto !important;
+  transform: none !important;
+  width: 100% !important;
+  height: auto !important;
+  background: #ffffff !important;
+  border-top: 1px solid rgba(0, 0, 0, 0.06) !important;
+  flex-direction: row !important;
+  justify-content: space-around !important;
+  align-items: center !important;
+  gap: 0 !important;
+  z-index: 10000 !important;
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px)) 16px !important;
+  border-radius: 0 !important;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05) !important;
+}
+
+.platform-mobile .bottom-nav .nav-item {
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  padding: 8px 12px !important;
+  border-radius: 12px !important;
+  min-width: 60px !important;
+  width: auto !important;
+  font-size: 11px !important;
+}
+
+.platform-mobile .bottom-nav .nav-item span {
+  font-size: 11px !important;
+  white-space: nowrap !important;
+  display: none !important;
+}
+
+.platform-mobile .bottom-nav .nav-item svg {
+  width: 26px !important;
+  height: 26px !important;
+}
+
+.platform-mobile .bottom-nav .nav-item.active {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #2d2d2d !important;
+  font-weight: 600 !important;
+}
+
+/* ===== AJUSTAR CONTENIDO PARA NAV INFERIOR ===== */
+.platform-mobile .content {
+  padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+}
+
+
+.platform-mobile #discover-view,
+.platform-mobile #profile-view,
+.platform-mobile #activity-view {
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ===== SOLO iOS ===== */
+.platform-ios {
+  --ios-top-safe-area: env(safe-area-inset-top, 0px);
+}
+
+.platform-ios .top-bar-wrapper {
+  top: calc(10px + var(--ios-top-safe-area));
+}
+
+/* ================================
+   ONBOARDING MÓVIL - Video a Pantalla Completa (tipo Strava)
+   ================================ */
+
+.mobile-onboarding {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+
+.mobile-onboarding.hidden {
+  display: none;
+}
+
+/* Video de fondo a pantalla completa */
+.onboarding-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.onboarding-video {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  min-width: 100%;
+  min-height: 100%;
+  width: auto;
+  height: auto;
+  transform: translate(-50%, -50%);
+  object-fit: cover;
+}
+
+/* Overlay con gradiente premium - más transparente en el centro */
+.onboarding-bg-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg,
+      rgba(0, 0, 0, 0.5) 0%,
+      rgba(0, 0, 0, 0.1) 30%,
+      rgba(0, 0, 0, 0.1) 60%,
+      rgba(0, 0, 0, 0.7) 85%,
+      rgba(0, 0, 0, 0.85) 100%);
+  z-index: 1;
+}
+
+/* Contenido central */
+.onboarding-content {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  padding: 0 32px;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 80px);
+}
+
+/* Logo centrado */
+.onboarding-logo {
+  text-align: center;
+}
+
+.onboarding-logo img {
+  height: 80px;
+  width: auto;
+  filter: brightness(0) invert(1);
+  opacity: 1;
+  /* Sombra sutil para mejor legibilidad */
+  filter: brightness(0) invert(1) drop-shadow(0 4px 20px rgba(0, 0, 0, 0.4));
+}
+
+/* Botones de acción - fijos en la parte inferior */
+.onboarding-actions {
+  position: relative;
+  z-index: 2;
+  padding: 24px 28px calc(32px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.onboarding-btn-primary {
+  width: 100%;
+  padding: 18px 28px;
+  border: none;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #ffffff;
+  color: #0a0a0a;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: 0.2px;
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.15);
+}
+
+.onboarding-btn-primary:active {
+  transform: scale(0.98);
+  background: #f0f0f0;
+}
+
+.onboarding-btn-secondary {
+  width: 100%;
+  padding: 18px 28px;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: 0.2px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.onboarding-btn-secondary:active {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* ================================
+   LOGIN MODAL MÓVIL - Bottom Sheet Moderno
+   ================================ */
+
+.mobile-login-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 21000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.mobile-login-modal.hidden {
+  display: none;
+}
+
+/* Overlay con blur suave */
+.mobile-login-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: overlayFadeIn 0.3s ease-out;
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Sheet con fondo cálido - Sin scroll */
+.mobile-login-sheet {
+  position: relative;
+  background: linear-gradient(180deg, #faf9f7 0%, #f5f3f0 100%);
+  border-radius: 28px 28px 0 0;
+  padding: 0 24px calc(20px + env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+  animation: sheetSlideUp 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+  box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.15);
+}
+
+.mobile-login-sheet.dragging {
+  transition: none !important;
+  animation: none !important;
+}
+
+@keyframes sheetSlideUp {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheetSlideDown {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(100%);
+  }
+}
+
+.mobile-login-modal.closing .mobile-login-sheet {
+  animation: sheetSlideDown 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+.mobile-login-modal.closing .mobile-login-overlay {
+  animation: overlayFadeOut 0.3s ease-out forwards;
+}
+
+@keyframes overlayFadeOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/* Handle - Área de arrastre */
+.mobile-login-handle-area {
+  padding: 20px 0 16px;
+  cursor: grab;
+  touch-action: none;
+  min-height: 44px;
+  /* Área táctil mínima recomendada */
+}
+
+.mobile-login-handle-area:active {
+  cursor: grabbing;
+}
+
+.mobile-login-handle {
+  position: relative;
+  width: 40px;
+  height: 5px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+  margin: 20px auto;
+  cursor: grab;
+  touch-action: none;
+  transition: background 0.2s ease, width 0.2s ease;
+}
+
+/* Área táctil expandida invisible */
+.mobile-login-handle::before {
+  content: '';
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  min-width: 120px;
+  /* Área horizontal más amplia */
+  height: 44px;
+  /* 44px es el mínimo táctil recomendado */
+  cursor: grab;
+}
+
+.mobile-login-handle-area:active .mobile-login-handle,
+.mobile-login-handle:active {
+  background: rgba(0, 0, 0, 0.25);
+  width: 48px;
+}
+
+.mobile-login-handle:active::before {
+  cursor: grabbing;
+}
+
+/* Ocultar botón X */
+.mobile-modal-close {
+  display: none;
+}
+
+/* Header - Más compacto */
+.mobile-login-header {
+  text-align: center;
+  margin-bottom: 20px;
+  padding-top: 4px;
+}
+
+.mobile-login-header h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 4px;
+  letter-spacing: -0.3px;
+}
+
+.mobile-login-header p {
+  font-size: 14px;
+  color: #888;
+  margin: 0;
+  font-weight: 400;
+}
+
+/* Botones Sociales - Compactos */
+.mobile-login-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.mobile-social-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 18px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border: none;
+  letter-spacing: 0.1px;
+}
+
+.mobile-social-btn:active {
+  transform: scale(0.98);
+}
+
+.mobile-social-btn svg {
+  flex-shrink: 0;
+}
+
+.mobile-google {
+  background: #ffffff;
+  color: #3c4043;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+.mobile-google:active {
+  background: #fafafa;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.mobile-apple {
+  background: #1a1a1a;
+  color: #ffffff;
+}
+
+.mobile-apple:active {
+  background: #2a2a2a;
+}
+
+.mobile-facebook {
+  background: #1877F2;
+  color: #ffffff;
+}
+
+.mobile-facebook:active {
+  background: #1469d8;
+}
+
+/* Divider Compacto */
+.mobile-login-divider {
+  display: flex;
+  align-items: center;
+  margin: 14px 0;
+}
+
+.mobile-login-divider::before,
+.mobile-login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.mobile-login-divider span {
+  padding: 0 14px;
+  color: #aaa;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Formulario Compacto */
+.mobile-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mobile-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mobile-input-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  letter-spacing: 0.1px;
+  padding-left: 2px;
+}
+
+.mobile-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #ffffff;
+  border: 1.5px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.mobile-input-wrapper:focus-within {
+  border-color: #1a1a1a;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.06);
+}
+
+.mobile-input-wrapper svg {
+  color: #a0a0a0;
+  flex-shrink: 0;
+  transition: color 0.25s ease;
+}
+
+.mobile-input-wrapper:focus-within svg {
+  color: #1a1a1a;
+}
+
+.mobile-input-wrapper input {
+  flex: 1;
+  border: none;
+  background: none;
+  font-size: 15px;
+  color: #1a1a1a;
+  outline: none;
+  font-weight: 400;
+}
+
+.mobile-input-wrapper input::placeholder {
+  color: #b0b0b0;
+}
+
+/* Submit Button - Compacto */
+.mobile-submit-btn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
+  color: #ffffff;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: 0.2px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+}
+
+.mobile-submit-btn:active {
+  transform: scale(0.98) translateY(1px);
+  background: linear-gradient(180deg, #3a3a3a 0%, #2a2a2a 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Link de Registro/Login - Compacto */
+.mobile-signup-link {
+  text-align: center;
+  margin-top: 14px;
+  padding-bottom: 4px;
+  font-size: 13px;
+  color: #888;
+}
+
+.mobile-signup-link button {
+  background: none;
+  border: none;
+  color: #1a1a1a;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+  transition: opacity 0.2s ease;
+}
+
+.mobile-signup-link button:active {
+  opacity: 0.6;
+}
+
+/* ================================
+   PWA STANDALONE
+   ================================ */
+
+body.pwa-standalone #auth-container {
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+}
+
+body.pwa-standalone .bottom-nav {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+body.pwa-standalone .feed-header {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+}
+
+/* ================================
+   SAFE AREAS GLOBALES PARA MÓVIL
+   Header limpio debajo de la barra de estado
+   ================================ */
+
+.platform-mobile .feed-header {
+  padding-top: max(20px, env(safe-area-inset-top, 0px));
+  height: auto;
+  min-height: 72px;
+}
+
+.platform-mobile .activity-header {
+  padding-top: max(20px, env(safe-area-inset-top, 0px));
+}
+
+.platform-mobile .profile-header-ig {
+  padding-top: max(24px, calc(env(safe-area-inset-top, 0px) + 16px));
+}
+
+/* Cuando se ve perfil ajeno, el header de navegación ya maneja el safe-area */
+.platform-mobile .profile-view-header:not(.hidden) ~ .profile-header-ig {
+  padding-top: 16px;
+}
+
+/* Vista Discover si existe */
+.platform-mobile .discover-header {
+  padding-top: max(20px, env(safe-area-inset-top, 0px));
+}
+
+/* ================================
+   AJUSTE BOTÓN DE AJUSTES EN PERFIL
+   Corrige la alineación vertical del icono de engranaje con el nombre de usuario
+   ================================ */
+
+/*
+  PROBLEMA:
+  El botón tiene top: 28px en el CSS base, pero este valor no se adapta
+  al safe-area-inset-top de iOS, causando que aparezca demasiado arriba
+  o demasiado abajo según el dispositivo.
+
+  SOLUCIÓN SIMPLE Y ROBUSTA:
+  Reemplazar el valor fijo por uno que respete el safe-area dinámicamente.
+  Usamos el mismo padding-top que tiene .profile-header-ig como referencia.
+*/
+
+.platform-mobile .settings-btn-ig {
+  /*
+    Override el top: 28px del CSS base
+    Usamos el mismo cálculo de padding del header para mantener consistencia
+  */
+  top: max(24px, calc(env(safe-area-inset-top, 0px) + 16px));
+  right: 16px;
+
+  /*
+    Si el botón necesita bajar un poco más para alinearse perfectamente
+    con la baseline del texto del username, se puede agregar un pequeño offset:
+  */
+  margin-top: 0px;
+  /* Ajuste fino - puede modificarse según pruebas visuales */
+}
+
+/* Posiciona el dropdown de ajustes justo debajo del botón */
+.platform-mobile .settings-dropdown {
+  /*
+    El botón está posicionado con safe-area, necesitamos que el dropdown
+    aparezca debajo de él. Usamos un valor que cubra:
+    - safe-area-inset-top (hasta ~50px en iPhone con notch)
+    - posición del botón dentro del header (~24px)
+    - altura del botón (~40px)
+    Total aproximado: 80-100px desde el top del contenedor padre
+  */
+  top: calc(env(safe-area-inset-top, 20px) + 60px);
+  right: 16px;
+}
+
+/* ================================
+   FEED VIEW - HEADER FIJO EN MOVIL
+   ================================ */
+
+.platform-mobile #feed-view.view.active {
+  overflow: hidden !important;
+  overflow-y: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: calc(100vh - 70px - env(safe-area-inset-bottom, 0px)) !important;
+  height: calc(100dvh - 70px - env(safe-area-inset-bottom, 0px)) !important;
+  padding-bottom: 0 !important;
+  position: relative !important;
+}
+
+.platform-mobile #feed-view.view.active .feed-header {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  position: relative !important;
+  top: auto !important;
+  min-height: calc(72px + env(safe-area-inset-top, 0px)) !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
+}
+
+.platform-mobile #feed-view.view.active .feed-container {
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  padding-bottom: 20px !important;
+  min-height: 0 !important;
+}

@@ -1,0 +1,895 @@
+/**
+ * Route Drawing Module - Estilos
+ * Editor de dibujo de vías en imágenes de sector
+ */
+
+/* ============================================
+   EDITOR OVERLAY
+   ============================================ */
+
+.rd-editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.95);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  animation: rd-fade-in 0.2s ease-out;
+}
+
+@keyframes rd-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.rd-editor-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  max-width: 100vw;
+  overflow: hidden;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.rd-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 20px;
+  background: #1f2937;
+  border-bottom: 1px solid #374151;
+  flex-shrink: 0;
+}
+
+.rd-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rd-editor-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.rd-route-count {
+  font-size: 13px;
+  color: #9ca3af;
+  background: #374151;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.rd-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.rd-btn-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid #374151;
+  color: #9ca3af;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.rd-btn-icon:hover {
+  background: #374151;
+  color: #ffffff;
+  border-color: #4b5563;
+}
+
+.rd-btn-icon:active {
+  transform: scale(0.95);
+}
+
+/* ============================================
+   CANVAS CONTAINER
+   ============================================ */
+
+.rd-canvas-container {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111827;
+  overflow: hidden;
+}
+
+#rd-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  cursor: crosshair;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================
+   PANEL LATERAL DE VÍAS
+   ============================================ */
+
+.rd-routes-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 320px;
+  max-width: 85vw;
+  height: 100%;
+  background: #1f2937;
+  border-left: 1px solid #374151;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease;
+  z-index: 100;
+}
+
+.rd-routes-panel.rd-panel-collapsed {
+  transform: translateX(100%);
+}
+
+.rd-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 20px;
+  border-bottom: 1px solid #374151;
+}
+
+.rd-panel-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.rd-panel-search {
+  padding: 12px 20px;
+  border-bottom: 1px solid #374151;
+}
+
+.rd-panel-search input {
+  width: 100%;
+  padding: 10px 14px;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.rd-panel-search input:focus {
+  border-color: #10b981;
+}
+
+.rd-panel-search input::placeholder {
+  color: #6b7280;
+}
+
+.rd-panel-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+/* Scrollbar styling */
+.rd-panel-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.rd-panel-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rd-panel-list::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 4px;
+}
+
+.rd-panel-list::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* ============================================
+   ITEMS DE VÍAS
+   ============================================ */
+
+.rd-route-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  margin-bottom: 6px;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.rd-route-item:hover {
+  background: #1f2937;
+  border-color: #10b981;
+  transform: translateX(-2px);
+}
+
+.rd-route-item.rd-has-drawing {
+  border-color: #10b981;
+  background: linear-gradient(90deg, #111827 0%, #064e3b 100%);
+}
+
+.rd-route-item.rd-has-drawing::before {
+  content: '✓';
+  position: absolute;
+  left: 6px;
+  color: #10b981;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.rd-route-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.rd-route-name {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.rd-route-grade {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.rd-btn-delete {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #991b1b;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  transition: all 0.2s;
+}
+
+.rd-btn-delete:hover {
+  opacity: 1;
+  background: #dc2626;
+}
+
+.rd-empty-message {
+  text-align: center;
+  color: #6b7280;
+  padding: 40px 20px;
+  font-size: 14px;
+}
+
+/* ============================================
+   CONTROLES DE DIBUJO
+   ============================================ */
+
+.rd-drawing-controls {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(31, 41, 55, 0.95);
+  backdrop-filter: blur(8px);
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #374151;
+  display: flex;
+  gap: 8px;
+  z-index: 250;
+  animation: rd-slide-up 0.3s ease-out;
+}
+
+.rd-btn-control {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid #374151;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.rd-btn-control:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rd-btn-control:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.rd-btn-control:not(:disabled):active {
+  transform: translateY(0);
+}
+
+.rd-btn-undo {
+  background: #374151;
+}
+
+.rd-btn-undo:not(:disabled):hover {
+  background: #4b5563;
+}
+
+.rd-btn-finish {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.rd-btn-finish:not(:disabled):hover {
+  background: #059669;
+}
+
+.rd-btn-cancel {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+
+.rd-btn-cancel:hover {
+  background: #dc2626;
+}
+
+/* ============================================
+   INSTRUCCIONES FLOTANTES
+   ============================================ */
+
+.rd-instructions {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(31, 41, 55, 0.95);
+  backdrop-filter: blur(8px);
+  padding: 12px 24px;
+  border-radius: 12px;
+  border: 1px solid #374151;
+  max-width: 90%;
+  z-index: 200;
+  animation: rd-slide-up 0.3s ease-out;
+}
+
+@keyframes rd-slide-up {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.rd-instructions p {
+  margin: 0;
+  color: #ffffff;
+  font-size: 14px;
+  text-align: center;
+}
+
+/* ============================================
+   TOAST NOTIFICATIONS
+   ============================================ */
+
+.rd-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #ffffff;
+  padding: 14px 24px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  z-index: 20000;
+  max-width: 90%;
+  text-align: center;
+  animation: rd-toast-in 0.3s ease-out;
+}
+
+@keyframes rd-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.rd-toast.rd-toast-hide {
+  animation: rd-toast-out 0.3s ease-out forwards;
+}
+
+@keyframes rd-toast-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+}
+
+.rd-toast.rd-toast-success {
+  background: #065f46;
+  border: 1px solid #10b981;
+}
+
+.rd-toast.rd-toast-error {
+  background: #991b1b;
+  border: 1px solid #ef4444;
+}
+
+.rd-toast.rd-toast-warning {
+  background: #92400e;
+  border: 1px solid #f59e0b;
+}
+
+.rd-toast.rd-toast-info {
+  background: #1e40af;
+  border: 1px solid #3b82f6;
+}
+
+/* ============================================
+   SECTOR VIEWER - BOTÓN DE DIBUJO
+   ============================================ */
+
+.sector-viewer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sector-viewer-draw {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: #10b981;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.sector-viewer-draw:hover {
+  background: #059669;
+  transform: scale(1.05);
+}
+
+.sector-viewer-draw:active {
+  transform: scale(0.95);
+}
+
+/* Actualizar sector-viewer-upload para ser consistente */
+.sector-viewer-upload {
+  width: 40px;
+  height: 40px;
+}
+
+/* ============================================
+   SECTOR VIEWER - CANVAS CON VÍAS
+   ============================================ */
+
+.sector-viewer-image-container {
+  position: relative !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sector-viewer-canvas {
+  position: absolute;
+  /* top y left se establecen dinámicamente en JS para coincidir con la imagen */
+  pointer-events: auto !important;
+  cursor: pointer;
+  z-index: 10;
+  touch-action: none; /* Permite gestos táctiles personalizados */
+}
+
+.sector-viewer-image {
+  position: relative;
+  z-index: 1;
+}
+
+/* Info de vía tocada en el visor */
+.sv-route-info {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  animation: sv-info-in 0.3s ease-out;
+}
+
+@keyframes sv-info-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.sv-route-info.sv-route-info-hide {
+  animation: sv-info-out 0.3s ease-out forwards;
+}
+
+@keyframes sv-info-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+}
+
+.sv-route-info-content {
+  background: rgba(16, 185, 129, 0.95);
+  backdrop-filter: blur(8px);
+  padding: 12px 20px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.sv-route-number {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #10b981;
+  font-weight: bold;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sv-route-name {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.sv-route-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: #ffffff;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  margin-left: 8px;
+}
+
+.sv-route-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* ============================================
+   POPUP DE VÍA - BOTÓN DE DESARROLLADOR
+   ============================================ */
+
+.ml-route-dev-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ml-route-dev-btn {
+  width: 100%;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.ml-route-dev-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.ml-route-dev-btn:active {
+  transform: translateY(0);
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 768px) {
+  .rd-routes-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .rd-editor-header h2 {
+    font-size: 16px;
+  }
+
+  .rd-route-count {
+    font-size: 12px;
+    padding: 3px 8px;
+  }
+
+  .rd-instructions {
+    bottom: 10px;
+    padding: 10px 16px;
+  }
+
+  .rd-instructions p {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .rd-header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .rd-editor-header {
+    padding: 12px 15px;
+  }
+
+  .rd-btn-icon {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* ============================================
+   HOVER POPUP - Info de vía al pasar el mouse
+   ============================================ */
+
+.sv-hover-popup {
+  pointer-events: none;
+  z-index: 999999 !important;
+  position: fixed !important;
+}
+
+@keyframes sv-hover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.sv-hover-popup-content {
+  background: rgba(31, 41, 55, 0.98);
+  backdrop-filter: blur(12px);
+  padding: 10px 14px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sv-hover-number {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sv-hover-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sv-hover-name {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 14px;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sv-hover-grade {
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+/* ============================================
+   LOCKED POPUP - Popup fijo de vía seleccionada
+   ============================================ */
+
+.sv-locked-popup {
+  pointer-events: none;
+  z-index: 999999 !important;
+  animation: sv-locked-in 0.2s ease-out;
+}
+
+@keyframes sv-locked-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.sv-locked-popup-content {
+  background: rgba(31, 41, 55, 0.95);
+  backdrop-filter: blur(12px);
+  padding: 10px 14px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sv-locked-grade {
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.sv-locked-name {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 14px;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================
+   ESTILOS PARA MODO DIBUJO OBLIGATORIO
+   ============================================ */
+
+/* Contenedor simplificado sin panel lateral */
+.rd-editor-mandatory-simple {
+  display: flex;
+  flex-direction: column;
+}
+
+.rd-editor-mandatory-simple .rd-canvas-full {
+  width: 100% !important;
+  flex: 1;
+}
+
+/* Ocultar panel lateral en modo simplificado */
+.rd-editor-mandatory-simple .rd-routes-panel {
+  display: none !important;
+}
+
+/* Header en modo obligatorio */
+.rd-mandatory-header {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+}
+
+.rd-mandatory-header h2 {
+  max-width: none;
+  font-size: 16px;
+}
+
+/* Grado en el header */
+.rd-route-grade-header {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: white;
+  margin-left: 10px;
+}
+
+/* Badge de dibujo obligatorio */
+.rd-mandatory-badge {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  margin-left: 10px;
+}
+
+/* Botón de cancelar en modo obligatorio (rojo) */
+.rd-btn-cancel-mandatory {
+  background: rgba(255, 255, 255, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+}
+
+.rd-btn-cancel-mandatory:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Instrucciones en modo obligatorio */
+.rd-instructions-mandatory {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
+  border: 2px solid #f59e0b !important;
+}
+
+.rd-instructions-mandatory p {
+  color: #92400e !important;
+}

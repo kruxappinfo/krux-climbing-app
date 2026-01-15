@@ -1,0 +1,49 @@
+{
+  "name": "krux-climbing-app",
+  "version": "1.0.0",
+  "description": "KRUX - Descubre rutas de escalada, registra tus ascensos y conecta con la comunidad",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve .",
+    "build": "bash scripts/build-www.sh",
+    "cap:sync": "npm run build && npx cap sync",
+    "cap:sync:ios": "npx cap sync ios",
+    "cap:sync:android": "npx cap sync android",
+    "cap:open:ios": "npx cap open ios",
+    "cap:open:android": "npx cap open android",
+    "cap:run:ios": "npx cap run ios",
+    "cap:run:android": "npx cap run android",
+    "cap:build:ios": "npx cap build ios",
+    "cap:build:android": "npx cap build android",
+    "icons:generate": "cd icons/pwa && ./generate-icons.sh"
+  },
+  "keywords": [
+    "climbing",
+    "routes",
+    "pwa",
+    "escalada",
+    "rutas"
+  ],
+  "author": "KRUX Team",
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@capacitor/android": "^5.7.8",
+    "@capacitor/app": "^5.0.8",
+    "@capacitor/camera": "^5.0.10",
+    "@capacitor/cli": "^5.7.8",
+    "@capacitor/core": "^5.7.8",
+    "@capacitor/geolocation": "^5.0.8",
+    "@capacitor/haptics": "^5.0.8",
+    "@capacitor/ios": "^5.7.8",
+    "@capacitor/keyboard": "^5.0.9",
+    "@capacitor/push-notifications": "^5.1.2",
+    "@capacitor/share": "^5.0.8",
+    "@capacitor/splash-screen": "^5.0.8",
+    "@capacitor/status-bar": "^5.0.8",
+    "@codetrix-studio/capacitor-google-auth": "^3.3.5"
+  }
+}

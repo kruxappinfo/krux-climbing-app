@@ -1,0 +1,15 @@
+{
+"name": "/Users/jaimelillo/Downloads/APP/00_APP1/tiles/mora/sectores.mbtiles",
+"description": "/Users/jaimelillo/Downloads/APP/00_APP1/tiles/mora/sectores.mbtiles",
+"version": "2",
+"minzoom": "12",
+"maxzoom": "20",
+"center": "-3.731389,39.682487,20",
+"bounds": "-3.731393,39.682387,-3.730931,39.682924",
+"antimeridian_adjusted_bounds": "-3.731393,39.682387,-3.730931,39.682924",
+"type": "overlay",
+"format": "pbf",
+"generator": "tile-join v2.79.0",
+"generator_options": "tippecanoe '--output=/Users/jaimelillo/Downloads/APP/00_APP1/tiles/mora/sectores.mbtiles' '--layer=sectores' '--minimum-zoom=12' '--maximum-zoom=20' --no-feature-limit --no-tile-size-limit --no-tile-compression --no-simplification-of-shared-nodes --no-line-simplification --force /Users/jaimelillo/Downloads/APP/00_APP1/Cartografia/Mora/Mora_Sectores.geojson; tile-join '--output-to-directory=/Users/jaimelillo/Downloads/APP/00_APP1/tiles/mora/sectores' --no-tile-compression --force /Users/jaimelillo/Downloads/APP/00_APP1/tiles/mora/sectores.mbtiles",
+"json": "{\"vector_layers\":[{\"id\":\"sectores\",\"description\":\"\",\"minzoom\":12,\"maxzoom\":20,\"fields\":{\"exposicion\":\"String\",\"id\":\"String\",\"nombre\":\"String\",\"restr\":\"String\"}}],\"tilestats\":{\"layerCount\":1,\"layers\":[{\"layer\":\"sectores\",\"count\":38,\"geometry\":\"LineString\",\"attributeCount\":4,\"attributes\":[{\"attribute\":\"exposicion\",\"count\":2,\"type\":\"string\",\"values\":[\"Sol_mañana\",\"Sol_tarde\"]},{\"attribute\":\"id\",\"count\":1,\"type\":\"string\",\"values\":[\"\"]},{\"attribute\":\"nombre\",\"count\":3,\"type\":\"string\",\"values\":[\"Espolón\",\"Foso\",\"Oeste\"]},{\"attribute\":\"restr\",\"count\":1,\"type\":\"string\",\"values\":[\"NO\"]}]}]}}"
+}
