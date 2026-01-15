@@ -1,0 +1,15 @@
+{
+"name": "/Users/jaimelillo/Downloads/APP/00_APP1/tiles/valeria/parkings.mbtiles",
+"description": "/Users/jaimelillo/Downloads/APP/00_APP1/tiles/valeria/parkings.mbtiles",
+"version": "2",
+"minzoom": "10",
+"maxzoom": "20",
+"center": "-2.159237,39.775957,20",
+"bounds": "-2.159243,39.773318,-2.145123,39.807316",
+"antimeridian_adjusted_bounds": "-2.159243,39.773318,-2.145123,39.807316",
+"type": "overlay",
+"format": "pbf",
+"generator": "tile-join v2.79.0",
+"generator_options": "tippecanoe '--output=/Users/jaimelillo/Downloads/APP/00_APP1/tiles/valeria/parkings.mbtiles' '--layer=parkings' '--minimum-zoom=10' '--maximum-zoom=20' --no-feature-limit --no-tile-size-limit --no-tile-compression -r1 '--cluster-distance=0' --force /Users/jaimelillo/Downloads/APP/00_APP1/Cartografia/Valeria/Valeria_Parkings.geojson; tile-join '--output-to-directory=/Users/jaimelillo/Downloads/APP/00_APP1/tiles/valeria/parkings' --no-tile-compression --force /Users/jaimelillo/Downloads/APP/00_APP1/tiles/valeria/parkings.mbtiles",
+"json": "{\"vector_layers\":[{\"id\":\"parkings\",\"description\":\"\",\"minzoom\":10,\"maxzoom\":20,\"fields\":{\"Descripcion\":\"String\",\"Nombre\":\"String\",\"fid\":\"Number\"}}],\"tilestats\":{\"layerCount\":1,\"layers\":[{\"layer\":\"parkings\",\"count\":100,\"geometry\":\"Point\",\"attributeCount\":3,\"attributes\":[{\"attribute\":\"Descripcion\",\"count\":2,\"type\":\"string\",\"values\":[\"\",\"Parking de tierra\"]},{\"attribute\":\"Nombre\",\"count\":8,\"type\":\"string\",\"values\":[\"Chiringuito/Piscina\",\"Muelecilla de los Asnos\",\"Piscina/Chiringuito\",\"Principal\",\"Puente/Molino\",\"Rompeculos\",\"Valeria 1\",\"Valeria 2\"]},{\"attribute\":\"fid\",\"count\":8,\"type\":\"number\",\"values\":[1,2,3,4,5,6,7,8],\"min\":1,\"max\":8}]}]}}"
+}

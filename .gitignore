@@ -9,7 +9,7 @@ android/
 # Build outputs
 dist/
 build/
-www/
+# www/ - Necesario para Netlify
 
 # Environment files
 .env

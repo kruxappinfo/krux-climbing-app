@@ -1,0 +1,15 @@
+{
+"name": "/Users/jaimelillo/Downloads/APP/00_APP1/tiles/mora/parkings.mbtiles",
+"description": "/Users/jaimelillo/Downloads/APP/00_APP1/tiles/mora/parkings.mbtiles",
+"version": "2",
+"minzoom": "10",
+"maxzoom": "20",
+"center": "-3.730815,39.683788,20",
+"bounds": "-3.730824,39.683775,-3.730803,39.683808",
+"antimeridian_adjusted_bounds": "-3.730824,39.683775,-3.730803,39.683808",
+"type": "overlay",
+"format": "pbf",
+"generator": "tile-join v2.79.0",
+"generator_options": "tippecanoe '--output=/Users/jaimelillo/Downloads/APP/00_APP1/tiles/mora/parkings.mbtiles' '--layer=parkings' '--minimum-zoom=10' '--maximum-zoom=20' --no-feature-limit --no-tile-size-limit --no-tile-compression -r1 '--cluster-distance=0' --force /Users/jaimelillo/Downloads/APP/00_APP1/Cartografia/Mora/Mora_Parkings.geojson; tile-join '--output-to-directory=/Users/jaimelillo/Downloads/APP/00_APP1/tiles/mora/parkings' --no-tile-compression --force /Users/jaimelillo/Downloads/APP/00_APP1/tiles/mora/parkings.mbtiles",
+"json": "{\"vector_layers\":[{\"id\":\"parkings\",\"description\":\"\",\"minzoom\":10,\"maxzoom\":20,\"fields\":{\"Descripcion\":\"String\",\"Nombre\":\"String\",\"fid\":\"Number\"}}],\"tilestats\":{\"layerCount\":1,\"layers\":[{\"layer\":\"parkings\",\"count\":11,\"geometry\":\"Point\",\"attributeCount\":3,\"attributes\":[{\"attribute\":\"Descripcion\",\"count\":1,\"type\":\"string\",\"values\":[\"Parking de tierro, acceso por camino de tierra\"]},{\"attribute\":\"Nombre\",\"count\":1,\"type\":\"string\",\"values\":[\"Parking Principal\"]},{\"attribute\":\"fid\",\"count\":1,\"type\":\"number\",\"values\":[1],\"min\":1,\"max\":1}]}]}}"
+}

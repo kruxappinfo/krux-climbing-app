@@ -1,0 +1,11 @@
+{
+"type": "FeatureCollection",
+"name": "Toledo_Parkings",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "fid": 1, "id": 1, "Descripcion": null }, "geometry": { "type": "MultiPoint", "coordinates": [ [ -4.031712025343779, 39.853583426427356 ] ] } },
+{ "type": "Feature", "properties": { "fid": 2, "id": null, "Descripcion": null }, "geometry": { "type": "MultiPoint", "coordinates": [ [ -4.033257973796145, 39.852991229355951 ] ] } },
+{ "type": "Feature", "properties": { "fid": 3, "id": null, "Descripcion": null }, "geometry": { "type": "MultiPoint", "coordinates": [ [ -4.016761383852583, 39.853326183159957 ] ] } },
+{ "type": "Feature", "properties": { "fid": 4, "id": null, "Descripcion": null }, "geometry": { "type": "MultiPoint", "coordinates": [ [ -4.016767107401513, 39.850933739706619 ] ] } }
+]
+}
