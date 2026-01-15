@@ -403,6 +403,84 @@ let is3DMode = false;
 const MIN_ZOOM_FOR_3D = 14;
 const MAX_PITCH_3D = 80; // Inclinación máxima en modo 3D (85%)
 
+// Zoom mínimo para cargar geometrías automáticamente
+const MIN_ZOOM_FOR_AUTO_LOAD = 12;
+
+/**
+ * Obtiene el ID de la escuela más cercana al centro del mapa
+ * @returns {string|null} ID de la escuela o null si no hay ninguna cerca
+ */
+function getSchoolAtCurrentPosition() {
+  if (!mlMap) return null;
+
+  const center = mlMap.getCenter();
+  const zoom = mlMap.getZoom();
+
+  // Si zoom es menor al mínimo, no detectar escuelas
+  if (zoom < MIN_ZOOM_FOR_AUTO_LOAD) return null;
+
+  let closestSchool = null;
+  let closestDistance = Infinity;
+
+  // Verificar proximidad a cada escuela configurada
+  for (const schoolId in MAPLIBRE_SCHOOLS) {
+    const school = MAPLIBRE_SCHOOLS[schoolId];
+    const schoolCenter = school.center; // [lng, lat]
+
+    // Calcular distancia aproximada en grados
+    const dLng = Math.abs(center.lng - schoolCenter[0]);
+    const dLat = Math.abs(center.lat - schoolCenter[1]);
+    const distance = Math.sqrt(dLng * dLng + dLat * dLat);
+
+    // Umbral de proximidad (~2km aprox dependiendo de latitud)
+    const threshold = 0.02;
+
+    if (dLng < threshold && dLat < threshold && distance < closestDistance) {
+      closestSchool = schoolId;
+      closestDistance = distance;
+    }
+  }
+
+  return closestSchool;
+}
+
+/**
+ * Carga automáticamente las geometrías de una escuela cuando el usuario
+ * hace zoom manual hacia ella
+ */
+function checkAndLoadSchoolOnZoom() {
+  const nearbySchoolId = getSchoolAtCurrentPosition();
+
+  // Si no hay escuela cerca, limpiar si había una cargada
+  if (!nearbySchoolId) {
+    // Solo limpiar si el zoom es bajo (el usuario se alejó)
+    if (mlCurrentSchool && mlMap.getZoom() < MIN_ZOOM_FOR_AUTO_LOAD) {
+      console.log('[AutoLoad] Usuario alejado de escuela, limpiando capas');
+      mlClearSchoolLayers();
+      mlCurrentSchool = null;
+    }
+    return;
+  }
+
+  // Si ya está cargada esta escuela, no hacer nada
+  if (mlCurrentSchool === nearbySchoolId) {
+    return;
+  }
+
+  // Cargar la nueva escuela (skipFlyTo = true para no mover el mapa)
+  console.log(`[AutoLoad] Detectada escuela cercana: ${nearbySchoolId}, cargando geometrías...`);
+  mlLoadSchool(nearbySchoolId, true);
+
+  // Actualizar variables globales
+  if (typeof window.currentSchoolId !== 'undefined') {
+    window.currentSchoolId = nearbySchoolId;
+  }
+  const school = MAPLIBRE_SCHOOLS[nearbySchoolId];
+  if (school && typeof window.currentSchoolName !== 'undefined') {
+    window.currentSchoolName = school.name;
+  }
+}
+
 /**
  * Verifica si el centro del mapa está cerca de alguna escuela
  * @returns {boolean} true si está cerca de una escuela
@@ -489,6 +567,10 @@ function add3DToggleButton() {
   mlMap.on('zoomend', update3DButtonVisibility);
   mlMap.on('moveend', update3DButtonVisibility);
   update3DButtonVisibility();
+
+  // Auto-cargar geometrías de escuela al hacer zoom manual
+  mlMap.on('moveend', checkAndLoadSchoolOnZoom);
+  mlMap.on('zoomend', checkAndLoadSchoolOnZoom);
 
   console.log('[3D] Botón 3D añadido' + (isNative ? ' (móvil nativo)' : ' (web)'));
 }
@@ -2354,6 +2436,7 @@ function loadSchoolMarkers() {
         'icon-image': ['case',
           ['==', ['get', 'nombre'], 'Hoz del Río Gritos'], 'school-icon-green',
           ['==', ['get', 'nombre'], 'Mora'], 'school-icon-green',
+          ['==', ['get', 'nombre'], 'Toledo'], 'school-icon-green',
           'school-icon-orange'
         ],
         // Tamaño que escala con el zoom

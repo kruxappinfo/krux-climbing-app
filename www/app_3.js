@@ -1159,7 +1159,7 @@ function initGlobalSearch() {
               <img src="${avatarUrl}" class="search-result-avatar" alt="${user.displayName}" referrerPolicy="no-referrer" onerror="this.src='https://ui-avatars.com/api/?name=U&background=e5e7eb&color=6b7280'; this.onerror=null;">
               <div class="search-result-info">
                 <div class="search-result-name">${user.displayName || 'Usuario'}</div>
-                <div class="search-result-meta">${user.bio || 'Escalador'}</div>
+                <div class="search-result-meta">${user.bio || (user.id === 'akqgKt9WmQRNrpPub9xVKiPKmcn2' ? 'Administrador' : 'Escalador')}</div>
               </div>
               <button class="${btnClass}" onclick="event.stopPropagation(); toggleFollow('${user.id}', this)">${btnText}</button>
             </div>
@@ -1418,7 +1418,9 @@ window.openPublicProfile = async function (userId) {
     document.getElementById('profile-name').textContent = displayName;
     document.getElementById('profile-location').textContent = userData.location || 'España';
     document.getElementById('profile-bio').textContent = userData.bio || 'Sin biografí­a';
-    document.getElementById('profile-category').textContent = '🧗 Escalador';
+    // Mostrar "Administrador" para la cuenta de Krux, "Escalador" para el resto
+    const isAdmin = userId === 'akqgKt9WmQRNrpPub9xVKiPKmcn2';
+    document.getElementById('profile-category').textContent = isAdmin ? 'Administrador' : '🧗 Escalador';
 
     // FIX #3: Load stats, follow status, posts, and likes in parallel with Promise.all
     const stats = userData.stats || {};
@@ -2086,7 +2088,7 @@ async function openSocialListForUser(userId, type) {
                style="cursor: pointer;">
           <div class="social-list-info" onclick="document.getElementById('social-list-modal').classList.add('hidden'); openPublicProfile('${user.id}')" style="cursor: pointer;">
             <div class="social-list-name">${user.displayName || 'Usuario'}</div>
-            <div class="social-list-bio">${user.bio || 'Escalador'}</div>
+            <div class="social-list-bio">${user.bio || (user.id === 'akqgKt9WmQRNrpPub9xVKiPKmcn2' ? 'Administrador' : 'Escalador')}</div>
           </div>
           ${!isMe && authUser ? `
             <button class="${btnClass}"
@@ -3957,7 +3959,7 @@ function initProfileStatClicks() {
                  onclick="openPublicProfile('${user.id}')">
             <div class="social-list-info" onclick="openPublicProfile('${user.id}')">
               <div class="social-list-name">${user.displayName || 'Usuario'}</div>
-              <div class="social-list-bio">${user.bio || 'Escalador'}</div>
+              <div class="social-list-bio">${user.bio || (user.id === 'akqgKt9WmQRNrpPub9xVKiPKmcn2' ? 'Administrador' : 'Escalador')}</div>
             </div>
             ${!isMe ? `
               <button class="${btnClass}" 
