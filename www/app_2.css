@@ -14917,3 +14917,565 @@ body.pwa-standalone .feed-header {
     margin-bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
   }
 }
+
+/* ========================================
+   SECTOR GALLERY CAROUSEL
+   ======================================== */
+
+/* Título con contador */
+.sector-viewer-title-container {
+  flex: 1;
+  text-align: center;
+  padding: 0 16px;
+}
+
+.sector-gallery-counter {
+  display: block;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+/* Carrusel principal */
+.sector-gallery-carousel {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+.gallery-carousel-track {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.gallery-slide {
+  min-width: 100%;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.gallery-slide .sector-viewer-image-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* Botones de navegación del carrusel */
+.gallery-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 20;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  padding: 0;
+  min-height: 48px;
+}
+
+.gallery-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-50%) scale(1.05);
+}
+
+.gallery-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.gallery-nav-prev {
+  left: 16px;
+}
+
+.gallery-nav-next {
+  right: 16px;
+}
+
+/* Indicadores de página (dots) */
+.gallery-indicators {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 20;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 20px;
+}
+
+.gallery-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s ease;
+  min-height: auto;
+  box-shadow: none;
+}
+
+.gallery-dot:hover {
+  background: rgba(255, 255, 255, 0.6);
+  transform: scale(1.1);
+}
+
+.gallery-dot.active {
+  background: white;
+  width: 24px;
+  border-radius: 4px;
+}
+
+/* Botón de gestión de galería */
+.sector-viewer-manage {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: rgba(99, 102, 241, 0.9);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  box-shadow: none;
+}
+
+.sector-viewer-manage:hover {
+  background: rgba(99, 102, 241, 1);
+  transform: scale(1.05);
+}
+
+/* Botón de dibujar vías */
+.sector-viewer-draw {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: rgba(245, 158, 11, 0.9);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  box-shadow: none;
+}
+
+.sector-viewer-draw:hover {
+  background: rgba(245, 158, 11, 1);
+  transform: scale(1.05);
+}
+
+/* Acciones del visor */
+.sector-viewer-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ========================================
+   GALLERY MANAGE MODAL
+   ======================================== */
+
+.gallery-manage-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 17000;
+  padding: 20px;
+  transition: background 0.2s ease;
+}
+
+.gallery-manage-modal-overlay.gallery-manage-modal-visible {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.gallery-manage-modal {
+  background: white;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4);
+  transform: scale(0.95) translateY(20px);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+.gallery-manage-modal-visible .gallery-manage-modal {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+}
+
+.gallery-manage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #eee;
+}
+
+.gallery-manage-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.gallery-manage-close {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: none;
+  background: #f5f5f5;
+  border-radius: 50%;
+  font-size: 24px;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  box-shadow: none;
+  line-height: 1;
+}
+
+.gallery-manage-close:hover {
+  background: #e8e8e8;
+  transform: none;
+}
+
+.gallery-manage-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.gallery-manage-info {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.gallery-manage-hint {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+/* Grid de imágenes */
+.gallery-manage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 12px;
+}
+
+.gallery-manage-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: grab;
+  transition: all 0.2s ease;
+  background: #f0f0f0;
+}
+
+.gallery-manage-item:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.gallery-manage-item.dragging {
+  opacity: 0.5;
+  transform: scale(0.95);
+  cursor: grabbing;
+}
+
+.gallery-manage-item.drag-over {
+  outline: 2px dashed #6366f1;
+  outline-offset: 2px;
+}
+
+.gallery-manage-thumb {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.gallery-manage-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gallery-manage-order {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gallery-manage-cover {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  right: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.gallery-manage-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+}
+
+.gallery-delete-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.gallery-delete-btn:hover {
+  background: #ef4444;
+  transform: scale(1.1);
+}
+
+.gallery-manage-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 1px solid #eee;
+  background: #fafafa;
+}
+
+.gallery-manage-count {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.gallery-btn-done {
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  min-height: auto;
+}
+
+/* Mobile adjustments para galería */
+@media (max-width: 768px) {
+  .gallery-nav-btn {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+  }
+
+  .gallery-nav-prev {
+    left: 8px;
+  }
+
+  .gallery-nav-next {
+    right: 8px;
+  }
+
+  .gallery-indicators {
+    bottom: 100px;
+    gap: 6px;
+    padding: 6px 12px;
+  }
+
+  .gallery-dot {
+    width: 6px;
+    height: 6px;
+  }
+
+  .gallery-dot.active {
+    width: 20px;
+  }
+
+  .gallery-manage-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .gallery-manage-modal {
+    max-height: 85vh;
+    margin: 0 10px;
+    max-width: calc(100% - 20px);
+  }
+}
+
+/* Pequeñas pantallas */
+@media (max-width: 380px) {
+  .sector-viewer-actions {
+    gap: 6px;
+  }
+
+  .sector-viewer-draw,
+  .sector-viewer-upload,
+  .sector-viewer-manage {
+    width: 36px;
+    height: 36px;
+  }
+
+  .sector-viewer-draw svg,
+  .sector-viewer-upload svg,
+  .sector-viewer-manage svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* ========================================
+   GALLERY ADD FAB (Floating Action Button)
+   ======================================== */
+
+.gallery-add-fab {
+  position: absolute;
+  bottom: 140px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  border-radius: 50px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 25;
+  min-height: auto;
+}
+
+.gallery-add-fab:hover {
+  transform: scale(1.05) translateY(-2px);
+  box-shadow: 0 6px 28px rgba(16, 185, 129, 0.5);
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.gallery-add-fab:active {
+  transform: scale(0.98);
+}
+
+.gallery-add-fab svg {
+  flex-shrink: 0;
+}
+
+.gallery-add-fab-label {
+  white-space: nowrap;
+}
+
+/* En móviles, mostrar solo el icono */
+@media (max-width: 480px) {
+  .gallery-add-fab {
+    bottom: 160px;
+    right: 16px;
+    padding: 16px;
+    border-radius: 50%;
+    width: 56px;
+    height: 56px;
+    justify-content: center;
+  }
+
+  .gallery-add-fab-label {
+    display: none;
+  }
+
+  .gallery-add-fab svg {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+/* En pantallas muy pequeñas */
+@media (max-width: 380px) {
+  .gallery-add-fab {
+    bottom: 150px;
+    right: 12px;
+    width: 50px;
+    height: 50px;
+    padding: 14px;
+  }
+
+  .gallery-add-fab svg {
+    width: 22px;
+    height: 22px;
+  }
+}

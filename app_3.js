@@ -1609,8 +1609,7 @@ async function loadProfilePostsForUser(userId, loadId = null) {
     if (posts.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
-          <div class="empty-state-icon">📍·</div>
-          <div class="empty-state-text">No hay publicaciones aún</div>
+          <div class="empty-message" style="text-align: center; padding: 40px 20px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin: 0 auto 16px; opacity: 0.5;"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg><p style="margin: 0; color: #6b7280;">No hay publicaciones aún</p></div>
         </div>
       `;
       profileLoadingState.postsLoaded = true;
@@ -1725,8 +1724,7 @@ async function loadProfileLikedPostsForUser(userId, loadId = null) {
     if (likedPosts.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
-          <div class="empty-state-icon">x</div>
-          <div class="empty-state-text">No hay me gusta aún</div>
+          <div class="empty-message" style="text-align: center; padding: 40px 20px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin: 0 auto 16px; opacity: 0.5;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg><p style="margin: 0; color: #6b7280;">No hay me gusta aún</p></div>
         </div>
       `;
       profileLoadingState.likesLoaded = true;
@@ -2132,8 +2130,7 @@ async function loadPublicProfilePosts(userId) {
     if (posts.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
-          <div class="empty-state-icon">📍·</div>
-          <div class="empty-state-text">No hay publicaciones aún</div>
+          <div class="empty-message" style="text-align: center; padding: 40px 20px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin: 0 auto 16px; opacity: 0.5;"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg><p style="margin: 0; color: #6b7280;">No hay publicaciones aún</p></div>
         </div>
       `;
       return;
@@ -3655,7 +3652,7 @@ async function renderLikedPosts() {
     });
 
     if (likedPosts.length === 0) {
-      grid.innerHTML = '<div class="empty-message" style="text-align: center; padding: 40px 20px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin: 0 auto 16px; opacity: 0.5;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg><p style="margin: 0; color: #6b7280;">No has dado like a ninguna publicación</p><p style="margin: 8px 0 0; color: #9ca3af; font-size: 14px;">Explora el feed para descubrir contenido</p></div>';
+      grid.innerHTML = '<div class="empty-message" style="text-align: center; padding: 40px 20px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin: 0 auto 16px; opacity: 0.5;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg><p style="margin: 0; color: #6b7280;">No has dado me gusta a ninguna publicación</p><p style="margin: 8px 0 0; color: #9ca3af; font-size: 14px;">Explora el feed para descubrir contenido</p></div>';
       return;
     }
 
@@ -9214,7 +9211,7 @@ function filterAscentsForPeriod(ascents, period) {
     } else if (period === 'month') {
       // Current month
       return ascentDate.getFullYear() === now.getFullYear() &&
-             ascentDate.getMonth() === now.getMonth();
+        ascentDate.getMonth() === now.getMonth();
     } else {
       // Current year
       return ascentDate.getFullYear() === now.getFullYear();

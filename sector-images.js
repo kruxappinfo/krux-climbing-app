@@ -2,16 +2,33 @@
  * Sector Images Module
  *
  * Funcionalidades:
- * - Visualizar imágenes de sectores con vías dibujadas
- * - Subir imágenes de sectores (solo admins)
+ * - Visualizar GALERÍA de imágenes de sectores con vías dibujadas
+ * - Subir múltiples imágenes de sectores (solo admins)
+ * - Carrusel horizontal con navegación
+ * - Reordenar imágenes (drag & drop)
+ * - Dibujar vías en todas las imágenes
  * - Integración con Firebase Storage
  */
+
+// ============================================
+// CONFIGURACIÓN
+// ============================================
+const SECTOR_GALLERY_CONFIG = {
+  maxImages: 8,              // Máximo de fotos por sector
+  maxFileSize: 10 * 1024 * 1024, // 10MB
+  allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
+  compressThreshold: 2 * 1024 * 1024, // Comprimir si > 2MB
+  maxDimension: 2000         // Máx dimensión en px
+};
 
 // ============================================
 // VARIABLES GLOBALES
 // ============================================
 let sectorImageViewerOpen = false;
 let currentSectorForImage = null;
+let sectorGalleryImages = [];     // Array de imágenes del sector actual
+let currentGalleryIndex = 0;      // Índice de la imagen actual en el carrusel
+let galleryDragState = null;      // Estado del drag & drop para reordenar
 
 // ============================================
 // VERIFICACIÓN DE ADMIN
@@ -34,41 +51,101 @@ async function isSectorImageAdmin() {
 }
 
 // ============================================
-// OBTENER URL DE IMAGEN DEL SECTOR
+// OBTENER IMÁGENES DEL SECTOR (GALERÍA)
 // ============================================
 
 /**
- * Obtiene la URL de la imagen de un sector desde Firebase Storage
- * @param {string} schoolId - ID de la escuela (valeria, sanmartin, mora)
+ * Obtiene todas las imágenes de un sector desde Firestore
+ * @param {string} schoolId - ID de la escuela
  * @param {string} sectorName - Nombre del sector
- * @returns {Promise<string|null>} URL de la imagen o null
+ * @returns {Promise<Array>} Array de objetos con info de imágenes
  */
-async function getSectorImageUrl(schoolId, sectorName) {
+async function getSectorGalleryImages(schoolId, sectorName) {
   try {
-    // Normalizar nombre del sector para usar como nombre de archivo
+    const normalizedName = normalizeSectorName(sectorName);
+    const docId = `${schoolId}_${normalizedName}`;
+
+    const doc = await db.collection('sector_images').doc(docId).get();
+
+    if (doc.exists) {
+      const data = doc.data();
+      // Nuevo formato: array de imágenes
+      if (data.images && Array.isArray(data.images)) {
+        return data.images;
+      }
+      // Compatibilidad con formato antiguo (una sola imagen)
+      if (data.imageUrl) {
+        return [{
+          id: 'legacy_0',
+          url: data.imageUrl,
+          storagePath: data.storagePath || `sector-images/${schoolId}/${normalizedName}.jpg`,
+          order: 0,
+          uploadedAt: data.uploadedAt,
+          uploadedBy: data.uploadedBy
+        }];
+      }
+    }
+
+    // Intentar cargar imagen legacy desde Storage directamente
+    const legacyUrl = await getLegacySectorImageUrl(schoolId, sectorName);
+    if (legacyUrl) {
+      return [{
+        id: 'legacy_0',
+        url: legacyUrl,
+        storagePath: `sector-images/${schoolId}/${normalizedName}.jpg`,
+        order: 0
+      }];
+    }
+
+    return [];
+  } catch (error) {
+    console.error('[SectorImages] Error obteniendo galería:', error);
+    return [];
+  }
+}
+
+/**
+ * Obtiene URL de imagen legacy (formato antiguo)
+ */
+async function getLegacySectorImageUrl(schoolId, sectorName) {
+  try {
     const normalizedName = normalizeSectorName(sectorName);
     const imagePath = `sector-images/${schoolId}/${normalizedName}.jpg`;
-
     const storageRef = firebase.storage().ref(imagePath);
-    const url = await storageRef.getDownloadURL();
-    return url;
+    return await storageRef.getDownloadURL();
   } catch (error) {
-    // Si no existe la imagen, no es un error crítico
-    if (error.code === 'storage/object-not-found') {
-      console.log(`[SectorImages] No hay imagen para: ${schoolId}/${sectorName}`);
-      return null;
+    if (error.code !== 'storage/object-not-found') {
+      console.error('[SectorImages] Error obteniendo imagen legacy:', error);
     }
-    console.error('[SectorImages] Error obteniendo imagen:', error);
     return null;
   }
 }
 
 /**
- * Verifica si existe una imagen para el sector
+ * Obtiene la URL de la primera imagen de un sector (compatibilidad)
+ * @param {string} schoolId - ID de la escuela
+ * @param {string} sectorName - Nombre del sector
+ * @returns {Promise<string|null>} URL de la imagen o null
+ */
+async function getSectorImageUrl(schoolId, sectorName) {
+  const images = await getSectorGalleryImages(schoolId, sectorName);
+  return images.length > 0 ? images[0].url : null;
+}
+
+/**
+ * Verifica si existe al menos una imagen para el sector
  */
 async function hasSectorImage(schoolId, sectorName) {
-  const url = await getSectorImageUrl(schoolId, sectorName);
-  return url !== null;
+  const images = await getSectorGalleryImages(schoolId, sectorName);
+  return images.length > 0;
+}
+
+/**
+ * Obtiene el número de imágenes de un sector
+ */
+async function getSectorImageCount(schoolId, sectorName) {
+  const images = await getSectorGalleryImages(schoolId, sectorName);
+  return images.length;
 }
 
 /**
@@ -85,28 +162,33 @@ function normalizeSectorName(name) {
 }
 
 // ============================================
-// VISOR DE IMAGEN DEL SECTOR
+// VISOR DE GALERÍA DEL SECTOR (CARRUSEL)
 // ============================================
 
 /**
- * Abre el visor de imagen del sector
+ * Abre el visor de galería del sector con carrusel horizontal
  * @param {string} schoolId - ID de la escuela
  * @param {string} sectorName - Nombre del sector
+ * @param {number} startIndex - Índice inicial (opcional)
  */
-async function openSectorImageViewer(schoolId, sectorName) {
+async function openSectorImageViewer(schoolId, sectorName, startIndex = 0) {
   currentSectorForImage = { schoolId, sectorName };
 
-  // Verificar si hay imagen
-  const imageUrl = await getSectorImageUrl(schoolId, sectorName);
+  // Obtener todas las imágenes del sector
+  sectorGalleryImages = await getSectorGalleryImages(schoolId, sectorName);
+  currentGalleryIndex = Math.min(startIndex, Math.max(0, sectorGalleryImages.length - 1));
+
   const isAdmin = await isSectorImageAdmin();
+  const hasImages = sectorGalleryImages.length > 0;
+  const canAddMore = sectorGalleryImages.length < SECTOR_GALLERY_CONFIG.maxImages;
 
   // Crear el visor
   const viewer = document.createElement('div');
   viewer.id = 'sector-image-viewer';
   viewer.className = 'sector-image-viewer';
 
-  if (imageUrl) {
-    // Mostrar imagen existente
+  if (hasImages) {
+    // Mostrar galería con carrusel
     viewer.innerHTML = `
       <div class="sector-viewer-header">
         <button class="sector-viewer-close" onclick="closeSectorImageViewer()">
@@ -115,43 +197,99 @@ async function openSectorImageViewer(schoolId, sectorName) {
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
         </button>
-        <h2 class="sector-viewer-title">${sectorName}</h2>
+        <div class="sector-viewer-title-container">
+          <h2 class="sector-viewer-title">${sectorName}</h2>
+          <span class="sector-gallery-counter" id="gallery-counter">${currentGalleryIndex + 1} / ${sectorGalleryImages.length}</span>
+        </div>
         <div class="sector-viewer-actions">
           ${isAdmin ? `
-            <button class="sector-viewer-draw" onclick="openRouteDrawingEditor('${schoolId}', '${encodeURIComponent(sectorName)}')">
+            <button class="sector-viewer-draw" onclick="openRouteDrawingEditorForCurrentImage()" title="Dibujar vías">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 20h9"/>
                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
               </svg>
             </button>
-            <button class="sector-viewer-upload" onclick="showSectorUploadModal('${schoolId}', '${encodeURIComponent(sectorName)}')">
+            ${canAddMore ? `
+              <button class="sector-viewer-upload" onclick="showSectorUploadModal('${schoolId}', '${encodeURIComponent(sectorName)}')" title="Añadir foto">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+              </button>
+            ` : ''}
+            <button class="sector-viewer-manage" onclick="openGalleryManageModal('${schoolId}', '${encodeURIComponent(sectorName)}')" title="Gestionar galería">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-            </button>
-            <button class="sector-viewer-delete" onclick="showDeleteSectorImageModal('${schoolId}', '${encodeURIComponent(sectorName)}')">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                <line x1="10" y1="11" x2="10" y2="17"/>
-                <line x1="14" y1="11" x2="14" y2="17"/>
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
               </svg>
             </button>
           ` : ''}
         </div>
       </div>
-      <div class="sector-viewer-image-container" id="sector-viewer-container">
-        <img src="${imageUrl}" alt="${sectorName}" class="sector-viewer-image" id="sector-full-image">
-        <canvas id="sector-viewer-canvas" class="sector-viewer-canvas" style="display: none;"></canvas>
+
+      <!-- Carrusel de imágenes -->
+      <div class="sector-gallery-carousel" id="sector-gallery-carousel">
+        <div class="gallery-carousel-track" id="gallery-carousel-track">
+          ${sectorGalleryImages.map((img, idx) => `
+            <div class="gallery-slide ${idx === currentGalleryIndex ? 'active' : ''}" data-index="${idx}">
+              <div class="sector-viewer-image-container" id="sector-viewer-container-${idx}">
+                <img src="${img.url}" alt="${sectorName} - Foto ${idx + 1}" class="sector-viewer-image" id="sector-full-image-${idx}" data-image-id="${img.id}">
+                <canvas id="sector-viewer-canvas-${idx}" class="sector-viewer-canvas" style="display: none;"></canvas>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <!-- Navegación del carrusel -->
+        ${sectorGalleryImages.length > 1 ? `
+          <button class="gallery-nav-btn gallery-nav-prev" onclick="galleryNavigate(-1)" id="gallery-prev-btn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          <button class="gallery-nav-btn gallery-nav-next" onclick="galleryNavigate(1)" id="gallery-next-btn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+        ` : ''}
       </div>
+
+      <!-- Indicadores de página (dots) -->
+      ${sectorGalleryImages.length > 1 ? `
+        <div class="gallery-indicators" id="gallery-indicators">
+          ${sectorGalleryImages.map((_, idx) => `
+            <button class="gallery-dot ${idx === currentGalleryIndex ? 'active' : ''}"
+                    data-index="${idx}"
+                    onclick="galleryGoTo(${idx})"></button>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      <!-- Botón flotante para añadir más fotos (solo admins y si no se alcanzó el límite) -->
+      ${isAdmin && canAddMore ? `
+        <button class="gallery-add-fab" onclick="showSectorUploadModal('${schoolId}', '${encodeURIComponent(sectorName)}')" title="Añadir más fotos">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span class="gallery-add-fab-label">Añadir foto</span>
+        </button>
+      ` : ''}
+
       <div class="sector-viewer-footer">
-        <span class="sector-viewer-hint">Pellizca para hacer zoom • Toca las líneas para ver información de las vías</span>
+        <span class="sector-viewer-hint">
+          ${sectorGalleryImages.length > 1 ? 'Desliza para ver más fotos • ' : ''}
+          Pellizca para hacer zoom • Toca las líneas para ver información de las vías
+          ${isAdmin && canAddMore ? ` • ${sectorGalleryImages.length}/${SECTOR_GALLERY_CONFIG.maxImages} fotos` : ''}
+        </span>
       </div>
     `;
   } else {
-    // No hay imagen - mostrar placeholder
+    // No hay imágenes - mostrar placeholder
     viewer.innerHTML = `
       <div class="sector-viewer-header">
         <button class="sector-viewer-close" onclick="closeSectorImageViewer()">
@@ -179,7 +317,7 @@ async function openSectorImageViewer(schoolId, sectorName) {
             <polyline points="21 15 16 10 5 21"/>
           </svg>
         </div>
-        <p class="sector-placeholder-text">No hay imagen disponible para este sector</p>
+        <p class="sector-placeholder-text">No hay imágenes disponibles para este sector</p>
         ${isAdmin ? `
           <button class="sector-upload-btn" onclick="showSectorUploadModal('${schoolId}', '${encodeURIComponent(sectorName)}')">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -197,9 +335,14 @@ async function openSectorImageViewer(schoolId, sectorName) {
   document.body.appendChild(viewer);
   sectorImageViewerOpen = true;
 
-  // Añadir gestos de zoom y dibujo de vías si hay imagen
-  if (imageUrl) {
-    setupSectorViewerCanvas(schoolId, sectorName, imageUrl);
+  // Configurar carrusel y canvas si hay imágenes
+  if (hasImages) {
+    setupGalleryCarousel();
+    // Cargar canvas de la imagen actual
+    const currentImage = sectorGalleryImages[currentGalleryIndex];
+    if (currentImage) {
+      setupSectorViewerCanvasForGallery(schoolId, sectorName, currentGalleryIndex);
+    }
   }
 
   // Cerrar popup del sector
@@ -207,11 +350,164 @@ async function openSectorImageViewer(schoolId, sectorName) {
     mlSectorPopup.remove();
   }
 
-  console.log('[SectorImages] Visor abierto para:', sectorName);
+  console.log('[SectorImages] Visor de galería abierto para:', sectorName, '- Imágenes:', sectorGalleryImages.length);
 }
 
 /**
- * Cierra el visor de imagen
+ * Configura el carrusel de la galería
+ */
+function setupGalleryCarousel() {
+  const carousel = document.getElementById('sector-gallery-carousel');
+  if (!carousel) return;
+
+  let startX = 0;
+  let currentX = 0;
+  let isDragging = false;
+
+  // Touch events para swipe
+  carousel.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      startX = e.touches[0].clientX;
+      isDragging = true;
+    }
+  }, { passive: true });
+
+  carousel.addEventListener('touchmove', (e) => {
+    if (!isDragging) return;
+    currentX = e.touches[0].clientX;
+  }, { passive: true });
+
+  carousel.addEventListener('touchend', () => {
+    if (!isDragging) return;
+    isDragging = false;
+
+    const diff = startX - currentX;
+    const threshold = 50; // Mínimo desplazamiento para cambiar
+
+    if (Math.abs(diff) > threshold) {
+      if (diff > 0) {
+        galleryNavigate(1); // Siguiente
+      } else {
+        galleryNavigate(-1); // Anterior
+      }
+    }
+  }, { passive: true });
+
+  // Keyboard navigation
+  document.addEventListener('keydown', handleGalleryKeyboard);
+
+  updateGalleryNavButtons();
+}
+
+/**
+ * Maneja navegación por teclado en la galería
+ */
+function handleGalleryKeyboard(e) {
+  if (!sectorImageViewerOpen) return;
+
+  if (e.key === 'ArrowLeft') {
+    galleryNavigate(-1);
+  } else if (e.key === 'ArrowRight') {
+    galleryNavigate(1);
+  } else if (e.key === 'Escape') {
+    closeSectorImageViewer();
+  }
+}
+
+/**
+ * Navega en el carrusel
+ */
+function galleryNavigate(direction) {
+  const newIndex = currentGalleryIndex + direction;
+
+  if (newIndex >= 0 && newIndex < sectorGalleryImages.length) {
+    galleryGoTo(newIndex);
+  }
+}
+
+/**
+ * Ir a una imagen específica del carrusel
+ */
+function galleryGoTo(index) {
+  if (index < 0 || index >= sectorGalleryImages.length) return;
+
+  // Actualizar índice
+  currentGalleryIndex = index;
+
+  // Actualizar clases de slides
+  const slides = document.querySelectorAll('.gallery-slide');
+  slides.forEach((slide, idx) => {
+    slide.classList.toggle('active', idx === index);
+  });
+
+  // Actualizar dots
+  const dots = document.querySelectorAll('.gallery-dot');
+  dots.forEach((dot, idx) => {
+    dot.classList.toggle('active', idx === index);
+  });
+
+  // Actualizar contador
+  const counter = document.getElementById('gallery-counter');
+  if (counter) {
+    counter.textContent = `${index + 1} / ${sectorGalleryImages.length}`;
+  }
+
+  // Mover el track del carrusel
+  const track = document.getElementById('gallery-carousel-track');
+  if (track) {
+    track.style.transform = `translateX(-${index * 100}%)`;
+  }
+
+  // Actualizar botones de navegación
+  updateGalleryNavButtons();
+
+  // Configurar canvas para la nueva imagen
+  if (currentSectorForImage) {
+    setupSectorViewerCanvasForGallery(
+      currentSectorForImage.schoolId,
+      currentSectorForImage.sectorName,
+      index
+    );
+  }
+}
+
+/**
+ * Actualiza estado de botones de navegación
+ */
+function updateGalleryNavButtons() {
+  const prevBtn = document.getElementById('gallery-prev-btn');
+  const nextBtn = document.getElementById('gallery-next-btn');
+
+  if (prevBtn) {
+    prevBtn.disabled = currentGalleryIndex === 0;
+    prevBtn.style.opacity = currentGalleryIndex === 0 ? '0.3' : '1';
+  }
+
+  if (nextBtn) {
+    nextBtn.disabled = currentGalleryIndex === sectorGalleryImages.length - 1;
+    nextBtn.style.opacity = currentGalleryIndex === sectorGalleryImages.length - 1 ? '0.3' : '1';
+  }
+}
+
+/**
+ * Abre el editor de dibujo para la imagen actual del carrusel
+ */
+function openRouteDrawingEditorForCurrentImage() {
+  if (!currentSectorForImage) return;
+
+  const currentImage = sectorGalleryImages[currentGalleryIndex];
+  if (!currentImage) return;
+
+  // Pasar el ID de la imagen al editor
+  openRouteDrawingEditor(
+    currentSectorForImage.schoolId,
+    currentSectorForImage.sectorName,
+    currentImage.id
+  );
+}
+
+/**
+ * Cierra el visor de imagen/galería
  */
 function closeSectorImageViewer() {
   const viewer = document.getElementById('sector-image-viewer');
@@ -223,6 +519,13 @@ function closeSectorImageViewer() {
   }
   sectorImageViewerOpen = false;
   currentSectorForImage = null;
+
+  // Limpiar galería
+  sectorGalleryImages = [];
+  currentGalleryIndex = 0;
+
+  // Remover event listener de teclado
+  document.removeEventListener('keydown', handleGalleryKeyboard);
 
   // Limpiar popup de hover si existe
   hideHoverPopup();
@@ -452,7 +755,8 @@ function removeSectorPreview() {
 }
 
 /**
- * Sube la imagen a Firebase Storage
+ * Sube una imagen a la galería del sector (Firebase Storage)
+ * Ahora soporta múltiples imágenes por sector
  */
 async function uploadSectorImage(schoolId, encodedSectorName) {
   if (!pendingSectorFile) {
@@ -462,7 +766,18 @@ async function uploadSectorImage(schoolId, encodedSectorName) {
 
   const sectorName = decodeURIComponent(encodedSectorName);
   const normalizedName = normalizeSectorName(sectorName);
-  const imagePath = `sector-images/${schoolId}/${normalizedName}.jpg`;
+  const docId = `${schoolId}_${normalizedName}`;
+
+  // Verificar límite de imágenes
+  const existingImages = await getSectorGalleryImages(schoolId, sectorName);
+  if (existingImages.length >= SECTOR_GALLERY_CONFIG.maxImages) {
+    showSectorToast(`Máximo ${SECTOR_GALLERY_CONFIG.maxImages} imágenes por sector`, 'warning');
+    return;
+  }
+
+  // Generar ID único para la imagen
+  const imageId = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const imagePath = `sector-images/${schoolId}/${normalizedName}/${imageId}.jpg`;
 
   // Mostrar progreso
   document.getElementById('sector-progress').style.display = 'flex';
@@ -473,7 +788,7 @@ async function uploadSectorImage(schoolId, encodedSectorName) {
 
     // Comprimir imagen si es muy grande
     let fileToUpload = pendingSectorFile;
-    if (pendingSectorFile.size > 2 * 1024 * 1024) {
+    if (pendingSectorFile.size > SECTOR_GALLERY_CONFIG.compressThreshold) {
       fileToUpload = await compressSectorImage(pendingSectorFile);
     }
 
@@ -482,6 +797,7 @@ async function uploadSectorImage(schoolId, encodedSectorName) {
       customMetadata: {
         schoolId: schoolId,
         sectorName: sectorName,
+        imageId: imageId,
         uploadedBy: auth.currentUser?.email || 'unknown',
         uploadedAt: new Date().toISOString()
       }
@@ -501,27 +817,69 @@ async function uploadSectorImage(schoolId, encodedSectorName) {
         document.getElementById('sector-upload-btn').disabled = false;
       },
       async () => {
-        // Éxito
+        // Éxito - obtener URL
         const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
 
-        // Guardar referencia en Firestore
-        await db.collection('sector_images').doc(`${schoolId}_${normalizedName}`).set({
-          schoolId: schoolId,
-          sectorName: sectorName,
-          normalizedName: normalizedName,
-          imageUrl: downloadURL,
+        // Crear objeto de la nueva imagen
+        // Nota: No usar serverTimestamp() dentro de arrays - Firestore no lo permite
+        const newImage = {
+          id: imageId,
+          url: downloadURL,
           storagePath: imagePath,
+          order: existingImages.length, // Añadir al final
+          uploadedAt: new Date().toISOString(),
           uploadedBy: auth.currentUser?.uid,
-          uploadedByEmail: auth.currentUser?.email,
-          uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+          uploadedByEmail: auth.currentUser?.email
+        };
 
-        showSectorToast('Imagen subida correctamente', 'success');
+        // Obtener documento existente o crear nuevo
+        const docRef = db.collection('sector_images').doc(docId);
+        const doc = await docRef.get();
+
+        if (doc.exists) {
+          // Añadir a galería existente
+          const data = doc.data();
+          let images = [];
+
+          // Migrar formato antiguo si es necesario
+          if (data.imageUrl && !data.images) {
+            // Convertir imagen única a array
+            images = [{
+              id: 'legacy_0',
+              url: data.imageUrl,
+              storagePath: data.storagePath || `sector-images/${schoolId}/${normalizedName}.jpg`,
+              order: 0,
+              uploadedAt: data.uploadedAt,
+              uploadedBy: data.uploadedBy
+            }];
+          } else if (data.images) {
+            images = data.images;
+          }
+
+          images.push(newImage);
+
+          await docRef.update({
+            images: images,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        } else {
+          // Crear nuevo documento con galería
+          await docRef.set({
+            schoolId: schoolId,
+            sectorName: sectorName,
+            normalizedName: normalizedName,
+            images: [newImage],
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        }
+
+        showSectorToast('Imagen añadida a la galería', 'success');
         closeSectorUploadModal();
 
-        // Abrir el visor con la nueva imagen
+        // Abrir el visor mostrando la nueva imagen
         setTimeout(() => {
-          openSectorImageViewer(schoolId, sectorName);
+          openSectorImageViewer(schoolId, sectorName, existingImages.length);
         }, 300);
       }
     );
@@ -786,6 +1144,511 @@ let svCtx = null;
 let svImage = null;
 let svDrawings = [];
 let svRoutesList = [];  // Lista de vías del sector para obtener grados
+let svCurrentImageId = null; // ID de la imagen actual (para galería)
+
+/**
+ * Configura el canvas para una imagen específica de la galería
+ * @param {string} schoolId - ID de la escuela
+ * @param {string} sectorName - Nombre del sector
+ * @param {number} imageIndex - Índice de la imagen en la galería
+ */
+async function setupSectorViewerCanvasForGallery(schoolId, sectorName, imageIndex) {
+  const imageData = sectorGalleryImages[imageIndex];
+  if (!imageData) {
+    console.warn('[SectorViewer] No se encontró imagen en índice:', imageIndex);
+    return;
+  }
+
+  const img = document.getElementById(`sector-full-image-${imageIndex}`);
+  const canvas = document.getElementById(`sector-viewer-canvas-${imageIndex}`);
+  const container = document.getElementById(`sector-viewer-container-${imageIndex}`);
+
+  if (!img || !canvas || !container) {
+    console.error('[SectorViewer] Elementos de galería no encontrados para índice:', imageIndex);
+    return;
+  }
+
+  // Guardar ID de imagen actual
+  svCurrentImageId = imageData.id;
+
+  // Cargar vías del sector (para obtener grados) y dibujos
+  await loadViewerSectorRoutes(schoolId, sectorName);
+  await loadViewerRouteDrawingsForImage(schoolId, sectorName, imageData.id);
+
+  // Si no hay dibujos, solo mostrar la imagen normal con zoom
+  if (svDrawings.length === 0) {
+    console.log('[SectorViewer] No hay vías dibujadas para imagen:', imageData.id);
+    img.style.display = 'block';
+    canvas.style.display = 'none';
+    return;
+  }
+
+  // Hay dibujos - usar canvas overlay
+  console.log('[SectorViewer] Hay', svDrawings.length, 'vías dibujadas para imagen:', imageData.id);
+
+  svCanvas = canvas;
+  svCtx = canvas.getContext('2d');
+
+  // Esperar a que la imagen se cargue para obtener dimensiones
+  if (img.complete && img.naturalWidth > 0) {
+    initCanvasOverlayForGallery(img, container, imageIndex);
+  } else {
+    img.onload = () => initCanvasOverlayForGallery(img, container, imageIndex);
+  }
+}
+
+/**
+ * Inicializa el canvas como overlay sobre la imagen de la galería
+ */
+function initCanvasOverlayForGallery(img, container, imageIndex) {
+  // Obtener dimensiones reales de la imagen renderizada
+  const imgWidth = img.offsetWidth;
+  const imgHeight = img.offsetHeight;
+
+  // Si las dimensiones son 0, la imagen aún no está renderizada - reintentar
+  if (imgWidth === 0 || imgHeight === 0) {
+    console.log('[SectorViewer] Imagen de galería aún no renderizada, reintentando...');
+    setTimeout(() => initCanvasOverlayForGallery(img, container, imageIndex), 100);
+    return;
+  }
+
+  // Obtener la posición exacta de la imagen dentro del contenedor
+  const containerRect = container.getBoundingClientRect();
+  const imgRect = img.getBoundingClientRect();
+
+  // Calcular el offset de la imagen respecto al contenedor
+  const imgOffsetLeft = imgRect.left - containerRect.left;
+  const imgOffsetTop = imgRect.top - containerRect.top;
+
+  // Configurar canvas con las mismas dimensiones que la imagen renderizada
+  svCanvas.width = imgWidth;
+  svCanvas.height = imgHeight;
+
+  // Posicionar canvas EXACTAMENTE sobre la imagen
+  svCanvas.style.display = 'block';
+  svCanvas.style.position = 'absolute';
+  svCanvas.style.top = imgOffsetTop + 'px';
+  svCanvas.style.left = imgOffsetLeft + 'px';
+  svCanvas.style.transform = 'none';
+  svCanvas.style.width = imgWidth + 'px';
+  svCanvas.style.height = imgHeight + 'px';
+  svCanvas.style.pointerEvents = 'auto';
+  svCanvas.style.cursor = 'pointer';
+  svCanvas.style.zIndex = '10';
+
+  // Guardar referencia a la imagen para escalar coordenadas
+  svImage = img;
+
+  console.log('[SectorViewer] Canvas overlay configurado para galería:', imgWidth, 'x', imgHeight);
+
+  // Aplicar highlight pendiente si existe
+  if (svPendingHighlightRoute) {
+    svHighlightedRoute = svPendingHighlightRoute;
+    svLockedRoute = svPendingHighlightRoute;
+    console.log('[SectorViewer] Aplicando highlight a:', svHighlightedRoute);
+
+    const drawing = svDrawings.find(d => d.routeName === svPendingHighlightRoute);
+    if (drawing) {
+      const index = svDrawings.indexOf(drawing);
+      setTimeout(() => {
+        showLockedRoutePopup(drawing, index + 1);
+      }, 100);
+    }
+
+    svPendingHighlightRoute = null;
+  }
+
+  // Dibujar vías
+  redrawCanvasOverlay();
+  setupCanvasInteraction();
+}
+
+/**
+ * Carga los dibujos de vías para una imagen específica
+ */
+async function loadViewerRouteDrawingsForImage(schoolId, sectorName, imageId) {
+  svDrawings = [];
+
+  try {
+    if (typeof db === 'undefined' || !db) {
+      console.warn('[SectorViewer] Firestore no está disponible aún');
+      return;
+    }
+
+    const docId = `${schoolId}_${normalizeSectorName(sectorName)}`;
+    const doc = await db.collection('sector_route_drawings').doc(docId).get();
+
+    if (doc.exists) {
+      const data = doc.data();
+      const allDrawings = data.drawings || [];
+
+      // Filtrar dibujos por imagen
+      // Si el dibujo no tiene imageId, pertenece a la imagen legacy (primera imagen)
+      svDrawings = allDrawings.filter(d => {
+        if (d.imageId) {
+          return d.imageId === imageId;
+        }
+        // Dibujos sin imageId pertenecen a 'legacy_0' (primera imagen)
+        return imageId === 'legacy_0' || (!imageId && allDrawings.indexOf(d) >= 0);
+      });
+
+      console.log('[SectorViewer] Dibujos cargados para imagen', imageId, ':', svDrawings.length);
+    } else {
+      console.log('[SectorViewer] No hay dibujos guardados para este sector');
+    }
+  } catch (error) {
+    console.error('[SectorViewer] Error cargando dibujos:', error);
+  }
+}
+
+// ============================================
+// GESTIÓN DE GALERÍA (MODAL ADMIN)
+// ============================================
+
+/**
+ * Abre el modal de gestión de galería para reordenar y eliminar imágenes
+ */
+async function openGalleryManageModal(schoolId, encodedSectorName) {
+  const sectorName = decodeURIComponent(encodedSectorName);
+
+  // Obtener imágenes actuales
+  const images = await getSectorGalleryImages(schoolId, sectorName);
+
+  if (images.length === 0) {
+    showSectorToast('No hay imágenes para gestionar', 'info');
+    return;
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'gallery-manage-modal';
+  modal.className = 'gallery-manage-modal-overlay';
+  modal.innerHTML = `
+    <div class="gallery-manage-modal">
+      <div class="gallery-manage-header">
+        <h3>Gestionar galería</h3>
+        <button class="gallery-manage-close" onclick="closeGalleryManageModal()">&times;</button>
+      </div>
+
+      <div class="gallery-manage-body">
+        <p class="gallery-manage-info">
+          <strong>Sector:</strong> ${sectorName}<br>
+          <span class="gallery-manage-hint">Arrastra las imágenes para reordenarlas. La primera imagen será la portada.</span>
+        </p>
+
+        <div class="gallery-manage-grid" id="gallery-manage-grid">
+          ${images.map((img, idx) => `
+            <div class="gallery-manage-item" data-id="${img.id}" data-order="${idx}" draggable="true">
+              <div class="gallery-manage-thumb">
+                <img src="${img.url}" alt="Imagen ${idx + 1}">
+                <span class="gallery-manage-order">${idx + 1}</span>
+                ${idx === 0 ? '<span class="gallery-manage-cover">Portada</span>' : ''}
+              </div>
+              <div class="gallery-manage-actions">
+                <button class="gallery-delete-btn" onclick="deleteGalleryImage('${schoolId}', '${encodeURIComponent(sectorName)}', '${img.id}')" title="Eliminar">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="gallery-manage-footer">
+        <span class="gallery-manage-count">${images.length} / ${SECTOR_GALLERY_CONFIG.maxImages} imágenes</span>
+        <button class="sector-btn-upload gallery-btn-done" onclick="closeGalleryManageModal()">Hecho</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Configurar drag & drop
+  setupGalleryDragDrop(schoolId, sectorName);
+
+  // Animación de entrada
+  requestAnimationFrame(() => {
+    modal.classList.add('gallery-manage-modal-visible');
+  });
+}
+
+/**
+ * Cierra el modal de gestión de galería
+ */
+function closeGalleryManageModal() {
+  const modal = document.getElementById('gallery-manage-modal');
+  if (modal) {
+    modal.classList.remove('gallery-manage-modal-visible');
+    setTimeout(() => {
+      modal.remove();
+    }, 200);
+  }
+
+  // Refrescar el visor si está abierto
+  if (sectorImageViewerOpen && currentSectorForImage) {
+    openSectorImageViewer(
+      currentSectorForImage.schoolId,
+      currentSectorForImage.sectorName,
+      currentGalleryIndex
+    );
+  }
+}
+
+/**
+ * Configura drag & drop para reordenar imágenes
+ */
+function setupGalleryDragDrop(schoolId, sectorName) {
+  const grid = document.getElementById('gallery-manage-grid');
+  if (!grid) return;
+
+  let draggedItem = null;
+
+  grid.addEventListener('dragstart', (e) => {
+    draggedItem = e.target.closest('.gallery-manage-item');
+    if (draggedItem) {
+      draggedItem.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    }
+  });
+
+  grid.addEventListener('dragend', (e) => {
+    if (draggedItem) {
+      draggedItem.classList.remove('dragging');
+      draggedItem = null;
+    }
+    document.querySelectorAll('.gallery-manage-item').forEach(item => {
+      item.classList.remove('drag-over');
+    });
+  });
+
+  grid.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    const targetItem = e.target.closest('.gallery-manage-item');
+    if (targetItem && targetItem !== draggedItem) {
+      // Limpiar todos los drag-over
+      document.querySelectorAll('.gallery-manage-item').forEach(item => {
+        item.classList.remove('drag-over');
+      });
+      targetItem.classList.add('drag-over');
+    }
+  });
+
+  grid.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const targetItem = e.target.closest('.gallery-manage-item');
+
+    if (targetItem && draggedItem && targetItem !== draggedItem) {
+      // Obtener posiciones
+      const items = Array.from(grid.querySelectorAll('.gallery-manage-item'));
+      const draggedIndex = items.indexOf(draggedItem);
+      const targetIndex = items.indexOf(targetItem);
+
+      // Reordenar en DOM
+      if (draggedIndex < targetIndex) {
+        grid.insertBefore(draggedItem, targetItem.nextSibling);
+      } else {
+        grid.insertBefore(draggedItem, targetItem);
+      }
+
+      // Actualizar orden visual
+      updateGalleryOrderNumbers();
+
+      // Guardar nuevo orden en Firestore
+      await saveGalleryOrder(schoolId, sectorName);
+    }
+
+    document.querySelectorAll('.gallery-manage-item').forEach(item => {
+      item.classList.remove('drag-over');
+    });
+  });
+}
+
+/**
+ * Actualiza los números de orden en el UI
+ */
+function updateGalleryOrderNumbers() {
+  const items = document.querySelectorAll('.gallery-manage-item');
+  items.forEach((item, idx) => {
+    const orderSpan = item.querySelector('.gallery-manage-order');
+    if (orderSpan) orderSpan.textContent = idx + 1;
+
+    // Actualizar badge de portada
+    const coverSpan = item.querySelector('.gallery-manage-cover');
+    if (idx === 0 && !coverSpan) {
+      const thumb = item.querySelector('.gallery-manage-thumb');
+      const badge = document.createElement('span');
+      badge.className = 'gallery-manage-cover';
+      badge.textContent = 'Portada';
+      thumb.appendChild(badge);
+    } else if (idx !== 0 && coverSpan) {
+      coverSpan.remove();
+    }
+  });
+}
+
+/**
+ * Guarda el nuevo orden de las imágenes en Firestore
+ */
+async function saveGalleryOrder(schoolId, sectorName) {
+  try {
+    const normalizedName = normalizeSectorName(sectorName);
+    const docId = `${schoolId}_${normalizedName}`;
+
+    // Obtener el nuevo orden del DOM
+    const items = document.querySelectorAll('.gallery-manage-item');
+    const newOrder = Array.from(items).map(item => item.dataset.id);
+
+    // Obtener imágenes actuales
+    const docRef = db.collection('sector_images').doc(docId);
+    const doc = await docRef.get();
+
+    if (doc.exists) {
+      const data = doc.data();
+      let images = data.images || [];
+
+      // Reordenar según el nuevo orden
+      images = newOrder.map((id, idx) => {
+        const img = images.find(i => i.id === id);
+        if (img) {
+          return { ...img, order: idx };
+        }
+        return null;
+      }).filter(Boolean);
+
+      await docRef.update({
+        images: images,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      console.log('[SectorImages] Orden de galería actualizado');
+    }
+  } catch (error) {
+    console.error('[SectorImages] Error guardando orden:', error);
+    showSectorToast('Error al guardar el orden', 'error');
+  }
+}
+
+/**
+ * Elimina una imagen específica de la galería
+ */
+async function deleteGalleryImage(schoolId, encodedSectorName, imageId) {
+  const sectorName = decodeURIComponent(encodedSectorName);
+
+  if (!confirm('¿Eliminar esta imagen de la galería?')) return;
+
+  try {
+    const normalizedName = normalizeSectorName(sectorName);
+    const docId = `${schoolId}_${normalizedName}`;
+
+    // Obtener documento
+    const docRef = db.collection('sector_images').doc(docId);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+      showSectorToast('Galería no encontrada', 'error');
+      return;
+    }
+
+    const data = doc.data();
+    let images = data.images || [];
+
+    // Encontrar la imagen a eliminar
+    const imageToDelete = images.find(img => img.id === imageId);
+    if (!imageToDelete) {
+      showSectorToast('Imagen no encontrada', 'error');
+      return;
+    }
+
+    // Eliminar de Storage
+    if (imageToDelete.storagePath) {
+      try {
+        const storageRef = firebase.storage().ref(imageToDelete.storagePath);
+        await storageRef.delete();
+        console.log('[SectorImages] Imagen eliminada de Storage:', imageToDelete.storagePath);
+      } catch (storageError) {
+        if (storageError.code !== 'storage/object-not-found') {
+          console.warn('[SectorImages] Error eliminando de Storage:', storageError);
+        }
+      }
+    }
+
+    // Eliminar del array y reordenar
+    images = images.filter(img => img.id !== imageId);
+    images = images.map((img, idx) => ({ ...img, order: idx }));
+
+    // También eliminar dibujos asociados a esta imagen
+    await deleteRouteDrawingsForImage(schoolId, sectorName, imageId);
+
+    if (images.length > 0) {
+      // Actualizar documento
+      await docRef.update({
+        images: images,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } else {
+      // Si no quedan imágenes, eliminar el documento completo
+      await docRef.delete();
+    }
+
+    showSectorToast('Imagen eliminada', 'success');
+
+    // Actualizar UI del modal
+    const itemToRemove = document.querySelector(`.gallery-manage-item[data-id="${imageId}"]`);
+    if (itemToRemove) {
+      itemToRemove.remove();
+      updateGalleryOrderNumbers();
+
+      // Actualizar contador
+      const countSpan = document.querySelector('.gallery-manage-count');
+      if (countSpan) {
+        countSpan.textContent = `${images.length} / ${SECTOR_GALLERY_CONFIG.maxImages} imágenes`;
+      }
+    }
+
+    // Si no quedan imágenes, cerrar el modal
+    if (images.length === 0) {
+      closeGalleryManageModal();
+      closeSectorImageViewer();
+    }
+
+  } catch (error) {
+    console.error('[SectorImages] Error eliminando imagen:', error);
+    showSectorToast('Error al eliminar: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Elimina los dibujos de vías asociados a una imagen específica
+ */
+async function deleteRouteDrawingsForImage(schoolId, sectorName, imageId) {
+  try {
+    const docId = `${schoolId}_${normalizeSectorName(sectorName)}`;
+    const docRef = db.collection('sector_route_drawings').doc(docId);
+    const doc = await docRef.get();
+
+    if (doc.exists) {
+      const data = doc.data();
+      let drawings = data.drawings || [];
+
+      // Filtrar dibujos que NO pertenezcan a la imagen eliminada
+      const filteredDrawings = drawings.filter(d => d.imageId !== imageId);
+
+      if (filteredDrawings.length !== drawings.length) {
+        await docRef.update({
+          drawings: filteredDrawings,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        console.log('[SectorImages] Dibujos de imagen eliminados:', drawings.length - filteredDrawings.length);
+      }
+    }
+  } catch (error) {
+    console.error('[SectorImages] Error eliminando dibujos de imagen:', error);
+  }
+}
 
 /**
  * Configura el canvas del visor con vías dibujadas
@@ -1619,4 +2482,14 @@ window.showDeleteSectorImageModal = showDeleteSectorImageModal;
 window.closeDeleteSectorImageModal = closeDeleteSectorImageModal;
 window.deleteSectorImage = deleteSectorImage;
 
-console.log('[SectorImages] Módulo cargado');
+// Funciones de galería
+window.galleryNavigate = galleryNavigate;
+window.galleryGoTo = galleryGoTo;
+window.openGalleryManageModal = openGalleryManageModal;
+window.closeGalleryManageModal = closeGalleryManageModal;
+window.deleteGalleryImage = deleteGalleryImage;
+window.openRouteDrawingEditorForCurrentImage = openRouteDrawingEditorForCurrentImage;
+window.getSectorGalleryImages = getSectorGalleryImages;
+window.getSectorImageCount = getSectorImageCount;
+
+console.log('[SectorImages] Módulo de galería cargado');

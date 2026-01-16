@@ -60,8 +60,9 @@ async function isRouteDrawingAdmin() {
  * Abre el editor de dibujo para un sector
  * @param {string} schoolId - ID de la escuela
  * @param {string} sectorName - Nombre del sector
+ * @param {string} imageId - ID de la imagen específica (opcional, para galería)
  */
-async function openRouteDrawingEditor(schoolId, sectorName) {
+async function openRouteDrawingEditor(schoolId, sectorName, imageId = null) {
   // Verificar permisos
   const isAdmin = await isRouteDrawingAdmin();
   if (!isAdmin) {
@@ -69,20 +70,34 @@ async function openRouteDrawingEditor(schoolId, sectorName) {
     return;
   }
 
-  // Verificar que existe imagen del sector
-  const imageUrl = await getSectorImageUrl(schoolId, sectorName);
+  let imageUrl = null;
+
+  // Si hay imageId, obtener la imagen específica de la galería
+  if (imageId && typeof getSectorGalleryImages === 'function') {
+    const images = await getSectorGalleryImages(schoolId, sectorName);
+    const targetImage = images.find(img => img.id === imageId);
+    if (targetImage) {
+      imageUrl = targetImage.url;
+    }
+  }
+
+  // Si no hay imageId o no se encontró, obtener la primera imagen
+  if (!imageUrl) {
+    imageUrl = await getSectorImageUrl(schoolId, sectorName);
+  }
+
   if (!imageUrl) {
     showRDToast('No hay imagen disponible para este sector', 'error');
     return;
   }
 
-  rdCurrentSector = { schoolId, sectorName };
+  rdCurrentSector = { schoolId, sectorName, imageId };
 
   // Cargar vías del sector
   await loadSectorRoutes(schoolId, sectorName);
 
-  // Cargar dibujos existentes
-  await loadRouteDrawings(schoolId, sectorName);
+  // Cargar dibujos existentes (filtrados por imagen si hay imageId)
+  await loadRouteDrawings(schoolId, sectorName, imageId);
 
   // Crear el editor
   createDrawingEditor(imageUrl);
@@ -509,8 +524,9 @@ async function getRouteData(schoolId, routeName) {
 
 /**
  * Carga dibujos existentes de Firestore
+ * @param {string} imageId - ID de imagen específica para filtrar (opcional)
  */
-async function loadRouteDrawings(schoolId, sectorName) {
+async function loadRouteDrawings(schoolId, sectorName, imageId = null) {
   rdRouteDrawings = [];
 
   try {
@@ -519,8 +535,23 @@ async function loadRouteDrawings(schoolId, sectorName) {
 
     if (doc.exists) {
       const data = doc.data();
-      rdRouteDrawings = data.drawings || [];
-      console.log('[RouteDrawing] Dibujos cargados:', rdRouteDrawings.length);
+      let allDrawings = data.drawings || [];
+
+      // Si hay imageId, filtrar solo los dibujos de esa imagen
+      if (imageId) {
+        rdRouteDrawings = allDrawings.filter(d => {
+          // Dibujos con imageId coincidente
+          if (d.imageId) {
+            return d.imageId === imageId;
+          }
+          // Dibujos sin imageId pertenecen a 'legacy_0' (primera imagen)
+          return imageId === 'legacy_0';
+        });
+        console.log('[RouteDrawing] Dibujos filtrados para imagen', imageId, ':', rdRouteDrawings.length);
+      } else {
+        rdRouteDrawings = allDrawings;
+        console.log('[RouteDrawing] Todos los dibujos cargados:', rdRouteDrawings.length);
+      }
     }
   } catch (error) {
     console.error('[RouteDrawing] Error cargando dibujos:', error);
@@ -1093,19 +1124,48 @@ function selectRouteForDrawing(encodedName) {
 
 /**
  * Guarda un dibujo en Firestore
+ * Ahora incluye imageId para soportar múltiples imágenes por sector
  */
 async function saveRouteDrawing(drawing) {
   try {
     const docId = `${rdCurrentSector.schoolId}_${normalizeSectorName(rdCurrentSector.sectorName)}`;
 
+    // Añadir imageId al dibujo si estamos editando una imagen específica
+    if (rdCurrentSector.imageId) {
+      drawing.imageId = rdCurrentSector.imageId;
+    }
+
     // Añadir a array local
     rdRouteDrawings.push(drawing);
 
+    // Obtener TODOS los dibujos existentes (de todas las imágenes)
+    const docRef = db.collection('sector_route_drawings').doc(docId);
+    const doc = await docRef.get();
+
+    let allDrawings = [];
+    if (doc.exists) {
+      const data = doc.data();
+      allDrawings = data.drawings || [];
+
+      // Si hay imageId, reemplazar solo los dibujos de esta imagen
+      if (rdCurrentSector.imageId) {
+        // Mantener dibujos de otras imágenes
+        allDrawings = allDrawings.filter(d => d.imageId !== rdCurrentSector.imageId);
+        // Añadir los dibujos actuales de esta imagen
+        allDrawings = allDrawings.concat(rdRouteDrawings);
+      } else {
+        // Modo legacy: reemplazar todos
+        allDrawings = rdRouteDrawings;
+      }
+    } else {
+      allDrawings = rdRouteDrawings;
+    }
+
     // Guardar en Firestore
-    await db.collection('sector_route_drawings').doc(docId).set({
+    await docRef.set({
       schoolId: rdCurrentSector.schoolId,
       sectorName: rdCurrentSector.sectorName,
-      drawings: rdRouteDrawings,
+      drawings: allDrawings,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedBy: auth.currentUser?.uid
     }, { merge: true });
