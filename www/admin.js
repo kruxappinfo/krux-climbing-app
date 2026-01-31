@@ -133,6 +133,12 @@ function navigateTo(section, updateHash = true) {
         loadRoutes();
     } else if (section === 'users') {
         loadUsers();
+        loadSpotterRequestsInUsersSection();
+    } else if (section === 'spotters') {
+        loadSpotterRequests();
+        loadApprovedSpotters();
+    } else if (section === 'suggestions') {
+        loadSuggestions();
     }
 }
 
@@ -1908,6 +1914,703 @@ async function loadGeoJSONRoutesForSector(schoolId, sectorName) {
         console.warn(`[CleanOrphaned] Error cargando GeoJSON para ${schoolId}:`, error);
         return [];
     }
+}
+
+// ============================================
+// SPOTTER MANAGEMENT
+// ============================================
+
+let spotterRequests = [];
+let approvedSpotters = [];
+
+// Load spotter requests
+async function loadSpotterRequests() {
+    const requestsList = document.getElementById('spotterRequestsList');
+    const pendingCount = document.getElementById('pendingSpottersCount');
+    const navBadge = document.getElementById('spottersBadge');
+    const usersBadge = document.getElementById('usersBadge');
+
+    if (!requestsList) return;
+
+    requestsList.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Cargando solicitudes...</p>
+        </div>
+    `;
+
+    try {
+        // Consulta sin orderBy para evitar necesidad de índice compuesto
+        const snapshot = await db.collection('spotter_requests')
+            .where('status', '==', 'pending')
+            .get();
+
+        spotterRequests = [];
+        snapshot.forEach(doc => {
+            spotterRequests.push({ id: doc.id, ...doc.data() });
+        });
+
+        // Ordenar en el cliente por fecha de creación (más recientes primero)
+        spotterRequests.sort((a, b) => {
+            const dateA = a.createdAt?.toDate?.() || new Date(0);
+            const dateB = b.createdAt?.toDate?.() || new Date(0);
+            return dateB - dateA;
+        });
+
+        // Update pending count
+        if (pendingCount) {
+            pendingCount.textContent = `${spotterRequests.length} pendiente${spotterRequests.length !== 1 ? 's' : ''}`;
+        }
+
+        // Update nav badge for Spotters
+        if (navBadge) {
+            if (spotterRequests.length > 0) {
+                navBadge.style.display = 'inline';
+                navBadge.textContent = spotterRequests.length;
+            } else {
+                navBadge.style.display = 'none';
+            }
+        }
+
+        // Update nav badge for Users (same count)
+        if (usersBadge) {
+            if (spotterRequests.length > 0) {
+                usersBadge.style.display = 'inline';
+                usersBadge.textContent = spotterRequests.length;
+            } else {
+                usersBadge.style.display = 'none';
+            }
+        }
+
+        renderSpotterRequests();
+    } catch (error) {
+        console.error('Error loading spotter requests:', error);
+        requestsList.innerHTML = `
+            <div class="empty-spotters">
+                <p>Error al cargar las solicitudes</p>
+            </div>
+        `;
+    }
+}
+
+// Render spotter request cards
+function renderSpotterRequests() {
+    const requestsList = document.getElementById('spotterRequestsList');
+    if (!requestsList) return;
+
+    if (spotterRequests.length === 0) {
+        requestsList.innerHTML = `
+            <div class="empty-spotters">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p>No hay solicitudes pendientes</p>
+            </div>
+        `;
+        return;
+    }
+
+    requestsList.innerHTML = spotterRequests.map(request => createSpotterRequestCard(request)).join('');
+}
+
+// Create spotter request card HTML
+function createSpotterRequestCard(request) {
+    const createdAt = request.createdAt ? new Date(request.createdAt.toDate()).toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }) : 'Fecha desconocida';
+
+    const avatarUrl = request.userPhotoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(request.firstname + '+' + request.lastname)}&background=fbbf24&color=1f2937&size=56`;
+    const fullName = `${escapeHtml(request.firstname)} ${escapeHtml(request.lastname)}`;
+
+    return `
+        <div class="spotter-request-card" data-request-id="${request.id}">
+            <div class="spotter-request-header">
+                <img src="${avatarUrl}" alt="${fullName}" class="spotter-avatar" onerror="this.src='https://ui-avatars.com/api/?name=U&background=fbbf24&color=1f2937&size=56'">
+                <div class="spotter-info">
+                    <div class="spotter-name">${fullName}</div>
+                    <div class="spotter-email">${escapeHtml(request.email)}</div>
+                    <div class="spotter-date">Solicitado: ${createdAt}</div>
+                </div>
+            </div>
+            ${request.message ? `
+                <div class="spotter-message-section">
+                    <div class="spotter-message-label">Motivación</div>
+                    <div class="spotter-message-text">${escapeHtml(request.message)}</div>
+                </div>
+            ` : ''}
+            <div class="spotter-actions">
+                <button class="btn btn-danger btn-sm" onclick="rejectSpotterRequest('${request.id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Rechazar
+                </button>
+                <button class="btn btn-success btn-sm" onclick="approveSpotterRequest('${request.id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Aprobar
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+// Approve spotter request
+async function approveSpotterRequest(requestId) {
+    if (!confirm('¿Aprobar esta solicitud de Spotter?')) return;
+
+    try {
+        const requestDoc = await db.collection('spotter_requests').doc(requestId).get();
+        if (!requestDoc.exists) {
+            showToast('Solicitud no encontrada', 'error');
+            return;
+        }
+
+        const requestData = requestDoc.data();
+
+        // Add user to admins collection with spotter role
+        await db.collection('admins').doc(requestData.userId).set({
+            email: requestData.email,
+            role: 'spotter',
+            name: `${requestData.firstname} ${requestData.lastname}`,
+            addedBy: currentUser.uid,
+            addedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            approvedFromRequest: requestId
+        });
+
+        // Update request status
+        await db.collection('spotter_requests').doc(requestId).update({
+            status: 'approved',
+            approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            approvedBy: currentUser.uid
+        });
+
+        showToast('Spotter aprobado correctamente', 'success');
+        loadSpotterRequests();
+        loadApprovedSpotters();
+        loadSpotterRequestsInUsersSection();
+        loadUsers();
+        loadStats();
+
+    } catch (error) {
+        console.error('Error approving spotter:', error);
+        showToast('Error al aprobar el spotter', 'error');
+    }
+}
+
+// Reject spotter request
+async function rejectSpotterRequest(requestId) {
+    const reason = prompt('Motivo del rechazo (opcional):');
+
+    try {
+        await db.collection('spotter_requests').doc(requestId).update({
+            status: 'rejected',
+            rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            rejectedBy: currentUser.uid,
+            rejectionReason: reason || ''
+        });
+
+        showToast('Solicitud rechazada', 'info');
+        loadSpotterRequests();
+        loadSpotterRequestsInUsersSection();
+
+    } catch (error) {
+        console.error('Error rejecting spotter:', error);
+        showToast('Error al rechazar la solicitud', 'error');
+    }
+}
+
+// Load approved spotters
+async function loadApprovedSpotters() {
+    const spottersList = document.getElementById('approvedSpottersList');
+    if (!spottersList) return;
+
+    spottersList.innerHTML = '<tr><td colspan="4" class="loading">Cargando spotters...</td></tr>';
+
+    try {
+        const snapshot = await db.collection('admins')
+            .where('role', '==', 'spotter')
+            .get();
+
+        approvedSpotters = [];
+        snapshot.forEach(doc => {
+            approvedSpotters.push({ id: doc.id, ...doc.data() });
+        });
+
+        renderApprovedSpotters();
+
+    } catch (error) {
+        console.error('Error loading approved spotters:', error);
+        spottersList.innerHTML = '<tr><td colspan="4">Error al cargar los spotters</td></tr>';
+    }
+}
+
+// Render approved spotters table
+function renderApprovedSpotters() {
+    const spottersList = document.getElementById('approvedSpottersList');
+    if (!spottersList) return;
+
+    if (approvedSpotters.length === 0) {
+        spottersList.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #6b7280;">No hay spotters aprobados</td></tr>';
+        return;
+    }
+
+    spottersList.innerHTML = approvedSpotters.map(spotter => {
+        const addedAt = spotter.addedAt ? new Date(spotter.addedAt.toDate()).toLocaleDateString('es-ES', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        }) : 'Desconocido';
+
+        return `
+            <tr>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="badge badge-spotter">Spotter</span>
+                        ${escapeHtml(spotter.name || 'Sin nombre')}
+                    </div>
+                </td>
+                <td>${escapeHtml(spotter.email || '-')}</td>
+                <td>${addedAt}</td>
+                <td>
+                    <button class="btn btn-danger btn-sm" onclick="revokeSpotterRole('${spotter.id}', '${escapeHtml(spotter.email)}')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Revocar
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Revoke spotter role
+async function revokeSpotterRole(userId, email) {
+    if (!confirm(`¿Revocar el rol de Spotter a ${email}?`)) return;
+
+    try {
+        await db.collection('admins').doc(userId).delete();
+
+        // Also update the request status if exists
+        const requestDoc = await db.collection('spotter_requests').doc(userId).get();
+        if (requestDoc.exists) {
+            await db.collection('spotter_requests').doc(userId).update({
+                status: 'revoked',
+                revokedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                revokedBy: currentUser.uid
+            });
+        }
+
+        showToast('Rol de Spotter revocado', 'success');
+        loadApprovedSpotters();
+        loadUsers();
+        loadStats();
+
+    } catch (error) {
+        console.error('Error revoking spotter role:', error);
+        showToast('Error al revocar el rol', 'error');
+    }
+}
+
+/**
+ * Carga las solicitudes de spotter pendientes en la sección de Usuarios
+ */
+async function loadSpotterRequestsInUsersSection() {
+    const requestsList = document.getElementById('usersSpotterRequestsList');
+    const pendingCount = document.getElementById('usersSpotterCount');
+    const card = document.getElementById('usersSpotterRequestsCard');
+    const navBadge = document.getElementById('spottersBadge');
+    const usersBadge = document.getElementById('usersBadge');
+
+    if (!requestsList || !card) return;
+
+    requestsList.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Cargando solicitudes...</p>
+        </div>
+    `;
+
+    try {
+        // Consulta sin orderBy para evitar necesidad de índice compuesto
+        const snapshot = await db.collection('spotter_requests')
+            .where('status', '==', 'pending')
+            .get();
+
+        const requests = [];
+        snapshot.forEach(doc => {
+            requests.push({ id: doc.id, ...doc.data() });
+        });
+
+        // Ordenar en el cliente por fecha de creación (más recientes primero)
+        requests.sort((a, b) => {
+            const dateA = a.createdAt?.toDate?.() || new Date(0);
+            const dateB = b.createdAt?.toDate?.() || new Date(0);
+            return dateB - dateA;
+        });
+
+        // Update pending count badge
+        if (pendingCount) {
+            pendingCount.textContent = `${requests.length} pendiente${requests.length !== 1 ? 's' : ''}`;
+        }
+
+        // Update nav badges
+        [navBadge, usersBadge].forEach(badge => {
+            if (badge) {
+                if (requests.length > 0) {
+                    badge.style.display = 'inline';
+                    badge.textContent = requests.length;
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+        });
+
+        // Show requests or empty state
+        if (requests.length > 0) {
+            requestsList.innerHTML = requests.map(request => createSpotterRequestCard(request)).join('');
+        } else {
+            requestsList.innerHTML = `
+                <div class="empty-spotters">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>No hay solicitudes de Spotter pendientes</p>
+                </div>
+            `;
+        }
+
+    } catch (error) {
+        console.error('Error loading spotter requests in users section:', error);
+        requestsList.innerHTML = `
+            <div class="empty-spotters">
+                <p>Error al cargar las solicitudes</p>
+            </div>
+        `;
+    }
+}
+
+// Load spotters on initial load if on dashboard
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        loadSpotterRequests(); // Load to update badge count
+        loadSuggestionsBadge(); // Load suggestions badge count
+    }, 1000);
+});
+
+// ============================================
+// GESTIÓN DE SUGERENCIAS DE USUARIOS
+// ============================================
+
+let allSuggestions = [];
+
+/**
+ * Carga el contador de sugerencias pendientes para el badge
+ */
+async function loadSuggestionsBadge() {
+    try {
+        const snapshot = await db.collection('routeSuggestions')
+            .where('status', '==', 'pending')
+            .get();
+
+        const count = snapshot.size;
+        const badge = document.getElementById('suggestionsBadge');
+
+        if (count > 0) {
+            badge.textContent = count;
+            badge.style.display = 'inline';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error loading suggestions badge:', error);
+    }
+}
+
+/**
+ * Carga las sugerencias según los filtros
+ */
+async function loadSuggestions() {
+    const container = document.getElementById('suggestionsList');
+    container.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Cargando sugerencias...</p>
+        </div>
+    `;
+
+    try {
+        const statusFilter = document.getElementById('filterSuggestionStatus').value;
+        const fieldFilter = document.getElementById('filterSuggestionField').value;
+
+        let query = db.collection('routeSuggestions');
+
+        // Aplicar filtro de estado
+        if (statusFilter !== 'all') {
+            query = query.where('status', '==', statusFilter);
+        }
+
+        // Aplicar filtro de campo
+        if (fieldFilter !== 'all') {
+            query = query.where('field', '==', fieldFilter);
+        }
+
+        // Ordenar por fecha de creación (más recientes primero)
+        query = query.orderBy('createdAt', 'desc');
+
+        const snapshot = await query.get();
+        allSuggestions = [];
+
+        snapshot.forEach(doc => {
+            allSuggestions.push({ id: doc.id, ...doc.data() });
+        });
+
+        renderSuggestions(allSuggestions);
+
+        // Actualizar badge
+        loadSuggestionsBadge();
+
+    } catch (error) {
+        console.error('Error loading suggestions:', error);
+        container.innerHTML = `
+            <div class="empty-suggestions">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <p>Error al cargar las sugerencias</p>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Renderiza las tarjetas de sugerencias
+ */
+function renderSuggestions(suggestions) {
+    const container = document.getElementById('suggestionsList');
+
+    if (suggestions.length === 0) {
+        container.innerHTML = `
+            <div class="empty-suggestions">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p>No hay sugerencias que mostrar</p>
+            </div>
+        `;
+        return;
+    }
+
+    const fieldLabels = {
+        descripcion: 'Tipo de escalada',
+        exp1: 'Número de express',
+        long1: 'Metros de la vía'
+    };
+
+    const fieldUnits = {
+        descripcion: '',
+        exp1: ' express',
+        long1: ' metros'
+    };
+
+    container.innerHTML = suggestions.map(suggestion => {
+        const date = suggestion.createdAt?.toDate?.() ?
+            suggestion.createdAt.toDate().toLocaleDateString('es-ES', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            }) : 'Fecha desconocida';
+
+        const userInitial = suggestion.userEmail ?
+            suggestion.userEmail.charAt(0).toUpperCase() : '?';
+
+        const fieldLabel = fieldLabels[suggestion.field] || suggestion.field;
+        const fieldUnit = fieldUnits[suggestion.field] || '';
+
+        const isPending = suggestion.status === 'pending';
+
+        return `
+            <div class="suggestion-card ${suggestion.status}" data-id="${suggestion.id}">
+                <div class="suggestion-header">
+                    <div class="suggestion-route-info">
+                        <div class="suggestion-route-name">${escapeHtml(suggestion.routeName)}</div>
+                        <div class="suggestion-school">${escapeHtml(suggestion.schoolId || 'Escuela desconocida')}</div>
+                    </div>
+                    <span class="suggestion-field-badge ${suggestion.field}">${fieldLabel}</span>
+                </div>
+
+                <div class="suggestion-content">
+                    <div class="suggestion-value-label">Valor sugerido</div>
+                    <div class="suggestion-value" id="value-${suggestion.id}">
+                        ${escapeHtml(suggestion.suggestedValue)}${fieldUnit}
+                    </div>
+                    ${isPending ? `
+                        <input type="${suggestion.field === 'descripcion' ? 'text' : 'number'}"
+                               class="suggestion-edit-input"
+                               id="input-${suggestion.id}"
+                               value="${escapeHtml(suggestion.suggestedValue)}"
+                               placeholder="Editar valor antes de aprobar...">
+                    ` : ''}
+                </div>
+
+                <div class="suggestion-meta">
+                    <div class="suggestion-user">
+                        <div class="suggestion-user-avatar">${userInitial}</div>
+                        <span>${escapeHtml(suggestion.userEmail || 'Usuario anónimo')}</span>
+                    </div>
+                    <span>${date}</span>
+                </div>
+
+                ${isPending ? `
+                    <div class="suggestion-actions">
+                        <button class="btn btn-success btn-sm" onclick="approveSuggestion('${suggestion.id}')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Aprobar
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="rejectSuggestion('${suggestion.id}')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Rechazar
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="deleteSuggestion('${suggestion.id}')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Eliminar
+                        </button>
+                    </div>
+                ` : `
+                    <div class="suggestion-actions">
+                        <span class="badge badge-${suggestion.status}">
+                            ${suggestion.status === 'approved' ? 'Aprobada' : 'Rechazada'}
+                        </span>
+                    </div>
+                `}
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Aprueba una sugerencia y actualiza la vía en los datos
+ */
+async function approveSuggestion(suggestionId) {
+    const suggestion = allSuggestions.find(s => s.id === suggestionId);
+    if (!suggestion) return;
+
+    // Obtener el valor editado (puede ser diferente al original)
+    const inputEl = document.getElementById(`input-${suggestionId}`);
+    const finalValue = inputEl ? inputEl.value.trim() : suggestion.suggestedValue;
+
+    if (!finalValue) {
+        showToast('El valor no puede estar vacío', 'error');
+        return;
+    }
+
+    if (!confirm(`¿Aprobar esta sugerencia?\n\nVía: ${suggestion.routeName}\nCampo: ${suggestion.field}\nValor: ${finalValue}`)) {
+        return;
+    }
+
+    try {
+        // 1. Actualizar el estado de la sugerencia
+        await db.collection('routeSuggestions').doc(suggestionId).update({
+            status: 'approved',
+            approvedValue: finalValue,
+            approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            approvedBy: currentUser.email
+        });
+
+        // 2. Buscar la vía en pending_routes y actualizarla
+        const routeQuery = await db.collection('pending_routes')
+            .where('nombre', '==', suggestion.routeName)
+            .where('schoolId', '==', suggestion.schoolId)
+            .get();
+
+        if (!routeQuery.empty) {
+            const routeDoc = routeQuery.docs[0];
+            const updateData = {};
+            updateData[suggestion.field] = finalValue;
+
+            await db.collection('pending_routes').doc(routeDoc.id).update(updateData);
+            console.log(`Vía "${suggestion.routeName}" actualizada con ${suggestion.field}=${finalValue}`);
+        } else {
+            console.warn(`No se encontró la vía "${suggestion.routeName}" en pending_routes`);
+        }
+
+        showToast('Sugerencia aprobada y vía actualizada', 'success');
+        loadSuggestions();
+
+    } catch (error) {
+        console.error('Error approving suggestion:', error);
+        showToast('Error al aprobar la sugerencia', 'error');
+    }
+}
+
+/**
+ * Rechaza una sugerencia
+ */
+async function rejectSuggestion(suggestionId) {
+    const suggestion = allSuggestions.find(s => s.id === suggestionId);
+    if (!suggestion) return;
+
+    if (!confirm(`¿Rechazar esta sugerencia?\n\nVía: ${suggestion.routeName}\nValor: ${suggestion.suggestedValue}`)) {
+        return;
+    }
+
+    try {
+        await db.collection('routeSuggestions').doc(suggestionId).update({
+            status: 'rejected',
+            rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            rejectedBy: currentUser.email
+        });
+
+        showToast('Sugerencia rechazada', 'info');
+        loadSuggestions();
+
+    } catch (error) {
+        console.error('Error rejecting suggestion:', error);
+        showToast('Error al rechazar la sugerencia', 'error');
+    }
+}
+
+/**
+ * Elimina una sugerencia
+ */
+async function deleteSuggestion(suggestionId) {
+    if (!confirm('¿Eliminar esta sugerencia permanentemente?')) {
+        return;
+    }
+
+    try {
+        await db.collection('routeSuggestions').doc(suggestionId).delete();
+        showToast('Sugerencia eliminada', 'info');
+        loadSuggestions();
+
+    } catch (error) {
+        console.error('Error deleting suggestion:', error);
+        showToast('Error al eliminar la sugerencia', 'error');
+    }
+}
+
+/**
+ * Escapa HTML para prevenir XSS
+ */
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 console.log('[Admin] Panel de administración cargado');

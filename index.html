@@ -273,7 +273,23 @@
 
             <!-- Bio Section -->
             <div class="profile-bio-section">
-              <p class="profile-category-ig" id="profile-category" 🧗‍♂️” Escalador</p>
+              <!-- Botón Conviértete en Spotter (visible solo si NO es spotter en perfil propio) -->
+              <button class="become-spotter-btn become-spotter-btn-small" id="become-spotter-btn">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                </svg>
+                <span>¡Conviértete en Spotter!</span>
+              </button>
+
+              <!-- Spotter Badge (visible solo si es spotter) -->
+              <div class="spotter-badge hidden" id="spotter-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+                </svg>
+                <span>Spotter verificado</span>
+              </div>
+
+              <p class="profile-category-ig" id="profile-category" 🧗‍♂️" Escalador</p>
               <p class="profile-bio-ig" id="profile-bio">Sin biografía</p>
               <p class="profile-location-ig">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -349,6 +365,9 @@
             <button class="profile-tab" data-tab="liked">
               <span id="profile-tab-liked-label">Me Gusta</span>
             </button>
+            <button class="profile-tab" data-tab="mentions">
+              <span id="profile-tab-mentions-label">Menciones</span>
+            </button>
           </div>
 
           <!-- Tab Content: Posts Grid -->
@@ -362,6 +381,13 @@
           <div id="tab-liked" class="profile-tab-content">
             <div id="profile-liked-grid" class="profile-grid">
               <!-- Liked posts injected by JS -->
+            </div>
+          </div>
+
+          <!-- Tab Content: Mentions -->
+          <div id="tab-mentions" class="profile-tab-content">
+            <div id="profile-mentions-grid" class="profile-grid">
+              <!-- Mentions injected by JS -->
             </div>
           </div>
         </div>
@@ -1850,6 +1876,119 @@
     </div>
   </div>
 
+  <!-- Spotter Application Modal -->
+  <div id="spotter-modal" class="modal-overlay hidden">
+    <div class="spotter-modal-content">
+      <div class="spotter-modal-header">
+        <h2>Solicitud de Spotter</h2>
+        <button class="modal-close-btn" id="close-spotter-modal">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="spotter-modal-body">
+        <!-- Intro Section -->
+        <div class="spotter-intro">
+          <div class="spotter-intro-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+          </div>
+          <p class="spotter-intro-text">
+            Los Spotters son usuarios verificados que ayudan a expandir nuestra base de datos de vías de escalada.
+            Como Spotter podrás dibujar y documentar nuevas vías en los sectores.
+          </p>
+        </div>
+
+        <form id="spotter-form" class="spotter-form">
+          <!-- Personal Info -->
+          <div class="spotter-form-section">
+            <h3>Información Personal</h3>
+            <div class="spotter-form-row">
+              <div class="spotter-form-group">
+                <label for="spotter-firstname">Nombre *</label>
+                <input type="text" id="spotter-firstname" placeholder="Tu nombre" required>
+              </div>
+              <div class="spotter-form-group">
+                <label for="spotter-lastname">Apellido *</label>
+                <input type="text" id="spotter-lastname" placeholder="Tu apellido" required>
+              </div>
+            </div>
+            <div class="spotter-form-group">
+              <label for="spotter-email">Correo electrónico *</label>
+              <input type="email" id="spotter-email" placeholder="tu@email.com" required>
+            </div>
+          </div>
+
+          <!-- Motivation -->
+          <div class="spotter-form-section">
+            <h3>Tu motivación</h3>
+            <div class="spotter-form-group">
+              <label for="spotter-message">¿Por qué quieres ser Spotter?</label>
+              <textarea id="spotter-message" placeholder="Cuéntanos tu experiencia con la escalada, qué zonas conoces bien, y por qué te gustaría contribuir..." rows="4" maxlength="500"></textarea>
+              <span class="spotter-char-count"><span id="spotter-message-count">0</span>/500</span>
+            </div>
+          </div>
+
+          <!-- Terms Section -->
+          <div class="spotter-form-section spotter-terms-section">
+            <h3>Términos y Responsabilidades</h3>
+            <div class="spotter-terms-box" id="spotter-terms-box">
+              <div class="spotter-terms-content">
+                <h4>Responsabilidades del Spotter</h4>
+                <p>Como Spotter de KRUX, te comprometes a:</p>
+                <ul>
+                  <li><strong>Precisión en la información:</strong> Documentar las vías con la máxima precisión posible, incluyendo grados, número de seguros, longitud y características relevantes.</li>
+                  <li><strong>Respeto al entorno:</strong> No revelar información sobre vías en zonas sensibles sin el consentimiento de la comunidad local o equipadores.</li>
+                  <li><strong>Ética de escalada:</strong> Respetar los códigos de ética de la escalada, incluyendo el respeto por primeras ascensiones y la información que los equipadores deseen mantener privada.</li>
+                  <li><strong>Calidad del contenido:</strong> Las vías documentadas deben ser reales, verificadas y con información completa.</li>
+                  <li><strong>Responsabilidad:</strong> Entiendes que KRUX no se hace responsable de accidentes derivados del uso de la información, y que cada escalador es responsable de verificar las condiciones in situ.</li>
+                </ul>
+
+                <h4>Derechos de KRUX</h4>
+                <ul>
+                  <li>KRUX se reserva el derecho de revisar, editar o eliminar cualquier contenido que no cumpla con los estándares de calidad.</li>
+                  <li>KRUX puede revocar el estatus de Spotter en caso de incumplimiento de estas normas.</li>
+                  <li>El contenido subido pasa a formar parte de la base de datos de KRUX bajo licencia de uso compartido.</li>
+                </ul>
+
+                <h4>Proceso de verificación</h4>
+                <p>Tu solicitud será revisada por nuestro equipo. Recibirás una notificación cuando tu solicitud sea aprobada o si necesitamos más información.</p>
+              </div>
+            </div>
+            <div class="spotter-scroll-indicator" id="spotter-scroll-indicator">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+              <span>Desplázate para leer todo</span>
+            </div>
+          </div>
+
+          <!-- Checkbox de aceptación -->
+          <div class="spotter-accept-row">
+            <label class="spotter-checkbox-container">
+              <input type="checkbox" id="spotter-accept-terms" disabled>
+              <span class="spotter-checkmark"></span>
+              <span class="spotter-accept-text">He leído y acepto las responsabilidades como Spotter</span>
+            </label>
+          </div>
+
+          <!-- Submit -->
+          <button type="submit" class="spotter-submit-btn" id="spotter-submit-btn" disabled>
+            <span>Enviar solicitud</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- Portal container for dropdown menus (avoids clipping/scroll issues) -->
   <div id="dropdown-portal"></div>
 
@@ -2418,6 +2557,276 @@
       border-radius: 8px;
       font-size: 13px;
       background: white;
+    }
+
+    /* Estilos para Sugerencias */
+    .admin-modal-body .admin-suggestion-card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 2px solid #e5e7eb;
+    }
+
+    .admin-modal-body .admin-suggestion-card.approved {
+      border-color: #86efac;
+      background: #f0fdf4;
+    }
+
+    .admin-modal-body .admin-suggestion-card.rejected {
+      border-color: #fca5a5;
+      background: #fef2f2;
+    }
+
+    .admin-modal-body .admin-suggestion-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 4px;
+    }
+
+    .admin-modal-body .admin-suggestion-route {
+      font-weight: 600;
+      font-size: 15px;
+      color: #1a1a2e;
+    }
+
+    .admin-modal-body .admin-suggestion-school {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+
+    .admin-modal-body .admin-suggestion-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 6px;
+      text-transform: uppercase;
+    }
+
+    .admin-modal-body .admin-suggestion-badge.descripcion {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .admin-modal-body .admin-suggestion-badge.exp1 {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .admin-modal-body .admin-suggestion-badge.long1 {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .admin-modal-body .admin-suggestion-value {
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .admin-modal-body .admin-suggestion-label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    .admin-modal-body .admin-suggestion-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    .admin-modal-body .admin-suggestion-input:focus {
+      border-color: #6366f1;
+      outline: none;
+    }
+
+    .admin-modal-body .admin-suggestion-text {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1a1a2e;
+    }
+
+    .admin-modal-body .admin-suggestion-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+
+    .admin-modal-body .admin-suggestion-user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .admin-modal-body .admin-suggestion-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #6366f1;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .admin-modal-body .admin-suggestion-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .admin-modal-body .admin-suggestion-actions .admin-btn {
+      flex: 1;
+    }
+
+    .admin-modal-body .admin-suggestion-status {
+      text-align: center;
+    }
+
+    .admin-modal-body .admin-status-badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .admin-modal-body .admin-status-badge.approved {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .admin-modal-body .admin-status-badge.rejected {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    /* Estilos para Spotters */
+    .admin-modal-body .admin-spotter-card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 2px solid #e5e7eb;
+    }
+
+    .admin-modal-body .admin-spotter-header {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .admin-modal-body .admin-spotter-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .admin-modal-body .admin-spotter-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .admin-modal-body .admin-spotter-name {
+      font-weight: 600;
+      font-size: 15px;
+      color: #1a1a2e;
+    }
+
+    .admin-modal-body .admin-spotter-email {
+      font-size: 13px;
+      color: #666;
+      word-break: break-all;
+    }
+
+    .admin-modal-body .admin-spotter-date {
+      font-size: 12px;
+      color: #999;
+      margin-top: 2px;
+    }
+
+    .admin-modal-body .admin-spotter-message {
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .admin-modal-body .admin-spotter-message-label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .admin-modal-body .admin-spotter-message-text {
+      font-size: 14px;
+      color: #374151;
+      line-height: 1.5;
+    }
+
+    .admin-modal-body .admin-spotter-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .admin-modal-body .admin-spotter-actions .admin-btn {
+      flex: 1;
+    }
+
+    .admin-modal-body .admin-badge-pending {
+      background: #fef3c7;
+      color: #92400e;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .admin-modal-body .admin-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Ajuste tabs para 5 elementos */
+    .admin-modal-body .admin-tabs {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+
+    .admin-modal-body .admin-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .admin-modal-body .admin-tab {
+      min-width: auto;
+      white-space: nowrap;
+      padding: 10px 12px;
+      font-size: 12px;
+    }
+
+    .admin-modal-body .admin-tab svg {
+      width: 16px;
+      height: 16px;
     }
   </style>
 

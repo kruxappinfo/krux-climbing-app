@@ -3523,6 +3523,7 @@ button.secondary:hover {
 }
 
 .comment-input-wrapper {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -8539,6 +8540,7 @@ button.feed-action-btn,
 
 /* Reply form inline */
 .feed-comment-reply-form {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -8893,6 +8895,7 @@ button.feed-action-btn,
 }
 
 .feed-comment-form {
+  position: relative;
   display: flex;
   gap: 12px;
   align-items: center;
@@ -9742,7 +9745,7 @@ body.map-active .top-bar-wrapper {
   margin: 0;
   cursor: pointer;
   color: #9ca3af;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   transition: color 0.2s ease;
   position: relative;
@@ -11654,6 +11657,25 @@ img[loading="lazy"]:not([src=""]) {
   margin-bottom: 16px;
 }
 
+/* Check de vía completada */
+.ml-route-ascent-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border-radius: 50%;
+  color: white;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(34, 197, 94, 0.4);
+}
+
+.ml-route-ascent-check svg {
+  width: 14px;
+  height: 14px;
+}
+
 .ml-route-name {
   font-size: 22px;
   font-weight: 600;
@@ -11712,6 +11734,212 @@ img[loading="lazy"]:not([src=""]) {
   font-size: 16px;
   font-weight: 500;
   color: #374151;
+}
+
+/* Campos faltantes - estilo para contribuir */
+.ml-route-item-missing {
+  background: #fefce8;
+  border: 1px dashed #eab308;
+}
+
+.ml-route-item-missing:hover {
+  background: #fef9c3;
+}
+
+.ml-route-contribute {
+  color: #ca8a04;
+  font-style: italic;
+  cursor: pointer;
+  font-weight: 400;
+}
+
+.ml-route-contribute:hover {
+  color: #a16207;
+  text-decoration: underline;
+}
+
+/* Modal de contribución */
+.ml-contribute-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 20px;
+}
+
+.ml-contribute-modal {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.ml-contribute-modal h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.ml-contribute-modal p {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.ml-contribute-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.ml-contribute-input:focus {
+  border-color: #3b82f6;
+}
+
+.ml-contribute-select {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  outline: none;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.ml-contribute-select:focus {
+  border-color: #3b82f6;
+}
+
+.ml-contribute-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.ml-contribute-btn {
+  flex: 1;
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ml-contribute-btn-cancel {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.ml-contribute-btn-cancel:hover {
+  background: #e5e7eb;
+}
+
+.ml-contribute-btn-submit {
+  background: #3b82f6;
+  color: white;
+}
+
+.ml-contribute-btn-submit:hover {
+  background: #2563eb;
+}
+
+.ml-contribute-btn-submit:disabled {
+  background: #93c5fd;
+  cursor: not-allowed;
+}
+
+.ml-contribute-success {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.ml-contribute-success-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.ml-contribute-success h3 {
+  color: #059669;
+  margin-bottom: 8px;
+}
+
+.ml-contribute-success p {
+  color: #6b7280;
+  margin-bottom: 0;
+}
+
+/* Gráfica de Aleje */
+.ml-route-aleje {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.ml-route-aleje-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.ml-route-aleje-bar {
+  width: 100%;
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.ml-route-aleje-segment {
+  flex: 1;
+  height: 100%;
+}
+
+.ml-route-aleje-green {
+  background: #4CAF50;
+}
+
+.ml-route-aleje-yellow {
+  background: #FFC107;
+}
+
+.ml-route-aleje-red {
+  background: #F44336;
+}
+
+.ml-route-aleje-marker {
+  position: absolute;
+  top: -3px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.ml-route-aleje-line {
+  width: 1px;
+  height: 12px;
+  background: #1f2937;
+  border-radius: 1px;
 }
 
 /* Botonera de acciones */
@@ -11861,13 +12089,13 @@ img[loading="lazy"]:not([src=""]) {
   }
 
   .ml-route-action-btn {
-    width: 42px;
-    height: 42px;
+    width: 56px;
+    height: 56px;
   }
 
   .ml-route-action-btn svg {
-    width: 20px;
-    height: 20px;
+    width: 32px;
+    height: 32px;
   }
 }
 
@@ -13102,7 +13330,7 @@ body.pwa-standalone .feed-header {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0 16px;
-  padding-bottom: calc(40px + env(safe-area-inset-bottom, 20px));
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 20px));
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
@@ -13744,7 +13972,7 @@ body.pwa-standalone .feed-header {
 /* Safe area para iOS */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .bottom-sheet-content {
-    padding-bottom: calc(40px + env(safe-area-inset-bottom));
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
   }
 }
 
@@ -14235,16 +14463,58 @@ body.pwa-standalone .feed-header {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  touch-action: pinch-zoom;
+  touch-action: none; /* Prevenir gestos nativos del navegador para manejar zoom custom */
+  position: relative;
 }
 
 .sector-viewer-image {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  transition: transform 0.1s ease-out;
+  /* Sin transición por defecto - se añade via JS cuando es necesario */
+  /* Esto evita el parpadeo al hacer pan cerca de los bordes en móvil */
   user-select: none;
   -webkit-user-drag: none;
+  will-change: transform;
+  transform-origin: center center;
+  /* Backface visibility para mejor rendimiento en móvil */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  /* Mejorar nitidez de la imagen, especialmente al hacer zoom */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  /* Asegurar que los píxeles se rendericen nítidos */
+  -ms-interpolation-mode: nearest-neighbor;
+}
+
+/* Canvas overlay para las líneas de vías */
+.sector-viewer-canvas {
+  position: absolute;
+  pointer-events: auto;
+  /* Sin transición por defecto - se añade via JS cuando es necesario */
+  will-change: transform;
+  transform-origin: center center;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  /* Mejorar nitidez de las líneas de vías en el canvas */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  /* Evitar suavizado excesivo de las líneas */
+  -ms-interpolation-mode: nearest-neighbor;
+  /* Mejorar renderizado en móvil web */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  /* Evitar que el touch-action interfiera con gestos de zoom */
+  touch-action: none;
+}
+
+/* Cursor cuando hay zoom activo */
+.sector-viewer-image-container.zoomed {
+  cursor: grab;
+}
+
+.sector-viewer-image-container.zoomed:active {
+  cursor: grabbing;
 }
 
 /* Viewer Footer */
@@ -14912,8 +15182,7 @@ body.pwa-standalone .feed-header {
   }
 
   /* Ajustar modales y toasts para que no queden detrás de la nav */
-  .modal-sheet,
-  .bottom-sheet {
+  .modal-sheet {
     margin-bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
   }
 }
@@ -15478,4 +15747,636 @@ body.pwa-standalone .feed-header {
     width: 22px;
     height: 22px;
   }
+}
+
+/* ============================================
+   SPOTTER SYSTEM STYLES
+   ============================================ */
+
+/* Spotter Badge - Shown when user is verified spotter */
+.spotter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 12px;
+}
+
+.spotter-badge svg {
+  width: 14px;
+  height: 14px;
+  fill: #1f2937;
+}
+
+.spotter-badge.hidden {
+  display: none;
+}
+
+/* Become Spotter Button - Modern & Minimalist */
+.become-spotter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 20px;
+  margin-bottom: 16px;
+  background: transparent;
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  position: relative;
+  overflow: hidden;
+}
+
+.become-spotter-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.1), transparent);
+  transition: left 0.5s ease;
+}
+
+.become-spotter-btn:hover {
+  border-color: #fbbf24;
+  color: #d97706;
+  background: rgba(251, 191, 36, 0.05);
+}
+
+.become-spotter-btn:hover::before {
+  left: 100%;
+}
+
+.become-spotter-btn:hover svg {
+  stroke: #f59e0b;
+  transform: rotate(15deg) scale(1.1);
+}
+
+.become-spotter-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: #9ca3af;
+  transition: all 0.3s ease;
+}
+
+.become-spotter-btn:active {
+  transform: scale(0.98);
+}
+
+.become-spotter-btn.hidden {
+  display: none;
+}
+
+/* Become Spotter Button - Small version for profile bio */
+.become-spotter-btn.become-spotter-btn-small {
+  width: auto;
+  padding: 2px 10px;
+  margin-bottom: 8px;
+  border: 1.5px dashed #d1d5db;
+  border-radius: 16px;
+  font-size: 11px;
+  font-weight: 500;
+  gap: 4px;
+}
+
+.become-spotter-btn.become-spotter-btn-small svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Also make spotter badge smaller when inside bio section */
+.profile-bio-section .spotter-badge {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.profile-bio-section .spotter-badge svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Spotter Modal Styles */
+#spotter-modal {
+  z-index: 10000;
+}
+
+.spotter-modal-content {
+  background: #ffffff;
+  border-radius: 20px;
+  width: 95%;
+  max-width: 520px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  animation: modalSlideUp 0.3s ease-out;
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.spotter-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.spotter-modal-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.spotter-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+/* Spotter Intro Section */
+.spotter-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 16px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-radius: 16px;
+  margin-bottom: 24px;
+}
+
+.spotter-intro-icon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 50%;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.spotter-intro-icon svg {
+  stroke: #f59e0b;
+}
+
+.spotter-intro-text {
+  font-size: 14px;
+  color: #78350f;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Spotter Form Styles */
+.spotter-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.spotter-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.spotter-form-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.spotter-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.spotter-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.spotter-form-group label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.spotter-form-group input,
+.spotter-form-group textarea {
+  padding: 12px 14px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 15px;
+  color: #111827;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  background: #fafafa;
+}
+
+.spotter-form-group input:focus,
+.spotter-form-group textarea:focus {
+  outline: none;
+  border-color: #f59e0b;
+  background: white;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.1);
+}
+
+.spotter-form-group input::placeholder,
+.spotter-form-group textarea::placeholder {
+  color: #9ca3af;
+}
+
+.spotter-form-group textarea {
+  resize: none;
+  min-height: 100px;
+}
+
+.spotter-char-count {
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: right;
+  margin-top: -4px;
+}
+
+/* Terms Box */
+.spotter-terms-section {
+  margin-top: 8px;
+}
+
+.spotter-terms-box {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fafafa;
+  position: relative;
+}
+
+.spotter-terms-content {
+  padding: 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4b5563;
+}
+
+.spotter-terms-content h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  margin: 16px 0 8px;
+}
+
+.spotter-terms-content h4:first-child {
+  margin-top: 0;
+}
+
+.spotter-terms-content ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.spotter-terms-content li {
+  margin-bottom: 8px;
+}
+
+.spotter-terms-content li strong {
+  color: #1f2937;
+}
+
+.spotter-terms-content p {
+  margin: 8px 0;
+}
+
+/* Scroll Indicator */
+.spotter-scroll-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  background: linear-gradient(to top, white 60%, transparent);
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: -8px;
+  animation: bounceDown 1.5s infinite;
+}
+
+.spotter-scroll-indicator.hidden {
+  display: none;
+}
+
+@keyframes bounceDown {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(4px);
+  }
+}
+
+.spotter-scroll-indicator svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Accept Terms Checkbox */
+.spotter-accept-row {
+  padding-top: 8px;
+}
+
+.spotter-checkbox-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.spotter-checkbox-container input {
+  display: none;
+}
+
+.spotter-checkmark {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  border: 2px solid #d1d5db;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+.spotter-checkbox-container input:disabled + .spotter-checkmark {
+  background: #f3f4f6;
+  cursor: not-allowed;
+}
+
+.spotter-checkbox-container input:not(:disabled) + .spotter-checkmark {
+  cursor: pointer;
+}
+
+.spotter-checkbox-container input:checked + .spotter-checkmark {
+  background: #f59e0b;
+  border-color: #f59e0b;
+}
+
+.spotter-checkbox-container input:checked + .spotter-checkmark::after {
+  content: '';
+  width: 6px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  margin-bottom: 2px;
+}
+
+.spotter-accept-text {
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.spotter-checkbox-container input:disabled ~ .spotter-accept-text {
+  color: #9ca3af;
+}
+
+/* Submit Button */
+.spotter-submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: inherit;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+}
+
+.spotter-submit-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+}
+
+.spotter-submit-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.spotter-submit-btn:disabled {
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.spotter-submit-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Spotter Pending State */
+.spotter-pending-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #f3f4f6;
+  border: 2px dashed #d1d5db;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  margin-bottom: 12px;
+}
+
+.spotter-pending-badge svg {
+  width: 14px;
+  height: 14px;
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spotter-pending-badge.hidden {
+  display: none;
+}
+
+/* Mobile Responsive */
+@media (max-width: 480px) {
+  .spotter-modal-content {
+    width: 100%;
+    max-height: 95vh;
+    border-radius: 20px 20px 0 0;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+  }
+
+  .spotter-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .spotter-modal-body {
+    padding: 20px;
+  }
+
+  .become-spotter-btn {
+    padding: 14px 20px;
+    font-size: 13px;
+  }
+}
+
+/* ================ MENTION AUTOCOMPLETE ================ */
+
+.mention-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 1100;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.12);
+  display: none;
+}
+
+.mention-dropdown.active {
+  display: block;
+}
+
+.mention-dropdown.mention-dropdown-below {
+  bottom: auto;
+  top: 100%;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.mention-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.mention-dropdown-item:first-child {
+  border-radius: 12px 12px 0 0;
+}
+
+.mention-dropdown-item:last-child {
+  border-radius: 0 0 12px 12px;
+}
+
+.mention-dropdown-item:only-child {
+  border-radius: 12px;
+}
+
+.mention-dropdown-item:hover,
+.mention-dropdown-item.selected {
+  background: #f3f4f6;
+}
+
+.mention-dropdown-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.mention-dropdown-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mention-dropdown-name {
+  font-weight: 500;
+  font-size: 14px;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mention-dropdown-loading,
+.mention-dropdown-empty {
+  padding: 16px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+/* ================ MENTION LINK IN TEXT ================ */
+
+.mention-link {
+  color: #2563eb;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.mention-link:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+/* Create post form needs relative for dropdown */
+#create-post-form {
+  position: relative;
 }

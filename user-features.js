@@ -107,6 +107,71 @@ let userFavorites = new Map(); // Map of "type:id" -> timestamp
 // Global projects cache
 let userProjects = new Map(); // Map of "route_id" -> {name, grade, addedAt, notes}
 
+// Global ascents cache - para mostrar check en vías completadas
+let userAscentsCache = new Map(); // Map of "schoolId:routeName" -> {date, style, grade}
+
+// Load user ascents into cache
+async function loadUserAscentsCache() {
+    if (!currentUser) {
+        userAscentsCache.clear();
+        return;
+    }
+
+    try {
+        const ascents = await getUserAscents(500); // Cargar hasta 500 ascensos
+        userAscentsCache.clear();
+
+        ascents.forEach(ascent => {
+            // Crear clave única: schoolId + routeName
+            const key = `${ascent.schoolId}:${ascent.routeName}`;
+            // Solo guardar el primer (más reciente) ascenso de cada vía
+            if (!userAscentsCache.has(key)) {
+                userAscentsCache.set(key, {
+                    date: ascent.date,
+                    style: ascent.style,
+                    grade: ascent.grade
+                });
+            }
+        });
+
+        console.log(`Ascents cache loaded: ${userAscentsCache.size} routes`);
+
+        // Actualizar ticks en el mapa si está disponible
+        if (typeof updateAscentTicksLayer === 'function') {
+            updateAscentTicksLayer();
+        }
+    } catch (error) {
+        console.error('Error loading ascents cache:', error);
+    }
+}
+
+// Check if user has ascent for a specific route
+function hasUserAscent(schoolId, routeName) {
+    const key = `${schoolId}:${routeName}`;
+    return userAscentsCache.has(key);
+}
+
+// Get user ascent info for a route (returns null if no ascent)
+function getUserAscentInfo(schoolId, routeName) {
+    const key = `${schoolId}:${routeName}`;
+    return userAscentsCache.get(key) || null;
+}
+
+// Add ascent to cache (called after successful logAscent)
+function addAscentToCache(schoolId, routeName, ascentData) {
+    const key = `${schoolId}:${routeName}`;
+    userAscentsCache.set(key, {
+        date: ascentData.date || new Date(),
+        style: ascentData.style,
+        grade: ascentData.grade
+    });
+
+    // Actualizar ticks en el mapa inmediatamente
+    if (typeof updateAscentTicksLayer === 'function') {
+        updateAscentTicksLayer();
+    }
+}
+
 // Load user favorites into cache
 async function loadUserFavorites() {
     if (!currentUser) {
@@ -229,6 +294,14 @@ async function logAscent(ascentData) {
         await db.collection('users').doc(currentUser.uid).update({
             'stats.totalAscents': firebase.firestore.FieldValue.increment(1)
         });
+
+        // Actualizar caché de ascensos para mostrar check inmediatamente
+        addAscentToCache(ascentData.schoolId, ascentData.routeName, {
+            date: data.date,
+            style: data.style,
+            grade: data.grade
+        });
+
         return true;
     } catch (error) {
         console.error('Error logging ascent:', error);
@@ -1793,7 +1866,7 @@ function renderComments(comments) {
                         <span class="comment-author">${comment.userName}</span>
                         <span class="comment-date">${date} ${deleteBtn}</span>
                     </div>
-                    <div class="comment-text">${escapeHtml(comment.text)}</div>
+                    <div class="comment-text">${typeof renderTextWithMentions === 'function' ? renderTextWithMentions(comment.text, comment.mentions) : escapeHtml(comment.text)}</div>
                 </div>
             </div>
         `;
@@ -1829,18 +1902,35 @@ async function postComment(text) {
     const routeId = `${schoolId}_${normalizeId(routeName)}`;
 
     try {
-        await db.collection('comments').add({
+        // Extract mentions from autocomplete
+        const input = document.getElementById('comment-input');
+        const mentionAC = input?._mentionAutocomplete;
+        const mentions = mentionAC ? mentionAC.getMentions() : [];
+        const validMentions = typeof extractMentionsFromText === 'function' ? extractMentionsFromText(text, mentions) : [];
+
+        const commentData = {
             routeId: routeId,
             userId: currentUser.uid,
             userName: currentUser.displayName || 'Usuario',
             userPhoto: currentUser.photoURL,
             text: text,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+        };
+        if (validMentions.length > 0) {
+            commentData.mentions = validMentions;
+        }
 
-        // Clear input
-        document.getElementById('comment-input').value = '';
+        await db.collection('comments').add(commentData);
+
+        // Clear input and mentions
+        input.value = '';
         document.getElementById('send-comment-btn').disabled = true;
+        if (mentionAC) mentionAC.clearMentions();
+
+        // Send mention notifications
+        if (validMentions.length > 0 && typeof sendMentionNotifications === 'function') {
+            sendMentionNotifications(validMentions, { type: 'comment', routeId });
+        }
 
         // Reload comments
         await loadComments(routeId);
@@ -2009,6 +2099,10 @@ document.addEventListener('DOMContentLoaded', () => {
         commentInput.addEventListener('input', (e) => {
             sendCommentBtn.disabled = !e.target.value.trim();
         });
+        // Attach mention autocomplete
+        if (typeof MentionAutocomplete !== 'undefined' && !commentInput._mentionAutocomplete) {
+            new MentionAutocomplete(commentInput);
+        }
     }
 
     if (commentForm) {
@@ -2331,3 +2425,400 @@ window.openChatWithConversation = async function (otherUserId, otherUserInfo) {
         showToast('Error al abrir el chat', 'error');
     }
 };
+
+// ============================================
+// SPOTTER SYSTEM
+// ============================================
+
+// Spotter status cache
+let userSpotterStatus = null; // 'none', 'pending', 'approved', 'rejected'
+
+// Check if ANY user is a verified spotter (for viewing other profiles)
+async function checkSpotterStatusForUser(userId) {
+    if (!userId) return 'none';
+
+    try {
+        // Check if user is an approved spotter in admins collection
+        const adminDoc = await db.collection('admins').doc(userId).get();
+        if (adminDoc.exists) {
+            const adminData = adminDoc.data();
+            if (adminData.role === 'spotter' || adminData.role === 'admin') {
+                return 'approved';
+            }
+        }
+        return 'none';
+    } catch (error) {
+        console.error('Error checking spotter status for user:', error);
+        return 'none';
+    }
+}
+
+// Update Spotter UI for a specific profile (own or other)
+async function updateSpotterUIForProfile(profileUserId, isOwnProfile) {
+    const becomeSpotterBtn = document.getElementById('become-spotter-btn');
+    const spotterBadge = document.getElementById('spotter-badge');
+    const profileBioSection = document.querySelector('.profile-bio-section');
+
+    // Remove any existing pending badge
+    const existingPendingBadge = document.querySelector('.spotter-pending-badge');
+    if (existingPendingBadge) {
+        existingPendingBadge.remove();
+    }
+
+    if (!isOwnProfile) {
+        // VIEWING OTHER USER'S PROFILE
+        // Hide the "Conviértete en Spotter" button - only show on own profile
+        if (becomeSpotterBtn) becomeSpotterBtn.classList.add('hidden');
+
+        // Check if the profile owner is a verified spotter
+        const profileUserSpotterStatus = await checkSpotterStatusForUser(profileUserId);
+
+        if (profileUserSpotterStatus === 'approved') {
+            // Show verified badge for the profile owner
+            if (spotterBadge) spotterBadge.classList.remove('hidden');
+        } else {
+            // Hide badge - this user is not a verified spotter
+            if (spotterBadge) spotterBadge.classList.add('hidden');
+        }
+    } else {
+        // VIEWING OWN PROFILE - use the existing logic based on currentUser's status
+        await checkSpotterStatus();
+        updateSpotterUI();
+    }
+}
+
+// Initialize Spotter UI on profile load
+async function initSpotterUI() {
+    if (!currentUser) return;
+
+    const becomeSpotterBtn = document.getElementById('become-spotter-btn');
+    const spotterBadge = document.getElementById('spotter-badge');
+    const closeSpotterModal = document.getElementById('close-spotter-modal');
+    const spotterForm = document.getElementById('spotter-form');
+    const spotterTermsBox = document.getElementById('spotter-terms-box');
+    const spotterScrollIndicator = document.getElementById('spotter-scroll-indicator');
+    const spotterAcceptTerms = document.getElementById('spotter-accept-terms');
+    const spotterSubmitBtn = document.getElementById('spotter-submit-btn');
+    const spotterMessage = document.getElementById('spotter-message');
+    const spotterMessageCount = document.getElementById('spotter-message-count');
+    const spotterEmail = document.getElementById('spotter-email');
+
+    // Check user's spotter status (for own profile)
+    await checkSpotterStatus();
+
+    // Update UI based on status (for own profile)
+    updateSpotterUI();
+
+    // Pre-fill email if available
+    if (spotterEmail && currentUser.email) {
+        spotterEmail.value = currentUser.email;
+    }
+
+    // Open modal on button click
+    if (becomeSpotterBtn) {
+        becomeSpotterBtn.addEventListener('click', openSpotterModal);
+    }
+
+    // Close modal
+    if (closeSpotterModal) {
+        closeSpotterModal.addEventListener('click', closeSpotterModalFn);
+    }
+
+    // Close on overlay click
+    const spotterModal = document.getElementById('spotter-modal');
+    if (spotterModal) {
+        spotterModal.addEventListener('click', (e) => {
+            if (e.target === spotterModal) {
+                closeSpotterModalFn();
+            }
+        });
+    }
+
+    // Character count for message
+    if (spotterMessage && spotterMessageCount) {
+        spotterMessage.addEventListener('input', () => {
+            spotterMessageCount.textContent = spotterMessage.value.length;
+        });
+    }
+
+    // Terms scroll detection
+    if (spotterTermsBox) {
+        spotterTermsBox.addEventListener('scroll', () => {
+            const { scrollTop, scrollHeight, clientHeight } = spotterTermsBox;
+            const isAtBottom = scrollTop + clientHeight >= scrollHeight - 10;
+
+            if (isAtBottom) {
+                // Enable checkbox when scrolled to bottom
+                if (spotterAcceptTerms) {
+                    spotterAcceptTerms.disabled = false;
+                }
+                if (spotterScrollIndicator) {
+                    spotterScrollIndicator.classList.add('hidden');
+                }
+            }
+        });
+    }
+
+    // Checkbox change enables submit button
+    if (spotterAcceptTerms) {
+        spotterAcceptTerms.addEventListener('change', () => {
+            if (spotterSubmitBtn) {
+                spotterSubmitBtn.disabled = !spotterAcceptTerms.checked;
+            }
+        });
+    }
+
+    // Form submission
+    if (spotterForm) {
+        spotterForm.addEventListener('submit', handleSpotterSubmission);
+    }
+}
+
+// Check user's current spotter status
+async function checkSpotterStatus() {
+    if (!currentUser) {
+        userSpotterStatus = 'none';
+        return;
+    }
+
+    try {
+        // First check if user is already an approved spotter in admins collection
+        const adminDoc = await db.collection('admins').doc(currentUser.uid).get();
+        if (adminDoc.exists) {
+            const adminData = adminDoc.data();
+            if (adminData.role === 'spotter' || adminData.role === 'admin') {
+                userSpotterStatus = 'approved';
+                return;
+            }
+        }
+
+        // Check for pending request
+        const requestDoc = await db.collection('spotter_requests').doc(currentUser.uid).get();
+        if (requestDoc.exists) {
+            const requestData = requestDoc.data();
+            userSpotterStatus = requestData.status || 'pending';
+        } else {
+            userSpotterStatus = 'none';
+        }
+    } catch (error) {
+        console.error('Error checking spotter status:', error);
+        userSpotterStatus = 'none';
+    }
+}
+
+// Update UI based on spotter status
+function updateSpotterUI() {
+    const becomeSpotterBtn = document.getElementById('become-spotter-btn');
+    const spotterBadge = document.getElementById('spotter-badge');
+    const profileBioSection = document.querySelector('.profile-bio-section');
+
+    // Remove any existing pending badge
+    const existingPendingBadge = document.querySelector('.spotter-pending-badge');
+    if (existingPendingBadge) {
+        existingPendingBadge.remove();
+    }
+
+    switch (userSpotterStatus) {
+        case 'approved':
+            // Show spotter badge, hide button
+            if (spotterBadge) spotterBadge.classList.remove('hidden');
+            if (becomeSpotterBtn) becomeSpotterBtn.classList.add('hidden');
+            break;
+
+        case 'pending':
+            // Show pending badge, hide button
+            if (spotterBadge) spotterBadge.classList.add('hidden');
+            if (becomeSpotterBtn) becomeSpotterBtn.classList.add('hidden');
+
+            // Create and insert pending badge
+            const pendingBadge = document.createElement('div');
+            pendingBadge.className = 'spotter-pending-badge';
+            pendingBadge.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span>Solicitud de Spotter pendiente</span>
+            `;
+            if (profileBioSection) {
+                profileBioSection.after(pendingBadge);
+            }
+            break;
+
+        case 'rejected':
+            // Allow to apply again
+            if (spotterBadge) spotterBadge.classList.add('hidden');
+            if (becomeSpotterBtn) becomeSpotterBtn.classList.remove('hidden');
+            break;
+
+        default: // 'none'
+            // Show button, hide badge
+            if (spotterBadge) spotterBadge.classList.add('hidden');
+            if (becomeSpotterBtn) becomeSpotterBtn.classList.remove('hidden');
+            break;
+    }
+}
+
+// Open spotter modal
+function openSpotterModal() {
+    const modal = document.getElementById('spotter-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+
+        // Reset form state
+        resetSpotterForm();
+    }
+}
+
+// Close spotter modal
+function closeSpotterModalFn() {
+    const modal = document.getElementById('spotter-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        document.body.style.overflow = '';
+    }
+}
+
+// Reset spotter form
+function resetSpotterForm() {
+    const form = document.getElementById('spotter-form');
+    const termsBox = document.getElementById('spotter-terms-box');
+    const scrollIndicator = document.getElementById('spotter-scroll-indicator');
+    const acceptTerms = document.getElementById('spotter-accept-terms');
+    const submitBtn = document.getElementById('spotter-submit-btn');
+    const messageCount = document.getElementById('spotter-message-count');
+
+    if (form) form.reset();
+    if (termsBox) termsBox.scrollTop = 0;
+    if (scrollIndicator) scrollIndicator.classList.remove('hidden');
+    if (acceptTerms) {
+        acceptTerms.disabled = true;
+        acceptTerms.checked = false;
+    }
+    if (submitBtn) submitBtn.disabled = true;
+    if (messageCount) messageCount.textContent = '0';
+
+    // Pre-fill email
+    const emailField = document.getElementById('spotter-email');
+    if (emailField && currentUser && currentUser.email) {
+        emailField.value = currentUser.email;
+    }
+}
+
+// Handle form submission
+async function handleSpotterSubmission(e) {
+    e.preventDefault();
+
+    if (!currentUser) {
+        showToast('Debes iniciar sesión', 'error');
+        return;
+    }
+
+    const firstname = document.getElementById('spotter-firstname').value.trim();
+    const lastname = document.getElementById('spotter-lastname').value.trim();
+    const email = document.getElementById('spotter-email').value.trim();
+    const message = document.getElementById('spotter-message').value.trim();
+    const acceptTerms = document.getElementById('spotter-accept-terms').checked;
+
+    // Validation
+    if (!firstname || !lastname || !email) {
+        showToast('Por favor completa todos los campos obligatorios', 'error');
+        return;
+    }
+
+    if (!acceptTerms) {
+        showToast('Debes aceptar los términos y condiciones', 'error');
+        return;
+    }
+
+    const submitBtn = document.getElementById('spotter-submit-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 6v6l4 2"></path>
+            </svg>
+            <span>Enviando...</span>
+        `;
+    }
+
+    try {
+        // Create spotter request document
+        await db.collection('spotter_requests').doc(currentUser.uid).set({
+            userId: currentUser.uid,
+            firstname: firstname,
+            lastname: lastname,
+            email: email,
+            message: message,
+            userDisplayName: currentUser.displayName || '',
+            userPhotoURL: currentUser.photoURL || '',
+            status: 'pending',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            termsAcceptedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Update local status
+        userSpotterStatus = 'pending';
+        updateSpotterUI();
+
+        // Close modal and show success
+        closeSpotterModalFn();
+        showToast('Solicitud enviada correctamente', 'success');
+
+    } catch (error) {
+        console.error('Error submitting spotter request:', error);
+        showToast('Error al enviar la solicitud. Inténtalo de nuevo.', 'error');
+
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `
+                <span>Enviar solicitud</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+            `;
+        }
+    }
+}
+
+// Initialize spotter system when profile loads
+document.addEventListener('DOMContentLoaded', () => {
+    // Wait for auth state to be ready, then init spotter UI
+    const checkAuthAndInit = () => {
+        if (typeof currentUser !== 'undefined') {
+            // Auth is ready, observe for profile view
+            const profileView = document.getElementById('profile-view');
+            if (profileView) {
+                // Use MutationObserver to detect when profile view becomes visible
+                const observer = new MutationObserver((mutations) => {
+                    mutations.forEach((mutation) => {
+                        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                            if (!profileView.classList.contains('hidden')) {
+                                // Profile view is now visible
+                                if (currentUser) {
+                                    initSpotterUI();
+                                }
+                            }
+                        }
+                    });
+                });
+                observer.observe(profileView, { attributes: true });
+            }
+        } else {
+            // Wait and try again
+            setTimeout(checkAuthAndInit, 100);
+        }
+    };
+
+    checkAuthAndInit();
+});
+
+// Export for global access
+window.initSpotterUI = initSpotterUI;
+window.checkSpotterStatus = checkSpotterStatus;
+window.updateSpotterUI = updateSpotterUI;
+window.checkSpotterStatusForUser = checkSpotterStatusForUser;
+window.updateSpotterUIForProfile = updateSpotterUIForProfile;

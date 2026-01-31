@@ -31,6 +31,33 @@ let currentGalleryIndex = 0;      // Índice de la imagen actual en el carrusel
 let galleryDragState = null;      // Estado del drag & drop para reordenar
 
 // ============================================
+// VARIABLES GLOBALES DE ZOOM
+// ============================================
+let svZoomState = {
+  scale: 1,
+  translateX: 0,
+  translateY: 0,
+  isDragging: false,
+  startX: 0,
+  startY: 0,
+  lastTranslateX: 0,
+  lastTranslateY: 0,
+  pinchStartDist: 0,
+  pinchLastScale: 1,
+  minScale: 1,
+  maxScale: 3  // Limitado a 3x para mejor estabilidad en móvil
+};
+
+// ============================================
+// CONTROL DE RESALTADO DURANTE ZOOM
+// ============================================
+let svHighlightEnabled = true;        // Si el resaltado de vías está habilitado
+let svWasPinching = false;            // Si el usuario estaba haciendo pinch zoom
+let svHighlightReenableTimer = null;  // Timer para reactivar el resaltado
+const SV_HIGHLIGHT_REENABLE_DELAY = 400; // Tiempo en ms para reactivar el resaltado después del zoom
+let svPreviousZoomState = false;      // Trackea si estábamos en zoom (scale > 1) para detectar cambios
+
+// ============================================
 // VERIFICACIÓN DE ADMIN
 // ============================================
 
@@ -338,6 +365,26 @@ async function openSectorImageViewer(schoolId, sectorName, startIndex = 0) {
   // Configurar carrusel y canvas si hay imágenes
   if (hasImages) {
     setupGalleryCarousel();
+
+    // Si se abre en una imagen distinta a la primera, posicionar el carrusel
+    if (currentGalleryIndex > 0) {
+      // Mover el track del carrusel a la imagen correcta
+      const track = document.getElementById('gallery-carousel-track');
+      if (track) {
+        track.style.transform = `translateX(-${currentGalleryIndex * 100}%)`;
+      }
+      // Actualizar dots
+      const dots = document.querySelectorAll('.gallery-dot');
+      dots.forEach((dot, idx) => {
+        dot.classList.toggle('active', idx === currentGalleryIndex);
+      });
+      // Actualizar slides
+      const slides = document.querySelectorAll('.gallery-slide');
+      slides.forEach((slide, idx) => {
+        slide.classList.toggle('active', idx === currentGalleryIndex);
+      });
+    }
+
     // Cargar canvas de la imagen actual
     const currentImage = sectorGalleryImages[currentGalleryIndex];
     if (currentImage) {
@@ -366,18 +413,28 @@ function setupGalleryCarousel() {
 
   // Touch events para swipe
   carousel.addEventListener('touchstart', (e) => {
+    // NO iniciar swipe del carrusel si hay zoom activo
+    if (svZoomState.scale > 1) {
+      isDragging = false;
+      return;
+    }
     if (e.touches.length === 1) {
       startX = e.touches[0].clientX;
+      currentX = startX; // Inicializar currentX para evitar navegación accidental sin swipe real
       isDragging = true;
     }
   }, { passive: true });
 
   carousel.addEventListener('touchmove', (e) => {
+    // NO procesar si hay zoom activo
+    if (svZoomState.scale > 1) return;
     if (!isDragging) return;
     currentX = e.touches[0].clientX;
   }, { passive: true });
 
   carousel.addEventListener('touchend', () => {
+    // NO procesar si hay zoom activo
+    if (svZoomState.scale > 1) return;
     if (!isDragging) return;
     isDragging = false;
 
@@ -430,6 +487,13 @@ function galleryNavigate(direction) {
  */
 function galleryGoTo(index) {
   if (index < 0 || index >= sectorGalleryImages.length) return;
+
+  // Resetear zoom al cambiar de imagen
+  resetZoomState();
+  applyZoomTransform();
+
+  // Cerrar popup de vía al cambiar de imagen
+  hideLockedPopup();
 
   // Actualizar índice
   currentGalleryIndex = index;
@@ -543,54 +607,426 @@ function closeSectorImageViewer() {
   svHighlightedRoute = null;
   svLockedRoute = null;
   svPendingHighlightRoute = null;
+
+  // Resetear zoom
+  resetZoomState();
+
+  // Resetear control de resaltado
+  svHighlightEnabled = true;
+  svWasPinching = false;
+  if (svHighlightReenableTimer) {
+    clearTimeout(svHighlightReenableTimer);
+    svHighlightReenableTimer = null;
+  }
 }
 
 /**
- * Configura zoom táctil para la imagen
+ * Resetea el estado del zoom
  */
-function setupImageZoom() {
-  const img = document.getElementById('sector-full-image');
+function resetZoomState() {
+  svZoomState = {
+    scale: 1,
+    translateX: 0,
+    translateY: 0,
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    lastTranslateX: 0,
+    lastTranslateY: 0,
+    pinchStartDist: 0,
+    pinchLastScale: 1,
+    minScale: 1,
+    maxScale: 5
+  };
+  svPreviousZoomState = false;
+}
+
+/**
+ * Aplica la transformación de zoom a imagen y canvas (con transición suave)
+ */
+function applyZoomTransform() {
+  // Usar el contenedor de la imagen actual del carrusel
+  const container = document.getElementById(`sector-viewer-container-${currentGalleryIndex}`)
+    || document.querySelector('.sector-viewer-image-container');
+  if (!container) return;
+
+  const img = container.querySelector('.sector-viewer-image');
+  const canvas = container.querySelector('.sector-viewer-canvas');
+
+  const transform = `translate(${svZoomState.translateX}px, ${svZoomState.translateY}px) scale(${svZoomState.scale})`;
+
+  if (img) {
+    img.style.transition = 'transform 0.15s ease-out';
+    img.style.transform = transform;
+    img.style.transformOrigin = 'center center';
+  }
+
+  if (canvas) {
+    canvas.style.transition = 'transform 0.15s ease-out';
+    canvas.style.transform = transform;
+    canvas.style.transformOrigin = 'center center';
+  }
+
+  // Actualizar clase zoomed en el contenedor
+  const isCurrentlyZoomed = svZoomState.scale > 1;
+  if (isCurrentlyZoomed) {
+    container.classList.add('zoomed');
+  } else {
+    container.classList.remove('zoomed');
+  }
+
+  // Redibujar canvas si cambió el estado de zoom (de normal a zoom o viceversa)
+  if (isCurrentlyZoomed !== svPreviousZoomState) {
+    svPreviousZoomState = isCurrentlyZoomed;
+    // Redibujar después de la transición CSS
+    setTimeout(() => {
+      if (typeof redrawCanvasOverlay === 'function') {
+        redrawCanvasOverlay();
+      }
+    }, 160);
+  }
+}
+
+/**
+ * Aplica la transformación de zoom SIN transición (para movimiento táctil continuo)
+ * Esto evita el parpadeo y pantalla negra al acercarse a los bordes
+ */
+function applyZoomTransformImmediate() {
+  // Usar el contenedor de la imagen actual del carrusel
+  const container = document.getElementById(`sector-viewer-container-${currentGalleryIndex}`)
+    || document.querySelector('.sector-viewer-image-container');
+  if (!container) return;
+
+  const img = container.querySelector('.sector-viewer-image');
+  const canvas = container.querySelector('.sector-viewer-canvas');
+
+  const transform = `translate(${svZoomState.translateX}px, ${svZoomState.translateY}px) scale(${svZoomState.scale})`;
+
+  if (img) {
+    img.style.transition = 'none';
+    img.style.transform = transform;
+    img.style.transformOrigin = 'center center';
+  }
+
+  if (canvas) {
+    canvas.style.transition = 'none';
+    canvas.style.transform = transform;
+    canvas.style.transformOrigin = 'center center';
+  }
+
+  // Actualizar clase zoomed en el contenedor
+  const isCurrentlyZoomed = svZoomState.scale > 1;
+  if (isCurrentlyZoomed) {
+    container.classList.add('zoomed');
+  } else {
+    container.classList.remove('zoomed');
+  }
+
+  // Redibujar canvas si cambió el estado de zoom (de normal a zoom o viceversa)
+  if (isCurrentlyZoomed !== svPreviousZoomState) {
+    svPreviousZoomState = isCurrentlyZoomed;
+    if (typeof redrawCanvasOverlay === 'function') {
+      redrawCanvasOverlay();
+    }
+  }
+}
+
+/**
+ * Limita el pan para no salirse de los bounds de la imagen
+ */
+function constrainPan() {
+  // Usar el contenedor de la imagen actual del carrusel
+  const container = document.getElementById(`sector-viewer-container-${currentGalleryIndex}`)
+    || document.querySelector('.sector-viewer-image-container');
+  if (!container) return;
+
+  const img = container.querySelector('.sector-viewer-image');
   if (!img) return;
 
-  let scale = 1;
-  let lastScale = 1;
-  let startDist = 0;
+  const containerRect = container.getBoundingClientRect();
+  const scale = svZoomState.scale;
 
-  img.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2) {
-      startDist = getDistance(e.touches[0], e.touches[1]);
-      lastScale = scale;
-    }
-  }, { passive: true });
+  // Calcular los límites de pan basados en la imagen escalada
+  const imgWidth = img.offsetWidth * scale;
+  const imgHeight = img.offsetHeight * scale;
 
-  img.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 2) {
-      e.preventDefault();
-      const currentDist = getDistance(e.touches[0], e.touches[1]);
-      scale = Math.min(Math.max(lastScale * (currentDist / startDist), 1), 4);
-      img.style.transform = `scale(${scale})`;
+  const maxTranslateX = Math.max(0, (imgWidth - containerRect.width) / 2);
+  const maxTranslateY = Math.max(0, (imgHeight - containerRect.height) / 2);
+
+  svZoomState.translateX = Math.max(-maxTranslateX, Math.min(maxTranslateX, svZoomState.translateX));
+  svZoomState.translateY = Math.max(-maxTranslateY, Math.min(maxTranslateY, svZoomState.translateY));
+}
+
+/**
+ * Configura zoom táctil y con mouse para la imagen y canvas
+ */
+function setupImageZoom() {
+  // Usar el contenedor de la imagen actual del carrusel
+  const container = document.getElementById(`sector-viewer-container-${currentGalleryIndex}`)
+    || document.querySelector('.sector-viewer-image-container');
+  if (!container) return;
+
+  // Limpiar listeners previos usando un contenedor wrapper
+  const existingWrapper = container.querySelector('.zoom-wrapper');
+  if (existingWrapper) {
+    existingWrapper.remove();
+  }
+
+  // Resetear zoom al configurar
+  resetZoomState();
+  applyZoomTransform();
+
+  // Variables locales para gestos
+  let lastTap = 0;
+  let touchStartTime = 0;
+  let initialPinchCenter = { x: 0, y: 0 };
+
+  // ==========================================
+  // ZOOM CON RUEDA DEL MOUSE (WEB)
+  // ==========================================
+  container.addEventListener('wheel', (e) => {
+    e.preventDefault();
+
+    const rect = container.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Calcular el punto de zoom relativo al centro
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const offsetX = mouseX - centerX;
+    const offsetY = mouseY - centerY;
+
+    // Determinar dirección del zoom
+    const delta = e.deltaY > 0 ? -0.15 : 0.15;
+    const oldScale = svZoomState.scale;
+    const newScale = Math.max(svZoomState.minScale, Math.min(svZoomState.maxScale, oldScale + delta));
+
+    if (newScale !== oldScale) {
+      // Ajustar pan para que el zoom sea hacia donde está el mouse
+      const scaleFactor = newScale / oldScale;
+      svZoomState.translateX = svZoomState.translateX * scaleFactor - offsetX * (scaleFactor - 1);
+      svZoomState.translateY = svZoomState.translateY * scaleFactor - offsetY * (scaleFactor - 1);
+      svZoomState.scale = newScale;
+
+      constrainPan();
+      applyZoomTransform();
     }
   }, { passive: false });
 
-  img.addEventListener('touchend', () => {
-    if (scale < 1.1) {
-      scale = 1;
-      img.style.transform = 'scale(1)';
+  // ==========================================
+  // PAN CON MOUSE (ARRASTRAR)
+  // ==========================================
+  container.addEventListener('mousedown', (e) => {
+    if (svZoomState.scale > 1) {
+      svZoomState.isDragging = true;
+      svZoomState.startX = e.clientX;
+      svZoomState.startY = e.clientY;
+      svZoomState.lastTranslateX = svZoomState.translateX;
+      svZoomState.lastTranslateY = svZoomState.translateY;
+      container.style.cursor = 'grabbing';
+      e.preventDefault();
     }
-    lastScale = scale;
-  }, { passive: true });
+  });
 
-  // Doble tap para reset
-  let lastTap = 0;
-  img.addEventListener('touchend', (e) => {
-    const currentTime = new Date().getTime();
+  document.addEventListener('mousemove', (e) => {
+    if (!svZoomState.isDragging) return;
+
+    const dx = e.clientX - svZoomState.startX;
+    const dy = e.clientY - svZoomState.startY;
+
+    svZoomState.translateX = svZoomState.lastTranslateX + dx;
+    svZoomState.translateY = svZoomState.lastTranslateY + dy;
+
+    constrainPan();
+    applyZoomTransformImmediate();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (svZoomState.isDragging) {
+      svZoomState.isDragging = false;
+      // Usar el contenedor de la imagen actual del carrusel
+      const activeContainer = document.getElementById(`sector-viewer-container-${currentGalleryIndex}`)
+        || document.querySelector('.sector-viewer-image-container');
+      if (activeContainer) {
+        activeContainer.style.cursor = svZoomState.scale > 1 ? 'grab' : 'default';
+      }
+    }
+  });
+
+  // ==========================================
+  // PINCH ZOOM TÁCTIL (MÓVIL)
+  // ==========================================
+  container.addEventListener('touchstart', (e) => {
+    touchStartTime = Date.now();
+
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      svZoomState.pinchStartDist = getDistance(e.touches[0], e.touches[1]);
+      svZoomState.pinchLastScale = svZoomState.scale;
+
+      // Marcar que estamos haciendo pinch zoom y desactivar resaltado
+      svWasPinching = true;
+      svHighlightEnabled = false;
+
+      // Cancelar timer de reactivación si existe
+      if (svHighlightReenableTimer) {
+        clearTimeout(svHighlightReenableTimer);
+        svHighlightReenableTimer = null;
+      }
+
+      // Guardar el centro del pinch
+      initialPinchCenter = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+      };
+    } else if (e.touches.length === 1 && svZoomState.scale > 1) {
+      // Pan con un dedo cuando hay zoom
+      svZoomState.isDragging = true;
+      svZoomState.startX = e.touches[0].clientX;
+      svZoomState.startY = e.touches[0].clientY;
+      svZoomState.lastTranslateX = svZoomState.translateX;
+      svZoomState.lastTranslateY = svZoomState.translateY;
+    }
+  }, { passive: false });
+
+  container.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+
+      const currentDist = getDistance(e.touches[0], e.touches[1]);
+      const newScale = Math.min(
+        svZoomState.maxScale,
+        Math.max(svZoomState.minScale, svZoomState.pinchLastScale * (currentDist / svZoomState.pinchStartDist))
+      );
+
+      // Calcular el nuevo centro del pinch
+      const currentPinchCenter = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+      };
+
+      // Ajustar pan basado en el movimiento del centro
+      const rect = container.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+
+      if (svZoomState.scale !== newScale) {
+        const scaleFactor = newScale / svZoomState.scale;
+        const pinchOffsetX = initialPinchCenter.x - centerX;
+        const pinchOffsetY = initialPinchCenter.y - centerY;
+
+        svZoomState.translateX = svZoomState.translateX * scaleFactor - pinchOffsetX * (scaleFactor - 1);
+        svZoomState.translateY = svZoomState.translateY * scaleFactor - pinchOffsetY * (scaleFactor - 1);
+      }
+
+      // También permitir pan durante el pinch
+      svZoomState.translateX += currentPinchCenter.x - initialPinchCenter.x;
+      svZoomState.translateY += currentPinchCenter.y - initialPinchCenter.y;
+      initialPinchCenter = currentPinchCenter;
+
+      svZoomState.scale = newScale;
+      constrainPan();
+      applyZoomTransformImmediate();
+
+    } else if (e.touches.length === 1 && svZoomState.isDragging) {
+      e.preventDefault();
+
+      const dx = e.touches[0].clientX - svZoomState.startX;
+      const dy = e.touches[0].clientY - svZoomState.startY;
+
+      svZoomState.translateX = svZoomState.lastTranslateX + dx;
+      svZoomState.translateY = svZoomState.lastTranslateY + dy;
+
+      constrainPan();
+      applyZoomTransformImmediate();
+    }
+  }, { passive: false });
+
+  container.addEventListener('touchend', (e) => {
+    svZoomState.isDragging = false;
+
+    // Snap a escala 1 si está muy cerca del mínimo
+    if (svZoomState.scale < 1.1) {
+      svZoomState.scale = 1;
+      svZoomState.translateX = 0;
+      svZoomState.translateY = 0;
+      applyZoomTransform();
+
+      // Si volvemos a escala 1 después de hacer pinch, programar reactivación del resaltado
+      if (svWasPinching) {
+        svWasPinching = false;
+        // Cancelar timer anterior si existe
+        if (svHighlightReenableTimer) {
+          clearTimeout(svHighlightReenableTimer);
+        }
+        // Programar reactivación del resaltado después del delay
+        svHighlightReenableTimer = setTimeout(() => {
+          svHighlightEnabled = true;
+          svHighlightReenableTimer = null;
+          console.log('[SectorViewer] Resaltado de vías reactivado');
+        }, SV_HIGHLIGHT_REENABLE_DELAY);
+      }
+    }
+    // Snap al máximo si está muy cerca (evita overshooting)
+    else if (svZoomState.scale > svZoomState.maxScale - 0.15) {
+      svZoomState.scale = svZoomState.maxScale;
+      constrainPan();
+      applyZoomTransform();
+    }
+
+    // Doble tap para toggle zoom
+    const currentTime = Date.now();
     const tapLength = currentTime - lastTap;
-    if (tapLength < 300 && tapLength > 0) {
-      scale = 1;
-      img.style.transform = 'scale(1)';
+    const touchDuration = currentTime - touchStartTime;
+
+    // Solo considerar como tap si fue un toque corto y NO estábamos haciendo pinch
+    if (tapLength < 300 && tapLength > 0 && touchDuration < 200 && e.changedTouches.length === 1 && !svWasPinching) {
+      // Doble tap detectado
+      if (svZoomState.scale > 1) {
+        // Si hay zoom, resetear
+        svZoomState.scale = 1;
+        svZoomState.translateX = 0;
+        svZoomState.translateY = 0;
+
+        // Programar reactivación del resaltado
+        if (svHighlightReenableTimer) {
+          clearTimeout(svHighlightReenableTimer);
+        }
+        svHighlightReenableTimer = setTimeout(() => {
+          svHighlightEnabled = true;
+          svHighlightReenableTimer = null;
+        }, SV_HIGHLIGHT_REENABLE_DELAY);
+      } else {
+        // Si no hay zoom, hacer zoom 2x centrado en el toque (moderado para mejor control)
+        const touch = e.changedTouches[0];
+        const rect = container.getBoundingClientRect();
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const touchX = touch.clientX - rect.left;
+        const touchY = touch.clientY - rect.top;
+
+        svZoomState.scale = 2;
+        svZoomState.translateX = (centerX - touchX);
+        svZoomState.translateY = (centerY - touchY);
+        constrainPan();
+
+        // Desactivar resaltado mientras hay zoom
+        svHighlightEnabled = false;
+        if (svHighlightReenableTimer) {
+          clearTimeout(svHighlightReenableTimer);
+          svHighlightReenableTimer = null;
+        }
+      }
+      applyZoomTransform();
     }
     lastTap = currentTime;
   }, { passive: true });
+
+  // Actualizar cursor según el zoom
+  container.style.cursor = 'default';
+
+  console.log('[SectorViewer] Zoom configurado para imagen y canvas');
 }
 
 function getDistance(touch1, touch2) {
@@ -1199,6 +1635,7 @@ async function setupSectorViewerCanvasForGallery(schoolId, sectorName, imageInde
 
 /**
  * Inicializa el canvas como overlay sobre la imagen de la galería
+ * Usa devicePixelRatio para mejor nitidez en pantallas de alta densidad (móviles/retina)
  */
 function initCanvasOverlayForGallery(img, container, imageIndex) {
   // Obtener dimensiones reales de la imagen renderizada
@@ -1220,11 +1657,14 @@ function initCanvasOverlayForGallery(img, container, imageIndex) {
   const imgOffsetLeft = imgRect.left - containerRect.left;
   const imgOffsetTop = imgRect.top - containerRect.top;
 
-  // Configurar canvas con las mismas dimensiones que la imagen renderizada
-  svCanvas.width = imgWidth;
-  svCanvas.height = imgHeight;
+  // Obtener el ratio de píxeles del dispositivo para pantallas de alta densidad
+  const dpr = window.devicePixelRatio || 1;
 
-  // Posicionar canvas EXACTAMENTE sobre la imagen
+  // Configurar canvas con mayor resolución interna para nitidez
+  svCanvas.width = imgWidth * dpr;
+  svCanvas.height = imgHeight * dpr;
+
+  // Posicionar canvas EXACTAMENTE sobre la imagen con tamaño visual via CSS
   svCanvas.style.display = 'block';
   svCanvas.style.position = 'absolute';
   svCanvas.style.top = imgOffsetTop + 'px';
@@ -1236,10 +1676,19 @@ function initCanvasOverlayForGallery(img, container, imageIndex) {
   svCanvas.style.cursor = 'pointer';
   svCanvas.style.zIndex = '10';
 
+  // Escalar el contexto para que las operaciones de dibujo sean en coordenadas lógicas
+  svCtx.setTransform(1, 0, 0, 1, 0, 0); // Resetear transformaciones previas
+  svCtx.scale(dpr, dpr);
+
+  // Guardar DPR y dimensiones lógicas en el canvas para uso posterior
+  svCanvas.dpr = dpr;
+  svCanvas.displayWidth = imgWidth;
+  svCanvas.displayHeight = imgHeight;
+
   // Guardar referencia a la imagen para escalar coordenadas
   svImage = img;
 
-  console.log('[SectorViewer] Canvas overlay configurado para galería:', imgWidth, 'x', imgHeight);
+  console.log('[SectorViewer] Canvas overlay configurado para galería:', imgWidth, 'x', imgHeight, '@ DPR:', dpr);
 
   // Aplicar highlight pendiente si existe
   if (svPendingHighlightRoute) {
@@ -1691,6 +2140,7 @@ async function setupSectorViewerCanvas(schoolId, sectorName, imageUrl) {
 
 /**
  * Inicializa el canvas como overlay sobre la imagen
+ * Usa devicePixelRatio para mejor nitidez en pantallas de alta densidad (móviles/retina)
  */
 function initCanvasOverlay(img) {
   const container = document.getElementById('sector-viewer-container');
@@ -1714,11 +2164,14 @@ function initCanvasOverlay(img) {
   const imgOffsetLeft = imgRect.left - containerRect.left;
   const imgOffsetTop = imgRect.top - containerRect.top;
 
-  // Configurar canvas con las mismas dimensiones que la imagen renderizada
-  svCanvas.width = imgWidth;
-  svCanvas.height = imgHeight;
+  // Obtener el ratio de píxeles del dispositivo para pantallas de alta densidad
+  const dpr = window.devicePixelRatio || 1;
 
-  // Posicionar canvas EXACTAMENTE sobre la imagen
+  // Configurar canvas con mayor resolución interna para nitidez
+  svCanvas.width = imgWidth * dpr;
+  svCanvas.height = imgHeight * dpr;
+
+  // Posicionar canvas EXACTAMENTE sobre la imagen con tamaño visual via CSS
   svCanvas.style.display = 'block';
   svCanvas.style.position = 'absolute';
   svCanvas.style.top = imgOffsetTop + 'px';
@@ -1730,10 +2183,19 @@ function initCanvasOverlay(img) {
   svCanvas.style.cursor = 'pointer';
   svCanvas.style.zIndex = '10';
 
+  // Escalar el contexto para que las operaciones de dibujo sean en coordenadas lógicas
+  svCtx.setTransform(1, 0, 0, 1, 0, 0); // Resetear transformaciones previas
+  svCtx.scale(dpr, dpr);
+
+  // Guardar DPR y dimensiones lógicas en el canvas para uso posterior
+  svCanvas.dpr = dpr;
+  svCanvas.displayWidth = imgWidth;
+  svCanvas.displayHeight = imgHeight;
+
   // Guardar referencia a la imagen para escalar coordenadas
   svImage = img;
 
-  console.log('[SectorViewer] Canvas overlay configurado:', imgWidth, 'x', imgHeight);
+  console.log('[SectorViewer] Canvas overlay configurado:', imgWidth, 'x', imgHeight, '@ DPR:', dpr);
 
   // Aplicar highlight pendiente si existe
   if (svPendingHighlightRoute) {
@@ -1765,11 +2227,20 @@ function initCanvasOverlay(img) {
 function redrawCanvasOverlay() {
   if (!svCanvas || !svCtx) return;
 
-  // Limpiar canvas (transparente)
+  const dpr = svCanvas.dpr || 1;
+  const displayWidth = svCanvas.displayWidth || svCanvas.width;
+  const displayHeight = svCanvas.displayHeight || svCanvas.height;
+
+  // Resetear transformaciones y limpiar todo el canvas
+  svCtx.setTransform(1, 0, 0, 1, 0, 0);
   svCtx.clearRect(0, 0, svCanvas.width, svCanvas.height);
 
-  const imgWidth = svCanvas.width;
-  const imgHeight = svCanvas.height;
+  // Restaurar escala para DPR
+  svCtx.scale(dpr, dpr);
+
+  // Usar dimensiones lógicas para el dibujo
+  const imgWidth = displayWidth;
+  const imgHeight = displayHeight;
 
   // Separar la vía resaltada del resto
   const highlightedDrawing = svHighlightedRoute
@@ -1826,6 +2297,58 @@ function getRouteColor(drawing) {
 }
 
 /**
+ * Añade transparencia (alpha) a un color en formato hex o rgb
+ * @param {string} color - Color en formato hex (#fff, #ffffff) o rgb(r,g,b)
+ * @param {number} alpha - Valor de transparencia entre 0 y 1
+ * @returns {string} Color en formato rgba
+ */
+function addAlphaToColor(color, alpha) {
+  // Si ya es rgba, extraer componentes y aplicar nuevo alpha
+  if (color.startsWith('rgba')) {
+    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+      return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`;
+    }
+  }
+
+  // Si es rgb, convertir a rgba
+  if (color.startsWith('rgb')) {
+    const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (match) {
+      return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`;
+    }
+  }
+
+  // Si es hex, convertir a rgba
+  if (color.startsWith('#')) {
+    let hex = color.slice(1);
+    // Expandir hex corto (#fff -> #ffffff)
+    if (hex.length === 3) {
+      hex = hex.split('').map(c => c + c).join('');
+    }
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  // Si no reconoce el formato, devolver el color original
+  return color;
+}
+
+/**
+ * Calcula el factor de escala para líneas basado en el tamaño del canvas
+ * Esto asegura que las líneas se vean igual de gruesas en móvil y desktop
+ */
+function getLineScaleFactor() {
+  if (!svCanvas) return 1;
+  const displayWidth = svCanvas.displayWidth || svCanvas.width;
+  // Base: 400px de ancho = factor 1. Pantallas más pequeñas = líneas proporcionalmente más gruesas
+  const baseFactor = Math.max(0.8, Math.min(1.5, displayWidth / 400));
+  return baseFactor;
+}
+
+/**
  * Dibuja solo la LÍNEA de una vía (sin el punto de inicio)
  */
 function drawOverlayRouteLine(drawing, canvasWidth, canvasHeight) {
@@ -1834,18 +2357,45 @@ function drawOverlayRouteLine(drawing, canvasWidth, canvasHeight) {
 
   const color = getRouteColor(drawing);
   const isHighlighted = svHighlightedRoute === drawing.routeName;
+  const isZoomed = svZoomState.scale > 1;
 
-  // Grosor según si está resaltada o no
-  const borderWidth = isHighlighted ? 10 : 7;
-  const lineWidth = isHighlighted ? 6 : 4;
+  // Factor de escala para que las líneas se vean consistentes en diferentes tamaños de pantalla
+  const scaleFactor = getLineScaleFactor();
+
+  // Grosor según si está resaltada o no (líneas más gruesas para mejor visibilidad)
+  // Ajustado con scaleFactor para consistencia entre móvil y desktop
+  // Con zoom: líneas más finas para ver mejor la roca
+  let borderWidth, lineWidth;
+  if (isZoomed) {
+    borderWidth = (isHighlighted ? 4 : 3) * scaleFactor;
+    lineWidth = (isHighlighted ? 2.5 : 2) * scaleFactor;
+  } else {
+    borderWidth = (isHighlighted ? 8 : 6) * scaleFactor;
+    lineWidth = (isHighlighted ? 5 : 4) * scaleFactor;
+  }
+
+  // Con zoom: línea discontinua para ver mejor la roca
+  const dashPattern = isZoomed ? [8 * scaleFactor, 6 * scaleFactor] : [];
+
+  // Aplicar transparencia adicional cuando hay zoom
+  let borderColor, mainColor;
+  if (isZoomed) {
+    borderColor = isHighlighted ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.35)';
+    // Extraer componentes RGB del color y aplicar transparencia
+    mainColor = addAlphaToColor(color, 0.6);
+  } else {
+    borderColor = isHighlighted ? 'rgba(255, 255, 255, 0.85)' : 'rgba(0, 0, 0, 0.65)';
+    mainColor = color;
+  }
 
   // Dibujar borde/sombra oscura para mejor visibilidad
-  svCtx.strokeStyle = isHighlighted ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.6)';
+  svCtx.strokeStyle = borderColor;
   svCtx.lineWidth = borderWidth;
   svCtx.lineCap = 'round';
   svCtx.lineJoin = 'round';
   svCtx.shadowColor = 'transparent';
   svCtx.shadowBlur = 0;
+  svCtx.setLineDash(dashPattern);
 
   svCtx.beginPath();
   svCtx.moveTo(scaledPoints[0].x, scaledPoints[0].y);
@@ -1855,10 +2405,11 @@ function drawOverlayRouteLine(drawing, canvasWidth, canvasHeight) {
   svCtx.stroke();
 
   // Dibujar línea principal con color del grado
-  svCtx.strokeStyle = color;
+  svCtx.strokeStyle = mainColor;
   svCtx.lineWidth = lineWidth;
   svCtx.lineCap = 'round';
   svCtx.lineJoin = 'round';
+  svCtx.setLineDash(dashPattern);
 
   svCtx.beginPath();
   svCtx.moveTo(scaledPoints[0].x, scaledPoints[0].y);
@@ -1866,6 +2417,322 @@ function drawOverlayRouteLine(drawing, canvasWidth, canvasHeight) {
     svCtx.lineTo(scaledPoints[i].x, scaledPoints[i].y);
   }
   svCtx.stroke();
+
+  // Restaurar línea sólida para otros dibujos
+  svCtx.setLineDash([]);
+
+  // Dibujar icono de reunión al final de la vía si existe
+  if (drawing.anchorType && scaledPoints.length >= 2) {
+    const lastPoint = scaledPoints[scaledPoints.length - 1];
+    const prevPoint = scaledPoints[scaledPoints.length - 2];
+    const iconSize = isZoomed ? 10 * scaleFactor : 14 * scaleFactor;
+    const iconAlpha = isZoomed ? 0.6 : 1;
+    drawSvAnchorIcon(lastPoint.x, lastPoint.y, prevPoint.x, prevPoint.y, drawing.anchorType, mainColor, iconSize, iconAlpha);
+  }
+}
+
+/**
+ * Dibuja el icono de reunión al final de la vía en el visor de sector
+ */
+function drawSvAnchorIcon(x, y, prevX, prevY, anchorType, color, size, alpha) {
+  svCtx.save();
+
+  // Trasladar al punto final (sin rotación - siempre mira hacia arriba)
+  svCtx.translate(x, y);
+
+  // Aplicar alpha global si es necesario
+  if (alpha < 1) {
+    svCtx.globalAlpha = alpha;
+  }
+
+  // Dibujar según el tipo de reunión
+  switch(anchorType) {
+    case 'quimicos':
+      drawSvAnchorQuimicos(0, 0, size, color);
+      break;
+    case 'cadena':
+      drawSvAnchorCadena(0, 0, size, color);
+      break;
+    case 'mosqueton':
+      drawSvAnchorMosqueton(0, 0, size, color);
+      break;
+  }
+
+  svCtx.restore();
+}
+
+/**
+ * Dibuja reunión de químicos con maillones (visor de sector)
+ */
+function drawSvAnchorQuimicos(x, y, size, color) {
+  const scale = size / 20;
+  const outlineWidth = 2 * scale;
+  const outlineColor = 'white';
+
+  // Químico izquierdo con contorno
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = outlineWidth + 2;
+  svCtx.beginPath();
+  svCtx.arc(x - 8 * scale, y - 12 * scale, 6 * scale, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.fillStyle = color;
+  svCtx.beginPath();
+  svCtx.arc(x - 8 * scale, y - 12 * scale, 6 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+  svCtx.strokeStyle = 'rgba(0,0,0,0.5)';
+  svCtx.lineWidth = 1;
+  svCtx.stroke();
+
+  // Agujero izquierdo
+  svCtx.fillStyle = 'white';
+  svCtx.beginPath();
+  svCtx.arc(x - 8 * scale, y - 12 * scale, 2.5 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+
+  // Químico derecho con contorno
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = outlineWidth + 2;
+  svCtx.beginPath();
+  svCtx.arc(x + 8 * scale, y - 12 * scale, 6 * scale, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.fillStyle = color;
+  svCtx.beginPath();
+  svCtx.arc(x + 8 * scale, y - 12 * scale, 6 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+  svCtx.strokeStyle = 'rgba(0,0,0,0.5)';
+  svCtx.lineWidth = 1;
+  svCtx.stroke();
+
+  // Agujero derecho
+  svCtx.fillStyle = 'white';
+  svCtx.beginPath();
+  svCtx.arc(x + 8 * scale, y - 12 * scale, 2.5 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+
+  // Maillones/anillas con contorno
+  // Maillon izquierdo
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x - 8 * scale, y - 2 * scale, 3 * scale, 5 * scale, 0, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 2 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x - 8 * scale, y - 2 * scale, 3 * scale, 5 * scale, 0, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  // Maillon derecho
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x + 8 * scale, y - 2 * scale, 3 * scale, 5 * scale, 0, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 2 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x + 8 * scale, y - 2 * scale, 3 * scale, 5 * scale, 0, 0, Math.PI * 2);
+  svCtx.stroke();
+}
+
+/**
+ * Dibuja reunión con cadena (visor de sector)
+ */
+function drawSvAnchorCadena(x, y, size, color) {
+  const scale = size / 20;
+  const outlineColor = 'white';
+
+  // Químico izquierdo con contorno
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4;
+  svCtx.beginPath();
+  svCtx.arc(x - 14 * scale, y - 14 * scale, 5 * scale, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.fillStyle = color;
+  svCtx.beginPath();
+  svCtx.arc(x - 14 * scale, y - 14 * scale, 5 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+  svCtx.strokeStyle = 'rgba(0,0,0,0.5)';
+  svCtx.lineWidth = 1;
+  svCtx.stroke();
+
+  // Agujero izquierdo
+  svCtx.fillStyle = 'white';
+  svCtx.beginPath();
+  svCtx.arc(x - 14 * scale, y - 14 * scale, 2 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+
+  // Químico derecho con contorno
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4;
+  svCtx.beginPath();
+  svCtx.arc(x + 14 * scale, y - 14 * scale, 5 * scale, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.fillStyle = color;
+  svCtx.beginPath();
+  svCtx.arc(x + 14 * scale, y - 14 * scale, 5 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+  svCtx.strokeStyle = 'rgba(0,0,0,0.5)';
+  svCtx.lineWidth = 1;
+  svCtx.stroke();
+
+  // Agujero derecho
+  svCtx.fillStyle = 'white';
+  svCtx.beginPath();
+  svCtx.arc(x + 14 * scale, y - 14 * scale, 2 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+
+  // Eslabones de cadena con contorno
+  // Eslabón izquierdo
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x - 8 * scale, y - 6 * scale, 3 * scale, 5 * scale, Math.PI / 6, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 2 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x - 8 * scale, y - 6 * scale, 3 * scale, 5 * scale, Math.PI / 6, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  // Eslabón central
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x, y - 3 * scale, 4 * scale, 6 * scale, 0, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 2 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x, y - 3 * scale, 4 * scale, 6 * scale, 0, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  // Eslabón derecho
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x + 8 * scale, y - 6 * scale, 3 * scale, 5 * scale, -Math.PI / 6, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 2 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x + 8 * scale, y - 6 * scale, 3 * scale, 5 * scale, -Math.PI / 6, 0, Math.PI * 2);
+  svCtx.stroke();
+}
+
+/**
+ * Dibuja reunión con mosquetón (visor de sector)
+ */
+function drawSvAnchorMosqueton(x, y, size, color) {
+  const scale = size / 20;
+  const outlineColor = 'white';
+
+  // Químico izquierdo con contorno
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4;
+  svCtx.beginPath();
+  svCtx.arc(x - 8 * scale, y - 20 * scale, 5 * scale, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.fillStyle = color;
+  svCtx.beginPath();
+  svCtx.arc(x - 8 * scale, y - 20 * scale, 5 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+  svCtx.strokeStyle = 'rgba(0,0,0,0.5)';
+  svCtx.lineWidth = 1;
+  svCtx.stroke();
+
+  // Agujero izquierdo
+  svCtx.fillStyle = 'white';
+  svCtx.beginPath();
+  svCtx.arc(x - 8 * scale, y - 20 * scale, 2 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+
+  // Químico derecho con contorno
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4;
+  svCtx.beginPath();
+  svCtx.arc(x + 8 * scale, y - 20 * scale, 5 * scale, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.fillStyle = color;
+  svCtx.beginPath();
+  svCtx.arc(x + 8 * scale, y - 20 * scale, 5 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+  svCtx.strokeStyle = 'rgba(0,0,0,0.5)';
+  svCtx.lineWidth = 1;
+  svCtx.stroke();
+
+  // Agujero derecho
+  svCtx.fillStyle = 'white';
+  svCtx.beginPath();
+  svCtx.arc(x + 8 * scale, y - 20 * scale, 2 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+
+  // Eslabones pequeños conectando a químicos (con contorno)
+  // Eslabón izquierdo
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x - 6 * scale, y - 12 * scale, 2.5 * scale, 4 * scale, 0, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 2 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x - 6 * scale, y - 12 * scale, 2.5 * scale, 4 * scale, 0, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  // Eslabón derecho
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x + 6 * scale, y - 12 * scale, 2.5 * scale, 4 * scale, 0, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 2 * scale;
+  svCtx.beginPath();
+  svCtx.ellipse(x + 6 * scale, y - 12 * scale, 2.5 * scale, 4 * scale, 0, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  // Mosquetón central (forma de D) con contorno
+  // Contorno blanco primero
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 5 * scale;
+  svCtx.beginPath();
+  svCtx.moveTo(x - 5 * scale, y - 6 * scale);
+  svCtx.quadraticCurveTo(x - 8 * scale, y + 2 * scale, x, y + 8 * scale);
+  svCtx.quadraticCurveTo(x + 8 * scale, y + 2 * scale, x + 5 * scale, y - 6 * scale);
+  svCtx.lineTo(x - 5 * scale, y - 6 * scale);
+  svCtx.stroke();
+
+  // Mosquetón en color
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 2.5 * scale;
+  svCtx.beginPath();
+  svCtx.moveTo(x - 5 * scale, y - 6 * scale);
+  svCtx.quadraticCurveTo(x - 8 * scale, y + 2 * scale, x, y + 8 * scale);
+  svCtx.quadraticCurveTo(x + 8 * scale, y + 2 * scale, x + 5 * scale, y - 6 * scale);
+  svCtx.lineTo(x - 5 * scale, y - 6 * scale);
+  svCtx.stroke();
+
+  // Gate del mosquetón con contorno
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 2;
+  svCtx.strokeRect(x - 2 * scale - 1, y - 4 * scale - 1, 4 * scale + 2, 6 * scale + 2);
+
+  svCtx.fillStyle = color;
+  svCtx.fillRect(x - 2 * scale, y - 4 * scale, 4 * scale, 6 * scale);
 }
 
 /**
@@ -1877,18 +2744,41 @@ function drawOverlayRoutePoint(drawing, canvasWidth, canvasHeight) {
 
   const color = getRouteColor(drawing);
   const isHighlighted = svHighlightedRoute === drawing.routeName;
-  const radius = isHighlighted ? 8 : 6;
+  const isZoomed = svZoomState.scale > 1;
+
+  // Factor de escala para consistencia entre móvil y desktop
+  const scaleFactor = getLineScaleFactor();
+
+  // Con zoom: puntos más pequeños y transparentes
+  let radius, borderRadius;
+  if (isZoomed) {
+    radius = (isHighlighted ? 5 : 4) * scaleFactor;
+    borderRadius = radius + (1.5 * scaleFactor);
+  } else {
+    radius = (isHighlighted ? 8 : 6) * scaleFactor;
+    borderRadius = radius + (2 * scaleFactor);
+  }
 
   // Borde para contraste (blanco si resaltado, oscuro si no)
+  // Con zoom: más transparente
   svCtx.shadowColor = 'transparent';
   svCtx.shadowBlur = 0;
-  svCtx.fillStyle = isHighlighted ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.6)';
+  let borderColor, pointColor;
+  if (isZoomed) {
+    borderColor = isHighlighted ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.35)';
+    pointColor = addAlphaToColor(color, 0.6);
+  } else {
+    borderColor = isHighlighted ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.65)';
+    pointColor = color;
+  }
+
+  svCtx.fillStyle = borderColor;
   svCtx.beginPath();
-  svCtx.arc(scaledPoints[0].x, scaledPoints[0].y, radius + 2, 0, Math.PI * 2);
+  svCtx.arc(scaledPoints[0].x, scaledPoints[0].y, borderRadius, 0, Math.PI * 2);
   svCtx.fill();
 
   // Punto de color
-  svCtx.fillStyle = color;
+  svCtx.fillStyle = pointColor;
   svCtx.beginPath();
   svCtx.arc(scaledPoints[0].x, scaledPoints[0].y, radius, 0, Math.PI * 2);
   svCtx.fill();
@@ -1905,12 +2795,55 @@ function setupCanvasInteraction() {
   svCanvas.removeEventListener('mousemove', handleOverlayHover);
   svCanvas.removeEventListener('mouseleave', handleCanvasMouseLeave);
 
-  // Click/tap para mostrar info de vía
-  svCanvas.addEventListener('click', handleOverlayTap);
+  // Click/tap para mostrar info de vía (solo si resaltado habilitado)
+  svCanvas.addEventListener('click', (e) => {
+    // No procesar click si el resaltado está desactivado (durante/después de zoom)
+    if (!svHighlightEnabled) {
+      return;
+    }
+    handleOverlayTap(e);
+  });
 
-  // Touch para móviles - usar touchend para evitar conflictos con scroll
+  // Touch para móviles - detectar pinch y tap
+  let canvasTouchStartTime = 0;
+  let canvasWasPinching = false;
+
+  svCanvas.addEventListener('touchstart', (e) => {
+    canvasTouchStartTime = Date.now();
+
+    // Si hay 2 dedos, es pinch zoom - desactivar resaltado
+    if (e.touches.length === 2) {
+      canvasWasPinching = true;
+      svWasPinching = true;
+      svHighlightEnabled = false;
+
+      // Cancelar timer de reactivación si existe
+      if (svHighlightReenableTimer) {
+        clearTimeout(svHighlightReenableTimer);
+        svHighlightReenableTimer = null;
+      }
+    }
+  }, { passive: true });
+
   svCanvas.addEventListener('touchend', (e) => {
-    if (e.changedTouches.length === 1) {
+    const touchDuration = Date.now() - canvasTouchStartTime;
+
+    // Si estábamos haciendo pinch, no procesar como tap
+    if (canvasWasPinching) {
+      // Si ya no quedan dedos, marcar que terminó el pinch
+      if (e.touches.length === 0) {
+        canvasWasPinching = false;
+      }
+      return;
+    }
+
+    // No procesar tap si el resaltado está desactivado (durante/después de zoom)
+    if (!svHighlightEnabled) {
+      return;
+    }
+
+    // Solo procesar como tap si fue un toque corto con un solo dedo
+    if (e.changedTouches.length === 1 && touchDuration < 300) {
       e.preventDefault();
       const touch = e.changedTouches[0];
       handleOverlayTap({ clientX: touch.clientX, clientY: touch.clientY });
@@ -1940,19 +2873,37 @@ let svLockedRoute = null; // Vía bloqueada (seleccionada por click/tap)
 function handleOverlayHover(event) {
   if (!svCanvas || !svImage) return;
 
+  // Si estamos arrastrando con zoom, no procesar hover
+  if (svZoomState.isDragging) return;
+
   const rect = svCanvas.getBoundingClientRect();
 
-  // Escalar coordenadas del mouse al sistema de coordenadas del canvas
-  // El canvas puede tener un tamaño interno diferente al tamaño CSS
-  const scaleX = svCanvas.width / rect.width;
-  const scaleY = svCanvas.height / rect.height;
+  // Usar dimensiones lógicas del canvas (sin DPR) para escalar coordenadas
+  const displayWidth = svCanvas.displayWidth || svCanvas.width;
+  const displayHeight = svCanvas.displayHeight || svCanvas.height;
+  const scaleX = displayWidth / rect.width;
+  const scaleY = displayHeight / rect.height;
 
-  const x = (event.clientX - rect.left) * scaleX;
-  const y = (event.clientY - rect.top) * scaleY;
+  // Convertir coordenadas del mouse a coordenadas del canvas
+  // Compensando el zoom y la traslación
+  const mouseX = event.clientX - rect.left;
+  const mouseY = event.clientY - rect.top;
 
-  const threshold = 10;
-  const canvasWidth = svCanvas.width;
-  const canvasHeight = svCanvas.height;
+  // Obtener el centro del rect para calcular offset
+  const centerX = rect.width / 2;
+  const centerY = rect.height / 2;
+
+  // Invertir la transformación de zoom para obtener coordenadas originales
+  // La transformación es: translate(tx, ty) scale(s)
+  // Para invertir: primero desescalar, luego destraducir
+  const x = ((mouseX - centerX) / svZoomState.scale + centerX - svZoomState.translateX / svZoomState.scale) * scaleX;
+  const y = ((mouseY - centerY) / svZoomState.scale + centerY - svZoomState.translateY / svZoomState.scale) * scaleY;
+
+  // El threshold se ajusta inversamente al zoom para que sea más fácil seleccionar con zoom
+  const threshold = 15 / svZoomState.scale;
+  // Usar dimensiones lógicas para escalar puntos
+  const canvasWidth = displayWidth;
+  const canvasHeight = displayHeight;
 
   let foundRoute = null;
   let foundNumber = 0;
@@ -2120,18 +3071,35 @@ function handleCanvasMouseLeave() {
 function handleOverlayTap(event) {
   if (!svCanvas || !svImage) return;
 
+  // Si estamos arrastrando con zoom, no procesar tap
+  if (svZoomState.isDragging) return;
+
   const rect = svCanvas.getBoundingClientRect();
 
-  // Escalar coordenadas del tap al sistema de coordenadas del canvas
-  const scaleX = svCanvas.width / rect.width;
-  const scaleY = svCanvas.height / rect.height;
+  // Usar dimensiones lógicas del canvas (sin DPR) para escalar coordenadas
+  const displayWidth = svCanvas.displayWidth || svCanvas.width;
+  const displayHeight = svCanvas.displayHeight || svCanvas.height;
+  const scaleX = displayWidth / rect.width;
+  const scaleY = displayHeight / rect.height;
 
-  const x = (event.clientX - rect.left) * scaleX;
-  const y = (event.clientY - rect.top) * scaleY;
+  // Convertir coordenadas del tap a coordenadas del canvas
+  // Compensando el zoom y la traslación
+  const mouseX = event.clientX - rect.left;
+  const mouseY = event.clientY - rect.top;
 
-  const threshold = 25;
-  const canvasWidth = svCanvas.width;
-  const canvasHeight = svCanvas.height;
+  // Obtener el centro del rect para calcular offset
+  const centerX = rect.width / 2;
+  const centerY = rect.height / 2;
+
+  // Invertir la transformación de zoom para obtener coordenadas originales
+  const x = ((mouseX - centerX) / svZoomState.scale + centerX - svZoomState.translateX / svZoomState.scale) * scaleX;
+  const y = ((mouseY - centerY) / svZoomState.scale + centerY - svZoomState.translateY / svZoomState.scale) * scaleY;
+
+  // El threshold se ajusta inversamente al zoom para que sea más fácil seleccionar con zoom
+  const threshold = 30 / svZoomState.scale;
+  // Usar dimensiones lógicas para escalar puntos
+  const canvasWidth = displayWidth;
+  const canvasHeight = displayHeight;
 
   for (let i = 0; i < svDrawings.length; i++) {
     const drawing = svDrawings[i];
@@ -2174,6 +3142,14 @@ function handleOverlayTap(event) {
       }
     }
   }
+
+  // Si llegamos aquí, no se tocó ninguna vía -> cerrar popup y desbloquear
+  if (svLockedRoute) {
+    svLockedRoute = null;
+    svHighlightedRoute = null;
+    hideLockedPopup();
+    redrawCanvasOverlay();
+  }
 }
 
 /**
@@ -2200,13 +3176,15 @@ function showLockedRoutePopup(drawing, number) {
 
   if (!startPoint || !svCanvas || !svImage) return;
 
-  // Calcular posición en pantalla
+  // Calcular posición en pantalla usando dimensiones lógicas
   const rect = svCanvas.getBoundingClientRect();
-  const scaleX = rect.width / svCanvas.width;
-  const scaleY = rect.height / svCanvas.height;
+  const displayWidth = svCanvas.displayWidth || svCanvas.width;
+  const displayHeight = svCanvas.displayHeight || svCanvas.height;
+  const scaleX = rect.width / displayWidth;
+  const scaleY = rect.height / displayHeight;
 
-  const screenX = rect.left + (startPoint.x / svImage.naturalWidth) * svCanvas.width * scaleX;
-  const screenY = rect.top + (startPoint.y / svImage.naturalHeight) * svCanvas.height * scaleY;
+  const screenX = rect.left + (startPoint.x / svImage.naturalWidth) * displayWidth * scaleX;
+  const screenY = rect.top + (startPoint.y / svImage.naturalHeight) * displayHeight * scaleY;
 
   const popup = document.createElement('div');
   popup.id = 'sv-locked-popup';
@@ -2424,8 +3402,36 @@ async function openSectorImageViewerWithHighlight(schoolId, sectorName, routeNam
   // Guardar la vía a resaltar para cuando el canvas se configure
   svPendingHighlightRoute = routeName;
 
-  // Abrir el visor normalmente
-  await openSectorImageViewer(schoolId, sectorName);
+  // Buscar en qué imagen está dibujada la vía
+  let startIndex = 0;
+  try {
+    const normalizedName = normalizeSectorName(sectorName);
+    const docId = `${schoolId}_${normalizedName}`;
+
+    // Obtener los dibujos para encontrar el imageId de la vía
+    const drawingsDoc = await db.collection('sector_route_drawings').doc(docId).get();
+    if (drawingsDoc.exists) {
+      const data = drawingsDoc.data();
+      const drawings = data.drawings || [];
+      const routeDrawing = drawings.find(d => d.routeName === routeName);
+
+      if (routeDrawing && routeDrawing.imageId) {
+        // Obtener las imágenes del sector para encontrar el índice
+        const images = await getSectorGalleryImages(schoolId, sectorName);
+        const imageIndex = images.findIndex(img => img.id === routeDrawing.imageId);
+
+        if (imageIndex !== -1) {
+          startIndex = imageIndex;
+          console.log('[SectorViewer] Vía encontrada en imagen índice:', startIndex, 'imageId:', routeDrawing.imageId);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[SectorViewer] Error buscando imagen de la vía:', error);
+  }
+
+  // Abrir el visor en la imagen donde está la vía
+  await openSectorImageViewer(schoolId, sectorName, startIndex);
 }
 
 /**

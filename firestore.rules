@@ -169,6 +169,23 @@ service cloud.firestore {
       allow write: if isAuthenticated() && request.auth.token.email == 'krux.app.info@gmail.com';
     }
 
+    // Spotter requests collection
+    match /spotter_requests/{requestId} {
+      // Super admin can read ALL requests (needed for listing/querying)
+      // Users can only read their own request
+      allow read: if isSuperAdmin() ||
+        (isAuthenticated() && request.auth.uid == requestId);
+      // Users can create their own request (requestId must be their uid)
+      allow create: if isAuthenticated() &&
+        request.auth.uid == requestId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      // Only super admin can update (approve/reject)
+      allow update: if isSuperAdmin();
+      // No deletions allowed
+      allow delete: if false;
+    }
+
     // Sector images metadata
     match /sector_images/{imageId} {
       allow read: if true; // Anyone can read sector images metadata
@@ -178,16 +195,30 @@ service cloud.firestore {
     // Route drawings on sector images
     match /sector_route_drawings/{drawingId} {
       allow read: if true; // Anyone can see route drawings
-      allow write: if isAuthenticated() && isAdmin(); // Only admins can draw routes
+      allow write: if isAuthenticated() && isAdminOrSpotter(); // Admins and Spotters can draw routes
     }
 
     // Pending routes (vías pendientes de aprobación)
     match /pending_routes/{routeId} {
       // Permitir leer vías aprobadas a TODOS (incluso sin autenticación)
-      // Permitir leer vías pendientes solo a admins
+      // Permitir leer vías pendientes solo a admins/spotters
       allow read: if resource.data.status == 'approved' ||
-        (isAuthenticated() && (isAdmin() || isSuperAdmin()));
-      allow create: if isAuthenticated() && isAdmin();
+        (isAuthenticated() && (isAdminOrSpotter() || isSuperAdmin()));
+      // Admins y Spotters pueden crear vías pendientes
+      allow create: if isAuthenticated() && isAdminOrSpotter();
+      // Solo admins y super admin pueden aprobar/rechazar/eliminar
+      allow update, delete: if isAuthenticated() && (isAdmin() || isSuperAdmin());
+    }
+
+    // Route suggestions (sugerencias de usuarios para información faltante de vías)
+    match /routeSuggestions/{suggestionId} {
+      // Admins pueden leer todas las sugerencias
+      allow read: if isAuthenticated() && (isAdmin() || isSuperAdmin());
+      // Cualquier usuario autenticado puede crear sugerencias
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      // Solo admins pueden aprobar/rechazar
       allow update, delete: if isAuthenticated() && (isAdmin() || isSuperAdmin());
     }
 
@@ -200,6 +231,19 @@ service cloud.firestore {
     function isAdmin() {
       return exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Helper function to check if user is spotter
+    function isSpotter() {
+      return exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'spotter';
+    }
+
+    // Helper function to check if user is admin OR spotter
+    function isAdminOrSpotter() {
+      return exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+             (get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin' ||
+              get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'spotter');
     }
 
     match /conversations/{conversationId} {

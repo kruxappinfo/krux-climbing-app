@@ -42,6 +42,11 @@ function initAuthStateObserver() {
                     loadUserProjects();
                 }
 
+                // Load user ascents cache (para mostrar check en vías completadas)
+                if (typeof loadUserAscentsCache === 'function') {
+                    loadUserAscentsCache();
+                }
+
                 // Reload feed to show followed users' posts
                 if (typeof loadFeed === 'function') {
                     loadFeed();

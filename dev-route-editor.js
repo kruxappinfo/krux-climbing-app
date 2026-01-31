@@ -25,17 +25,20 @@ let devPendingRouteDocId = null; // ID del documento de vía pendiente de dibujo
 // ============================================
 
 /**
- * Verifica si el usuario actual es administrador
+ * Verifica si el usuario actual es administrador o spotter verificado
  */
-async function isDevAdmin() {
+async function isDevAdminOrSpotter() {
   try {
     const user = auth.currentUser;
     if (!user) return false;
 
     const adminDoc = await db.collection('admins').doc(user.uid).get();
-    return adminDoc.exists && adminDoc.data().role === 'admin';
+    if (!adminDoc.exists) return false;
+
+    const role = adminDoc.data().role;
+    return role === 'admin' || role === 'spotter';
   } catch (error) {
-    console.error('[DevEditor] Error verificando admin:', error);
+    console.error('[DevEditor] Error verificando admin/spotter:', error);
     return false;
   }
 }
@@ -52,10 +55,10 @@ async function addDevEditorButton() {
   // Verificar si ya existe
   if (document.getElementById('btn-dev-editor')) return;
 
-  // Verificar permisos de admin
-  const isAdmin = await isDevAdmin();
-  if (!isAdmin) {
-    console.log('[DevEditor] Usuario no es admin, botón oculto');
+  // Verificar permisos de admin o spotter
+  const hasAccess = await isDevAdminOrSpotter();
+  if (!hasAccess) {
+    console.log('[DevEditor] Usuario no es admin ni spotter, botón oculto');
     return;
   }
 
@@ -311,9 +314,12 @@ function handleDevMapClick(e) {
 /**
  * Muestra el modal para completar datos de la vía
  */
-function showDevRouteModal() {
+async function showDevRouteModal() {
   // Remover modal existente si hay
   closeDevRouteModal();
+
+  // Detectar sector por proximidad antes de mostrar el modal
+  const detectedSector = await detectSectorByProximity();
 
   const modal = document.createElement('div');
   modal.id = 'dev-route-modal';
@@ -386,7 +392,7 @@ function showDevRouteModal() {
             <label for="dev-route-sector">Sector *</label>
             <select id="dev-route-sector" required>
               <option value="">Seleccionar...</option>
-              ${devCurrentSchoolSectors.map(s => `<option value="${s}">${s}</option>`).join('')}
+              ${devCurrentSchoolSectors.map(s => `<option value="${s}" ${s === detectedSector ? 'selected' : ''}>${s}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -431,6 +437,101 @@ function showDevRouteModal() {
   setTimeout(() => {
     document.getElementById('dev-route-name')?.focus();
   }, 100);
+}
+
+/**
+ * Detecta el sector más probable basándose en la proximidad
+ * a otras vías existentes en el mapa
+ * @returns {string|null} Nombre del sector detectado o null
+ */
+async function detectSectorByProximity() {
+  if (!devPendingRouteCoords || !mlCurrentSchool) {
+    return null;
+  }
+
+  try {
+    const school = MAPLIBRE_SCHOOLS[mlCurrentSchool];
+    if (!school || !school.geojson || !school.geojson.vias) {
+      return null;
+    }
+
+    // Cargar todas las vías de la escuela
+    const response = await fetch(school.geojson.vias + '?v=' + Date.now());
+    if (!response.ok) return null;
+
+    const geojson = await response.json();
+    if (!geojson.features || geojson.features.length === 0) {
+      return null;
+    }
+
+    const clickCoords = devPendingRouteCoords; // [lng, lat]
+
+    // Calcular distancia a cada vía y guardar su sector
+    const distances = geojson.features
+      .filter(f => f.properties.sector && f.geometry.coordinates)
+      .map(f => {
+        const routeCoords = f.geometry.coordinates[0] || f.geometry.coordinates;
+        // Distancia euclidiana simple
+        const dist = Math.sqrt(
+          Math.pow(clickCoords[0] - routeCoords[0], 2) +
+          Math.pow(clickCoords[1] - routeCoords[1], 2)
+        );
+        return {
+          sector: f.properties.sector,
+          distance: dist
+        };
+      });
+
+    if (distances.length === 0) {
+      return null;
+    }
+
+    // Ordenar por distancia
+    distances.sort((a, b) => a.distance - b.distance);
+
+    // Tomar las 5 vías más cercanas y contar votos por sector
+    const topN = distances.slice(0, 5);
+    const sectorVotes = {};
+
+    topN.forEach(item => {
+      sectorVotes[item.sector] = (sectorVotes[item.sector] || 0) + 1;
+    });
+
+    // Encontrar el sector con más votos
+    let bestSector = null;
+    let maxVotes = 0;
+
+    for (const [sector, votes] of Object.entries(sectorVotes)) {
+      if (votes > maxVotes) {
+        maxVotes = votes;
+        bestSector = sector;
+      }
+    }
+
+    // Si la vía más cercana está muy cerca (< ~100m en grados ≈ 0.001)
+    // confiar en su sector directamente
+    const closestDistance = distances[0].distance;
+    const isVeryClose = closestDistance < 0.001;
+
+    if (isVeryClose) {
+      bestSector = distances[0].sector;
+    }
+
+    console.log('[DevEditor] Sector detectado por proximidad:', {
+      clickCoords,
+      topRoutes: topN.slice(0, 3),
+      sectorVotes,
+      bestSector,
+      closestDistance,
+      isVeryClose
+    });
+
+    return bestSector;
+
+  } catch (error) {
+    console.error('[DevEditor] Error detectando sector por proximidad:', error);
+    return null;
+  }
 }
 
 /**
@@ -628,9 +729,9 @@ function addTempRouteToMap(routeData) {
 async function loadPendingRoutesFromFirestore() {
   if (!mlMap || !mlCurrentSchool) return;
 
-  // Verificar si es admin
-  const isAdmin = await isDevAdmin();
-  if (!isAdmin) return;
+  // Verificar si es admin o spotter
+  const hasAccess = await isDevAdminOrSpotter();
+  if (!hasAccess) return;
 
   try {
     const snapshot = await db.collection('pending_routes')

@@ -1159,7 +1159,7 @@ function initGlobalSearch() {
               <img src="${avatarUrl}" class="search-result-avatar" alt="${user.displayName}" referrerPolicy="no-referrer" onerror="this.src='https://ui-avatars.com/api/?name=U&background=e5e7eb&color=6b7280'; this.onerror=null;">
               <div class="search-result-info">
                 <div class="search-result-name">${user.displayName || 'Usuario'}</div>
-                <div class="search-result-meta">${user.bio || (user.id === 'akqgKt9WmQRNrpPub9xVKiPKmcn2' ? 'Administrador' : 'Escalador')}</div>
+                <div class="search-result-meta">${user.id === 'akqgKt9WmQRNrpPub9xVKiPKmcn2' ? 'Administrador' : (user.bio || 'Escalador')}</div>
               </div>
               <button class="${btnClass}" onclick="event.stopPropagation(); toggleFollow('${user.id}', this)">${btnText}</button>
             </div>
@@ -1259,6 +1259,8 @@ function initGlobalSearch() {
       return [];
     }
   }
+  // Expose searchUsersGlobal globally so MentionAutocomplete can use it
+  window.searchUsersGlobal = searchUsersGlobal;
 
   function searchPlacesMock(query) {
     const places = [
@@ -1317,8 +1319,10 @@ function resetProfileState() {
   // FIX #2: Clear tab contents to prevent data bleeding
   const postsGrid = document.getElementById('profile-grid');
   const likedGrid = document.getElementById('profile-liked-grid');
+  const mentionsGrid = document.getElementById('profile-mentions-grid');
   if (postsGrid) postsGrid.innerHTML = '<div class="loading-spinner">Cargando...</div>';
   if (likedGrid) likedGrid.innerHTML = '<div class="loading-spinner">Cargando...</div>';
+  if (mentionsGrid) mentionsGrid.innerHTML = '';
 
   // Reset stats to 0 while loading
   const elements = ['stat-followers', 'stat-following', 'total-ascents', 'max-grade', 'zones-visited'];
@@ -1436,11 +1440,12 @@ window.openPublicProfile = async function (userId) {
       getRealFollowingCount(userId)
     ]);
 
-    // Cargar posts, likes y stats en paralelo
+    // Cargar posts, likes, menciones y stats en paralelo
     await Promise.all([
       loadProfilePostsForUser(userId, loadId),
       loadProfileLikedPostsForUser(userId, loadId),
-      loadProfileClimbingStatsForUser(userId, loadId)
+      loadProfileClimbingStatsForUser(userId, loadId),
+      Promise.resolve(loadProfileMentionsForUser(userId, loadId))
     ]);
 
     // Update stats with real counts from subcollections
@@ -1493,6 +1498,11 @@ window.openPublicProfile = async function (userId) {
     // Initialize tabs for profile navigation
     initProfileTabs();
 
+    // Update Spotter UI for the OTHER user's profile (not own profile)
+    if (window.updateSpotterUIForProfile) {
+      await window.updateSpotterUIForProfile(userId, false);
+    }
+
     profileLoadingState.isLoading = false;
 
   } catch (error) {
@@ -1530,6 +1540,11 @@ function configureProfileViewForOwnProfile() {
   if (postsLabel) postsLabel.textContent = 'Mis Publicaciones';
 
   currentProfileUserId = null;
+
+  // Update Spotter UI for OWN profile (will show badge/button based on own status)
+  if (window.updateSpotterUIForProfile && currentUser) {
+    window.updateSpotterUIForProfile(currentUser.uid, true);
+  }
 }
 
 /**
@@ -1751,6 +1766,214 @@ async function loadProfileLikedPostsForUser(userId, loadId = null) {
       `;
     }
   }
+}
+
+// ================== MENTIONS TAB ==================
+
+const MOCK_MENTIONS_POSTS = [
+  {
+    id: 'mock-mention-1',
+    userId: 'user-carlos',
+    userName: 'Carlos Ruiz',
+    userPhoto: '',
+    type: 'text',
+    content: 'Gran día en la escuela con @Krux y @Jaime! El sector estaba perfecto para escalar 🧗',
+    photos: ['https://images.unsplash.com/photo-1522163182402-834f871fd851?w=600'],
+    createdAt: { toDate: () => new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) },
+    time: 'Hace 2 días',
+    likes: ['user-carlos', 'user-ana'],
+    likesCount: 2,
+    commentsCount: 3,
+    mentions: [
+      { uid: 'mock-krux', displayName: 'Krux', startIndex: 30, endIndex: 35 },
+      { uid: 'mock-jaime', displayName: 'Jaime', startIndex: 38, endIndex: 44 }
+    ]
+  },
+  {
+    id: 'mock-mention-2',
+    userId: 'user-ana',
+    userName: 'Ana García',
+    userPhoto: '',
+    type: 'text',
+    content: 'Gracias @Krux por el aseguramiento hoy! Menudo 7a hemos sacado 💪',
+    photos: [],
+    createdAt: { toDate: () => new Date(Date.now() - 5 * 24 * 60 * 60 * 1000) },
+    time: 'Hace 5 días',
+    likes: ['user-ana', 'user-carlos', 'user-pedro'],
+    likesCount: 3,
+    commentsCount: 1,
+    mentions: [
+      { uid: 'mock-krux', displayName: 'Krux', startIndex: 8, endIndex: 13 }
+    ]
+  },
+  {
+    id: 'mock-mention-3',
+    userId: 'user-pedro',
+    userName: 'Pedro Martínez',
+    userPhoto: '',
+    type: 'text',
+    content: 'Fin de semana en Mora con @Jaime y @Carlos Ruiz. Vías nuevas increíbles!',
+    photos: ['https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=600'],
+    createdAt: { toDate: () => new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+    time: 'Hace 1 semana',
+    likes: ['user-pedro'],
+    likesCount: 1,
+    commentsCount: 0,
+    mentions: [
+      { uid: 'mock-jaime', displayName: 'Jaime', startIndex: 26, endIndex: 32 },
+      { uid: 'mock-carlos', displayName: 'Carlos Ruiz', startIndex: 35, endIndex: 47 }
+    ]
+  },
+  {
+    id: 'mock-mention-4',
+    userId: 'user-lucia',
+    userName: 'Lucía Fernández',
+    userPhoto: '',
+    type: 'text',
+    content: 'Primera escalada del año con @Krux en Toledo. Qué buena roca! 🪨',
+    photos: ['https://images.unsplash.com/photo-1507034589631-9433cc6bc453?w=600'],
+    createdAt: { toDate: () => new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) },
+    time: 'Hace 10 días',
+    likes: ['user-lucia', 'user-ana'],
+    likesCount: 2,
+    commentsCount: 4,
+    mentions: [
+      { uid: 'mock-krux', displayName: 'Krux', startIndex: 29, endIndex: 34 }
+    ]
+  },
+  {
+    id: 'mock-mention-5',
+    userId: 'user-miguel',
+    userName: 'Miguel Torres',
+    userPhoto: '',
+    type: 'text',
+    content: 'Nuevo proyecto con @Ana García y @Jaime en Aranjuez. El sector sur tiene líneas brutales.',
+    photos: [],
+    createdAt: { toDate: () => new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) },
+    time: 'Hace 2 semanas',
+    likes: ['user-miguel', 'user-ana', 'user-carlos'],
+    likesCount: 3,
+    commentsCount: 2,
+    mentions: [
+      { uid: 'mock-ana', displayName: 'Ana García', startIndex: 19, endIndex: 30 },
+      { uid: 'mock-jaime', displayName: 'Jaime', startIndex: 33, endIndex: 39 }
+    ]
+  },
+  {
+    id: 'mock-mention-6',
+    userId: 'user-carlos',
+    userName: 'Carlos Ruiz',
+    userPhoto: '',
+    type: 'text',
+    content: 'Sesión de búlder con @Pedro Martínez en el rocódromo. @Krux nos dio buenos consejos de técnica.',
+    photos: ['https://images.unsplash.com/photo-1564769662533-4f00a87b4056?w=600'],
+    createdAt: { toDate: () => new Date(Date.now() - 20 * 24 * 60 * 60 * 1000) },
+    time: 'Hace 20 días',
+    likes: ['user-carlos', 'user-pedro'],
+    likesCount: 2,
+    commentsCount: 1,
+    mentions: [
+      { uid: 'mock-pedro', displayName: 'Pedro Martínez', startIndex: 21, endIndex: 37 },
+      { uid: 'mock-krux', displayName: 'Krux', startIndex: 54, endIndex: 59 }
+    ]
+  }
+];
+
+/**
+ * Get the display name of the profile currently being viewed.
+ * Works for both own profile and other user's profiles.
+ */
+function getCurrentProfileDisplayName() {
+  const nameEl = document.getElementById('profile-name');
+  return nameEl ? nameEl.textContent.trim() : '';
+}
+
+/**
+ * Render posts that mention the current profile user (mock data).
+ * Dynamically filters by the display name shown in the profile.
+ */
+function renderMentionsPosts() {
+  const grid = document.getElementById('profile-mentions-grid');
+  if (!grid) return;
+
+  grid.innerHTML = '<div class="empty-message" style="text-align: center; padding: 20px;">Cargando menciones...</div>';
+
+  const profileName = getCurrentProfileDisplayName();
+  if (!profileName) {
+    grid.innerHTML = '<div class="empty-message" style="text-align: center; padding: 40px 20px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin: 0 auto 16px; opacity: 0.5;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><p style="margin: 0; color: #6b7280;">No se pudo determinar el usuario</p></div>';
+    return;
+  }
+
+  // Filter mock posts: find those whose content contains @profileName
+  const mentionTag = '@' + profileName;
+  const mentionedPosts = MOCK_MENTIONS_POSTS.filter(post => {
+    const content = post.content || '';
+    return content.includes(mentionTag);
+  });
+
+  if (mentionedPosts.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-message" style="text-align: center; padding: 40px 20px;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin: 0 auto 16px; opacity: 0.5;">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <p style="margin: 0; color: #6b7280;">Nadie te ha mencionado aún</p>
+        <p style="margin: 8px 0 0; color: #9ca3af; font-size: 14px;">Cuando alguien te mencione en una publicación, aparecerá aquí</p>
+      </div>
+    `;
+    return;
+  }
+
+  grid.innerHTML = '';
+  mentionedPosts.forEach(post => {
+    renderPostCard(post, grid);
+  });
+
+  attachFeedEventListeners(grid);
+}
+
+/**
+ * Load mentions for another user's profile (mock data).
+ * Filters by the display name of the profile being viewed.
+ */
+function loadProfileMentionsForUser(userId, loadId = null) {
+  const container = document.getElementById('profile-mentions-grid');
+  if (!container) return;
+
+  if (loadId && profileLoadingState.currentLoadId !== loadId) return;
+
+  const profileName = getCurrentProfileDisplayName();
+  if (!profileName) {
+    container.innerHTML = '<div class="empty-message" style="text-align: center; padding: 40px 20px;"><p style="margin: 0; color: #6b7280;">No hay menciones</p></div>';
+    return;
+  }
+
+  const mentionTag = '@' + profileName;
+  const mentionedPosts = MOCK_MENTIONS_POSTS.filter(post => {
+    const content = post.content || '';
+    return content.includes(mentionTag);
+  });
+
+  if (loadId && profileLoadingState.currentLoadId !== loadId) return;
+
+  if (mentionedPosts.length === 0) {
+    container.innerHTML = `
+      <div class="empty-message" style="text-align: center; padding: 40px 20px;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin: 0 auto 16px; opacity: 0.5;">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <p style="margin: 0; color: #6b7280;">No hay menciones aún</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = '';
+  mentionedPosts.forEach(post => {
+    renderPostCard(post, container);
+  });
+
+  attachFeedEventListeners(container);
 }
 
 /**
@@ -2086,7 +2309,7 @@ async function openSocialListForUser(userId, type) {
                style="cursor: pointer;">
           <div class="social-list-info" onclick="document.getElementById('social-list-modal').classList.add('hidden'); openPublicProfile('${user.id}')" style="cursor: pointer;">
             <div class="social-list-name">${user.displayName || 'Usuario'}</div>
-            <div class="social-list-bio">${user.bio || (user.id === 'akqgKt9WmQRNrpPub9xVKiPKmcn2' ? 'Administrador' : 'Escalador')}</div>
+            <div class="social-list-bio">${user.id === 'akqgKt9WmQRNrpPub9xVKiPKmcn2' ? 'Administrador' : (user.bio || 'Escalador')}</div>
           </div>
           ${!isMe && authUser ? `
             <button class="${btnClass}"
@@ -2760,7 +2983,7 @@ function initNotifications() {
     list.innerHTML = notifications.map(n => {
       const timeAgo = getTimeAgo(n.createdAt?.toDate ? n.createdAt.toDate() : new Date());
       const unreadClass = n.read ? '' : 'unread';
-      const clickHandler = n.fromUserId ? `onclick="handleNotificationClick('${n.id}', '${n.type}', '${n.fromUserId}')"` : '';
+      const clickHandler = n.fromUserId ? `onclick="handleNotificationClick('${n.id}', '${n.type}', '${n.fromUserId}', '${n.postId || ''}')"` : '';
       // Use notification ID directly - Firestore IDs are safe for HTML attributes
       const notificationId = String(n.id);
 
@@ -2797,6 +3020,8 @@ function initNotifications() {
       case 'comment':
       case 'messages':
         return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+      case 'mention':
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"></path></svg>';
       default:
         return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"></circle></svg>';
     }
@@ -2938,10 +3163,25 @@ function initNotifications() {
 }
 
 // Handle notification click - navigate to relevant content
-window.handleNotificationClick = async function (notificationId, type, fromUserId) {
+window.handleNotificationClick = async function (notificationId, type, fromUserId, postId) {
   document.getElementById('notification-dropdown')?.classList.add('hidden');
   if (type === 'follow' && fromUserId) {
     openPublicProfile(fromUserId);
+  } else if (type === 'mention') {
+    // Navigate to the post where the mention occurred
+    if (postId && typeof openPostModal === 'function') {
+      switchView('feed-view');
+      openPostModal(postId);
+    } else if (fromUserId) {
+      openPublicProfile(fromUserId);
+    }
+  } else if (type === 'like' || type === 'comment') {
+    if (postId && typeof openPostModal === 'function') {
+      switchView('feed-view');
+      openPostModal(postId);
+    } else if (fromUserId) {
+      openPublicProfile(fromUserId);
+    }
   }
 };
 
@@ -3787,19 +4027,21 @@ function initProfileTabs() {
       // Load content for the selected tab based on current profile context
       if (targetTab === 'liked') {
         if (currentProfileUserId) {
-          // Viewing other user's profile
           await loadProfileLikedPostsForUser(currentProfileUserId, profileLoadingState.currentLoadId);
         } else {
-          // Viewing own profile
           await renderLikedPosts();
         }
       } else if (targetTab === 'posts') {
         if (currentProfileUserId) {
-          // Viewing other user's profile
           await loadProfilePostsForUser(currentProfileUserId, profileLoadingState.currentLoadId);
         } else {
-          // Viewing own profile
           await renderProfileGrid();
+        }
+      } else if (targetTab === 'mentions') {
+        if (currentProfileUserId) {
+          loadProfileMentionsForUser(currentProfileUserId, profileLoadingState.currentLoadId);
+        } else {
+          renderMentionsPosts();
         }
       }
     });
@@ -3956,7 +4198,7 @@ function initProfileStatClicks() {
                  onclick="openPublicProfile('${user.id}')">
             <div class="social-list-info" onclick="openPublicProfile('${user.id}')">
               <div class="social-list-name">${user.displayName || 'Usuario'}</div>
-              <div class="social-list-bio">${user.bio || (user.id === 'akqgKt9WmQRNrpPub9xVKiPKmcn2' ? 'Administrador' : 'Escalador')}</div>
+              <div class="social-list-bio">${user.id === 'akqgKt9WmQRNrpPub9xVKiPKmcn2' ? 'Administrador' : (user.bio || 'Escalador')}</div>
             </div>
             ${!isMe ? `
               <button class="${btnClass}" 
@@ -4285,6 +4527,18 @@ function initAdminPanelContent() {
         </svg>
         Vías
       </button>
+      <button class="admin-tab" data-section="suggestions">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+        </svg>
+        Sugerencias
+      </button>
+      <button class="admin-tab" data-section="spotters">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+        </svg>
+        Spotters
+      </button>
       <button class="admin-tab" data-section="users">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -4383,6 +4637,76 @@ function initAdminPanelContent() {
       </div>
     </section>
 
+    <!-- Sección Sugerencias -->
+    <section class="admin-section" id="admin-section-suggestions">
+      <h1 class="admin-page-title">Sugerencias de Usuarios</h1>
+      <p class="admin-page-desc">Revisa la información sugerida por los usuarios</p>
+
+      <div class="admin-filter-row">
+        <select id="admin-filter-suggestion-status" onchange="loadAdminSuggestions()">
+          <option value="pending">Pendientes</option>
+          <option value="approved">Aprobadas</option>
+          <option value="rejected">Rechazadas</option>
+          <option value="all">Todas</option>
+        </select>
+        <select id="admin-filter-suggestion-field" onchange="loadAdminSuggestions()">
+          <option value="all">Todos los campos</option>
+          <option value="descripcion">Tipo de escalada</option>
+          <option value="exp1">Express</option>
+          <option value="long1">Metros</option>
+        </select>
+      </div>
+
+      <div id="admin-suggestions-list">
+        <div class="admin-loading">
+          <div class="admin-spinner"></div>
+          <p>Cargando sugerencias...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sección Spotters -->
+    <section class="admin-section" id="admin-section-spotters">
+      <h1 class="admin-page-title">Gestión de Spotters</h1>
+      <p class="admin-page-desc">Revisa las solicitudes de Spotter</p>
+
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <span style="display:flex;align-items:center;gap:8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20" style="color:#f59e0b;">
+              <circle cx="12" cy="12" r="10" stroke-width="2"/>
+              <polyline points="12 6 12 12 16 14" stroke-width="2"/>
+            </svg>
+            Solicitudes Pendientes
+          </span>
+          <span class="admin-badge-pending" id="admin-pending-spotters-count">0</span>
+        </div>
+        <div class="admin-card-body" id="admin-spotter-requests-list">
+          <div class="admin-loading">
+            <div class="admin-spinner"></div>
+            <p>Cargando solicitudes...</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-card" style="margin-top:16px;">
+        <div class="admin-card-header">
+          <span style="display:flex;align-items:center;gap:8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20" style="color:#10b981;">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Spotters Aprobados
+          </span>
+        </div>
+        <div class="admin-card-body" id="admin-approved-spotters-list">
+          <div class="admin-loading">
+            <div class="admin-spinner"></div>
+            <p>Cargando spotters...</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Sección Usuarios -->
     <section class="admin-section" id="admin-section-users">
       <h1 class="admin-page-title">Usuarios</h1>
@@ -4431,6 +4755,9 @@ function initAdminPanelContent() {
   loadAdminRoutes();
   loadAdminUsers();
   loadAdminSchools();
+  loadAdminSuggestions();
+  loadAdminSpotterRequests();
+  loadAdminApprovedSpotters();
 
   adminPanelInitialized = true;
 }
@@ -4754,6 +5081,868 @@ async function exportAdminApprovedRoutes() {
   }
 }
 
+// ================== ADMIN SUGGESTIONS (Mobile) ==================
+let adminSuggestions = [];
+
+async function loadAdminSuggestions() {
+  const listEl = document.getElementById('admin-suggestions-list');
+  if (!listEl) return;
+
+  listEl.innerHTML = '<div class="admin-loading"><div class="admin-spinner"></div><p>Cargando sugerencias...</p></div>';
+
+  try {
+    const db = firebase.firestore();
+    const statusFilter = document.getElementById('admin-filter-suggestion-status')?.value || 'pending';
+    const fieldFilter = document.getElementById('admin-filter-suggestion-field')?.value || 'all';
+
+    let query = db.collection('routeSuggestions');
+
+    if (statusFilter !== 'all') {
+      query = query.where('status', '==', statusFilter);
+    }
+
+    if (fieldFilter !== 'all') {
+      query = query.where('field', '==', fieldFilter);
+    }
+
+    query = query.orderBy('createdAt', 'desc');
+
+    const snapshot = await query.get();
+    adminSuggestions = [];
+    snapshot.forEach(doc => {
+      adminSuggestions.push({ id: doc.id, ...doc.data() });
+    });
+
+    renderAdminSuggestions();
+
+  } catch (error) {
+    console.error('Error loading suggestions:', error);
+    listEl.innerHTML = '<div class="admin-empty-state"><p>Error al cargar sugerencias</p></div>';
+  }
+}
+
+function renderAdminSuggestions() {
+  const listEl = document.getElementById('admin-suggestions-list');
+  if (!listEl) return;
+
+  if (adminSuggestions.length === 0) {
+    listEl.innerHTML = `
+      <div class="admin-empty-state">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p>No hay sugerencias</p>
+      </div>
+    `;
+    return;
+  }
+
+  const fieldLabels = {
+    descripcion: 'Tipo de escalada',
+    exp1: 'Express',
+    long1: 'Metros'
+  };
+
+  const fieldUnits = {
+    descripcion: '',
+    exp1: ' express',
+    long1: ' m'
+  };
+
+  listEl.innerHTML = adminSuggestions.map(suggestion => {
+    const date = suggestion.createdAt?.toDate?.() ?
+      suggestion.createdAt.toDate().toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+      }) : '';
+
+    const userInitial = suggestion.userEmail ?
+      suggestion.userEmail.charAt(0).toUpperCase() : '?';
+
+    const fieldLabel = fieldLabels[suggestion.field] || suggestion.field;
+    const fieldUnit = fieldUnits[suggestion.field] || '';
+    const isPending = suggestion.status === 'pending';
+
+    return `
+      <div class="admin-suggestion-card ${suggestion.status}" data-id="${suggestion.id}">
+        <div class="admin-suggestion-header">
+          <div class="admin-suggestion-route">${escapeHtmlAdmin(suggestion.routeName || 'Vía')}</div>
+          <span class="admin-suggestion-badge ${suggestion.field}">${fieldLabel}</span>
+        </div>
+        <div class="admin-suggestion-school">${escapeHtmlAdmin(suggestion.schoolId || '')}</div>
+        <div class="admin-suggestion-value">
+          <span class="admin-suggestion-label">Valor sugerido:</span>
+          ${isPending ? `
+            <input type="${suggestion.field === 'descripcion' ? 'text' : 'number'}"
+                   class="admin-suggestion-input"
+                   id="admin-sug-input-${suggestion.id}"
+                   value="${escapeHtmlAdmin(suggestion.suggestedValue || '')}">
+          ` : `
+            <span class="admin-suggestion-text">${escapeHtmlAdmin(suggestion.suggestedValue || '')}${fieldUnit}</span>
+          `}
+        </div>
+        <div class="admin-suggestion-meta">
+          <div class="admin-suggestion-user">
+            <span class="admin-suggestion-avatar">${userInitial}</span>
+            <span>${escapeHtmlAdmin(suggestion.userEmail || 'Anónimo')}</span>
+          </div>
+          <span>${date}</span>
+        </div>
+        ${isPending ? `
+          <div class="admin-suggestion-actions">
+            <button class="admin-btn admin-btn-success" onclick="approveAdminSuggestion('${suggestion.id}')">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+              Aprobar
+            </button>
+            <button class="admin-btn admin-btn-danger" onclick="rejectAdminSuggestion('${suggestion.id}')">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Rechazar
+            </button>
+          </div>
+        ` : `
+          <div class="admin-suggestion-status">
+            <span class="admin-status-badge ${suggestion.status}">
+              ${suggestion.status === 'approved' ? 'Aprobada' : 'Rechazada'}
+            </span>
+          </div>
+        `}
+      </div>
+    `;
+  }).join('');
+}
+
+async function approveAdminSuggestion(suggestionId) {
+  const suggestion = adminSuggestions.find(s => s.id === suggestionId);
+  if (!suggestion) return;
+
+  const inputEl = document.getElementById(`admin-sug-input-${suggestionId}`);
+  const finalValue = inputEl ? inputEl.value.trim() : suggestion.suggestedValue;
+
+  if (!finalValue) {
+    showToast('El valor no puede estar vacío', 'error');
+    return;
+  }
+
+  if (!confirm(`¿Aprobar esta sugerencia?\n\nVía: ${suggestion.routeName}\nCampo: ${suggestion.field}\nValor: ${finalValue}`)) {
+    return;
+  }
+
+  try {
+    const db = firebase.firestore();
+    const currentUserEmail = firebase.auth().currentUser?.email;
+
+    await db.collection('routeSuggestions').doc(suggestionId).update({
+      status: 'approved',
+      approvedValue: finalValue,
+      approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      approvedBy: currentUserEmail
+    });
+
+    // Actualizar la vía en pending_routes
+    const routeQuery = await db.collection('pending_routes')
+      .where('nombre', '==', suggestion.routeName)
+      .where('schoolId', '==', suggestion.schoolId)
+      .get();
+
+    if (!routeQuery.empty) {
+      const routeDoc = routeQuery.docs[0];
+      const updateData = {};
+      updateData[suggestion.field] = finalValue;
+      await db.collection('pending_routes').doc(routeDoc.id).update(updateData);
+    }
+
+    showToast('Sugerencia aprobada', 'success');
+    loadAdminSuggestions();
+
+  } catch (error) {
+    console.error('Error approving suggestion:', error);
+    showToast('Error al aprobar', 'error');
+  }
+}
+
+async function rejectAdminSuggestion(suggestionId) {
+  const suggestion = adminSuggestions.find(s => s.id === suggestionId);
+  if (!suggestion) return;
+
+  if (!confirm(`¿Rechazar esta sugerencia?\n\nVía: ${suggestion.routeName}`)) {
+    return;
+  }
+
+  try {
+    const db = firebase.firestore();
+    const currentUserEmail = firebase.auth().currentUser?.email;
+
+    await db.collection('routeSuggestions').doc(suggestionId).update({
+      status: 'rejected',
+      rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      rejectedBy: currentUserEmail
+    });
+
+    showToast('Sugerencia rechazada', 'info');
+    loadAdminSuggestions();
+
+  } catch (error) {
+    console.error('Error rejecting suggestion:', error);
+    showToast('Error al rechazar', 'error');
+  }
+}
+
+// ================== ADMIN SPOTTERS (Mobile) ==================
+let adminSpotterRequests = [];
+let adminApprovedSpotters = [];
+
+async function loadAdminSpotterRequests() {
+  const listEl = document.getElementById('admin-spotter-requests-list');
+  const countEl = document.getElementById('admin-pending-spotters-count');
+  if (!listEl) return;
+
+  listEl.innerHTML = '<div class="admin-loading"><div class="admin-spinner"></div><p>Cargando solicitudes...</p></div>';
+
+  try {
+    const db = firebase.firestore();
+    const snapshot = await db.collection('spotter_requests')
+      .where('status', '==', 'pending')
+      .get();
+
+    adminSpotterRequests = [];
+    snapshot.forEach(doc => {
+      adminSpotterRequests.push({ id: doc.id, ...doc.data() });
+    });
+
+    // Ordenar por fecha
+    adminSpotterRequests.sort((a, b) => {
+      const dateA = a.createdAt?.toDate?.() || new Date(0);
+      const dateB = b.createdAt?.toDate?.() || new Date(0);
+      return dateB - dateA;
+    });
+
+    if (countEl) {
+      countEl.textContent = adminSpotterRequests.length;
+    }
+
+    renderAdminSpotterRequests();
+
+  } catch (error) {
+    console.error('Error loading spotter requests:', error);
+    listEl.innerHTML = '<div class="admin-empty-state"><p>Error al cargar solicitudes</p></div>';
+  }
+}
+
+function renderAdminSpotterRequests() {
+  const listEl = document.getElementById('admin-spotter-requests-list');
+  if (!listEl) return;
+
+  if (adminSpotterRequests.length === 0) {
+    listEl.innerHTML = `
+      <div class="admin-empty-state">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p>No hay solicitudes pendientes</p>
+      </div>
+    `;
+    return;
+  }
+
+  listEl.innerHTML = adminSpotterRequests.map(request => {
+    const createdAt = request.createdAt?.toDate?.() ?
+      request.createdAt.toDate().toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }) : '';
+
+    const avatarUrl = request.userPhotoURL ||
+      `https://ui-avatars.com/api/?name=${encodeURIComponent((request.firstname || '') + '+' + (request.lastname || ''))}&background=fbbf24&color=1f2937&size=48`;
+
+    const fullName = `${escapeHtmlAdmin(request.firstname || '')} ${escapeHtmlAdmin(request.lastname || '')}`.trim() || 'Usuario';
+
+    return `
+      <div class="admin-spotter-card" data-id="${request.id}">
+        <div class="admin-spotter-header">
+          <img src="${avatarUrl}" alt="${fullName}" class="admin-spotter-avatar" onerror="this.src='https://ui-avatars.com/api/?name=U&background=fbbf24&color=1f2937&size=48'">
+          <div class="admin-spotter-info">
+            <div class="admin-spotter-name">${fullName}</div>
+            <div class="admin-spotter-email">${escapeHtmlAdmin(request.email || '')}</div>
+            <div class="admin-spotter-date">Solicitado: ${createdAt}</div>
+          </div>
+        </div>
+        ${request.message ? `
+          <div class="admin-spotter-message">
+            <div class="admin-spotter-message-label">Motivación:</div>
+            <div class="admin-spotter-message-text">${escapeHtmlAdmin(request.message)}</div>
+          </div>
+        ` : ''}
+        <div class="admin-spotter-actions">
+          <button class="admin-btn admin-btn-danger" onclick="rejectAdminSpotterRequest('${request.id}')">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Rechazar
+          </button>
+          <button class="admin-btn admin-btn-success" onclick="approveAdminSpotterRequest('${request.id}')">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="16" height="16">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            Aprobar
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function approveAdminSpotterRequest(requestId) {
+  if (!confirm('¿Aprobar esta solicitud de Spotter?')) return;
+
+  try {
+    const db = firebase.firestore();
+    const currentUserId = firebase.auth().currentUser?.uid;
+
+    const requestDoc = await db.collection('spotter_requests').doc(requestId).get();
+    if (!requestDoc.exists) {
+      showToast('Solicitud no encontrada', 'error');
+      return;
+    }
+
+    const requestData = requestDoc.data();
+
+    // Añadir a admins con rol spotter
+    await db.collection('admins').doc(requestData.userId).set({
+      email: requestData.email,
+      role: 'spotter',
+      name: `${requestData.firstname || ''} ${requestData.lastname || ''}`.trim(),
+      addedBy: currentUserId,
+      addedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      approvedFromRequest: requestId
+    });
+
+    // Actualizar estado de la solicitud
+    await db.collection('spotter_requests').doc(requestId).update({
+      status: 'approved',
+      approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      approvedBy: currentUserId
+    });
+
+    showToast('Spotter aprobado', 'success');
+    loadAdminSpotterRequests();
+    loadAdminApprovedSpotters();
+    loadAdminStats();
+
+  } catch (error) {
+    console.error('Error approving spotter:', error);
+    showToast('Error al aprobar', 'error');
+  }
+}
+
+async function rejectAdminSpotterRequest(requestId) {
+  const reason = prompt('Motivo del rechazo (opcional):');
+
+  try {
+    const db = firebase.firestore();
+    const currentUserId = firebase.auth().currentUser?.uid;
+
+    await db.collection('spotter_requests').doc(requestId).update({
+      status: 'rejected',
+      rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      rejectedBy: currentUserId,
+      rejectionReason: reason || ''
+    });
+
+    showToast('Solicitud rechazada', 'info');
+    loadAdminSpotterRequests();
+
+  } catch (error) {
+    console.error('Error rejecting spotter:', error);
+    showToast('Error al rechazar', 'error');
+  }
+}
+
+async function loadAdminApprovedSpotters() {
+  const listEl = document.getElementById('admin-approved-spotters-list');
+  if (!listEl) return;
+
+  listEl.innerHTML = '<div class="admin-loading"><div class="admin-spinner"></div><p>Cargando spotters...</p></div>';
+
+  try {
+    const db = firebase.firestore();
+    const snapshot = await db.collection('admins')
+      .where('role', '==', 'spotter')
+      .get();
+
+    adminApprovedSpotters = [];
+    snapshot.forEach(doc => {
+      adminApprovedSpotters.push({ id: doc.id, ...doc.data() });
+    });
+
+    renderAdminApprovedSpotters();
+
+  } catch (error) {
+    console.error('Error loading approved spotters:', error);
+    listEl.innerHTML = '<div class="admin-empty-state"><p>Error al cargar spotters</p></div>';
+  }
+}
+
+function renderAdminApprovedSpotters() {
+  const listEl = document.getElementById('admin-approved-spotters-list');
+  if (!listEl) return;
+
+  if (adminApprovedSpotters.length === 0) {
+    listEl.innerHTML = `
+      <div class="admin-empty-state">
+        <p>No hay spotters aprobados</p>
+      </div>
+    `;
+    return;
+  }
+
+  listEl.innerHTML = adminApprovedSpotters.map(spotter => {
+    const addedAt = spotter.addedAt?.toDate?.() ?
+      spotter.addedAt.toDate().toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }) : '';
+
+    return `
+      <div class="admin-user-row">
+        <div class="admin-user-info">
+          <div class="admin-user-email">${escapeHtmlAdmin(spotter.email || spotter.name || 'Usuario')}</div>
+          <div class="admin-user-role">Spotter desde ${addedAt}</div>
+        </div>
+        <div class="admin-user-actions">
+          <button onclick="revokeAdminSpotter('${spotter.id}')">Revocar</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function revokeAdminSpotter(spotterId) {
+  if (!confirm('¿Revocar el rol de Spotter a este usuario?')) return;
+
+  try {
+    const db = firebase.firestore();
+
+    // Obtener info del spotter para actualizar la solicitud original
+    const spotterDoc = await db.collection('admins').doc(spotterId).get();
+    const spotterData = spotterDoc.data();
+
+    // Eliminar de admins
+    await db.collection('admins').doc(spotterId).delete();
+
+    // Actualizar la solicitud original si existe
+    if (spotterData?.approvedFromRequest) {
+      await db.collection('spotter_requests').doc(spotterData.approvedFromRequest).update({
+        status: 'revoked',
+        revokedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    showToast('Rol de Spotter revocado', 'info');
+    loadAdminApprovedSpotters();
+    loadAdminStats();
+
+  } catch (error) {
+    console.error('Error revoking spotter:', error);
+    showToast('Error al revocar', 'error');
+  }
+}
+
+function escapeHtmlAdmin(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ================== MENTIONS SYSTEM ==================
+
+// Escape HTML for safe rendering
+function escapeHtmlMention(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Render text with clickable mention links
+function renderTextWithMentions(text, mentions) {
+  if (!text) return '';
+  if (!mentions || mentions.length === 0) {
+    return escapeHtmlMention(text).replace(/\n/g, '<br>');
+  }
+
+  // Recalculate indices for each mention to handle trim/offset issues
+  const recalculated = [];
+  for (const mention of mentions) {
+    if (!mention.uid || !mention.displayName) continue;
+    const mentionStr = '@' + mention.displayName;
+
+    // Check if stored indices are valid
+    const segment = text.slice(mention.startIndex, mention.endIndex);
+    if (segment === mentionStr) {
+      recalculated.push({ ...mention });
+    } else {
+      // Fallback: find the mention string in the text
+      const idx = text.indexOf(mentionStr);
+      if (idx !== -1) {
+        const alreadyClaimed = recalculated.some(
+          rm => idx >= rm.startIndex && idx < rm.endIndex
+        );
+        if (!alreadyClaimed) {
+          recalculated.push({
+            uid: mention.uid,
+            displayName: mention.displayName,
+            startIndex: idx,
+            endIndex: idx + mentionStr.length
+          });
+        }
+      }
+    }
+  }
+
+  if (recalculated.length === 0) {
+    return escapeHtmlMention(text).replace(/\n/g, '<br>');
+  }
+
+  // Sort mentions by startIndex ascending
+  const sorted = recalculated.sort((a, b) => a.startIndex - b.startIndex);
+
+  let result = '';
+  let lastIndex = 0;
+
+  for (const mention of sorted) {
+    if (mention.startIndex < lastIndex || mention.startIndex >= text.length) continue;
+    // Add escaped text before this mention
+    result += escapeHtmlMention(text.slice(lastIndex, mention.startIndex));
+    // Add mention link
+    const mentionText = text.slice(mention.startIndex, mention.endIndex);
+    result += `<span class="mention-link" data-user-id="${escapeHtmlMention(mention.uid)}" onclick="openPublicProfile('${escapeHtmlMention(mention.uid)}')">${escapeHtmlMention(mentionText)}</span>`;
+    lastIndex = mention.endIndex;
+  }
+
+  // Add remaining text
+  result += escapeHtmlMention(text.slice(lastIndex));
+
+  return result.replace(/\n/g, '<br>');
+}
+window.renderTextWithMentions = renderTextWithMentions;
+
+// Validate and recalculate mention indices to match actual text
+// Handles trim offsets and text modifications robustly
+function extractMentionsFromText(text, mentionsList) {
+  if (!mentionsList || mentionsList.length === 0) return [];
+  if (!text) return [];
+
+  const validMentions = [];
+
+  for (const m of mentionsList) {
+    const mentionStr = '@' + m.displayName;
+
+    // 1. Try exact index match first (fast path)
+    const segment = text.slice(m.startIndex, m.endIndex);
+    if (segment === mentionStr) {
+      validMentions.push({ ...m });
+      continue;
+    }
+
+    // 2. Fallback: search for the mention string in the text
+    // This handles cases where .trim() shifted indices
+    const idx = text.indexOf(mentionStr);
+    if (idx !== -1) {
+      // Verify this position isn't already claimed by another valid mention
+      const alreadyClaimed = validMentions.some(
+        vm => idx >= vm.startIndex && idx < vm.endIndex
+      );
+      if (!alreadyClaimed) {
+        validMentions.push({
+          uid: m.uid,
+          displayName: m.displayName,
+          startIndex: idx,
+          endIndex: idx + mentionStr.length
+        });
+      }
+    }
+  }
+
+  return validMentions;
+}
+
+// Send mention notifications to all mentioned users
+async function sendMentionNotifications(mentions, context) {
+  if (!mentions || mentions.length === 0) return;
+
+  const notifiedUids = new Set();
+  for (const mention of mentions) {
+    if (notifiedUids.has(mention.uid)) continue;
+    if (mention.uid === currentUser?.uid) continue; // Don't notify yourself
+    notifiedUids.add(mention.uid);
+
+    const typeText = context.type === 'post' ? 'una publicación' :
+                     context.type === 'comment' ? 'un comentario' :
+                     'una respuesta';
+
+    await createNotification(
+      mention.uid,
+      'mention',
+      `te mencionó en ${typeText}`,
+      { postId: context.postId || '' }
+    );
+  }
+}
+
+// MentionAutocomplete class - attaches to any input or textarea
+class MentionAutocomplete {
+  constructor(inputElement, options = {}) {
+    this.input = inputElement;
+    this.mentions = [];
+    this.dropdown = null;
+    this.searchTimeout = null;
+    this.selectedIndex = -1;
+    this.isOpen = false;
+    this.mentionStart = -1;
+    this.results = [];
+    this.positionBelow = options.positionBelow || false;
+
+    this._init();
+  }
+
+  _init() {
+    // Create dropdown
+    this.dropdown = document.createElement('div');
+    this.dropdown.className = 'mention-dropdown' + (this.positionBelow ? ' mention-dropdown-below' : '');
+
+    // Insert dropdown in the input's parent (which should have position:relative)
+    const parent = this.input.closest('form') || this.input.parentElement;
+    if (parent) {
+      parent.appendChild(this.dropdown);
+    }
+
+    // Bind event listeners
+    this._onInputBound = this._onInput.bind(this);
+    this._onKeyDownBound = this._onKeyDown.bind(this);
+    this._onBlurBound = this._onBlur.bind(this);
+
+    this.input.addEventListener('input', this._onInputBound);
+    this.input.addEventListener('keydown', this._onKeyDownBound);
+    this.input.addEventListener('blur', this._onBlurBound);
+
+    // Store reference on the element
+    this.input._mentionAutocomplete = this;
+  }
+
+  _onInput() {
+    const cursorPos = this.input.selectionStart;
+    const text = this.input.value;
+
+    // Find the last @ before cursor that isn't preceded by a word char
+    let atIndex = -1;
+    for (let i = cursorPos - 1; i >= 0; i--) {
+      if (text[i] === '@') {
+        // Check it's at start or preceded by whitespace
+        if (i === 0 || /\s/.test(text[i - 1])) {
+          atIndex = i;
+        }
+        break;
+      }
+      // If we hit whitespace before finding @, stop
+      if (/\s/.test(text[i]) && i < cursorPos - 1) break;
+    }
+
+    if (atIndex === -1) {
+      this._hide();
+      return;
+    }
+
+    const query = text.slice(atIndex + 1, cursorPos);
+
+    // Need at least 1 character to search
+    if (query.length < 1) {
+      this._hide();
+      return;
+    }
+
+    this.mentionStart = atIndex;
+
+    // Debounce search
+    clearTimeout(this.searchTimeout);
+    this.searchTimeout = setTimeout(() => {
+      this._searchUsers(query);
+    }, 300);
+  }
+
+  _onKeyDown(e) {
+    if (!this.isOpen) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this.selectedIndex = Math.min(this.selectedIndex + 1, this.results.length - 1);
+      this._updateSelection();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+      this._updateSelection();
+    } else if (e.key === 'Enter' && this.selectedIndex >= 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      this._selectUser(this.results[this.selectedIndex]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      this._hide();
+    }
+  }
+
+  _onBlur() {
+    // Delay hide to allow click on dropdown items
+    setTimeout(() => {
+      this._hide();
+    }, 200);
+  }
+
+  async _searchUsers(query) {
+    this.dropdown.innerHTML = '<div class="mention-dropdown-loading">Buscando...</div>';
+    this._show();
+
+    try {
+      const users = await searchUsersGlobal(query);
+      this.results = users || [];
+
+      if (this.results.length === 0) {
+        this.dropdown.innerHTML = '<div class="mention-dropdown-empty">Sin resultados</div>';
+        return;
+      }
+
+      this.selectedIndex = 0;
+      this._renderResults();
+    } catch (error) {
+      console.error('Error searching users for mention:', error);
+      this._hide();
+    }
+  }
+
+  _renderResults() {
+    const html = this.results.map((user, index) => {
+      const photoUrl = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=10b981&color=fff&size=32`;
+      const name = escapeHtmlMention(user.displayName || 'Usuario');
+      return `
+        <div class="mention-dropdown-item ${index === this.selectedIndex ? 'selected' : ''}" data-index="${index}">
+          <img src="${photoUrl}" alt="${name}" class="mention-dropdown-avatar" referrerPolicy="no-referrer" onerror="this.src='https://ui-avatars.com/api/?name=U&background=10b981&color=fff&size=32'; this.onerror=null;">
+          <div class="mention-dropdown-info">
+            <span class="mention-dropdown-name">${name}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    this.dropdown.innerHTML = html;
+
+    // Attach click handlers
+    this.dropdown.querySelectorAll('.mention-dropdown-item').forEach(item => {
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // Prevent blur
+        const idx = parseInt(item.dataset.index);
+        this._selectUser(this.results[idx]);
+      });
+    });
+  }
+
+  _updateSelection() {
+    this.dropdown.querySelectorAll('.mention-dropdown-item').forEach((item, i) => {
+      item.classList.toggle('selected', i === this.selectedIndex);
+    });
+
+    // Scroll selected item into view
+    const selected = this.dropdown.querySelector('.mention-dropdown-item.selected');
+    if (selected) {
+      selected.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  _selectUser(user) {
+    if (!user) return;
+
+    const text = this.input.value;
+    const cursorPos = this.input.selectionStart;
+    const displayName = user.displayName || 'Usuario';
+
+    // Replace @query with @displayName
+    const before = text.slice(0, this.mentionStart);
+    const after = text.slice(cursorPos);
+    const mentionText = '@' + displayName;
+    const newText = before + mentionText + ' ' + after;
+
+    this.input.value = newText;
+
+    // Set cursor position after the mention + space
+    const newCursorPos = this.mentionStart + mentionText.length + 1;
+    this.input.setSelectionRange(newCursorPos, newCursorPos);
+
+    // Recalculate indices for existing mentions that come after insertion
+    const insertedLength = (mentionText + ' ').length;
+    const removedLength = cursorPos - this.mentionStart;
+    const delta = insertedLength - removedLength;
+
+    this.mentions.forEach(m => {
+      if (m.startIndex >= this.mentionStart) {
+        m.startIndex += delta;
+        m.endIndex += delta;
+      }
+    });
+
+    // Store mention
+    this.mentions.push({
+      uid: user.id,
+      displayName: displayName,
+      startIndex: this.mentionStart,
+      endIndex: this.mentionStart + mentionText.length
+    });
+
+    this._hide();
+
+    // Trigger input event for any listeners (like char count)
+    this.input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  _show() {
+    this.isOpen = true;
+    this.dropdown.classList.add('active');
+  }
+
+  _hide() {
+    this.isOpen = false;
+    this.selectedIndex = -1;
+    this.results = [];
+    this.dropdown.classList.remove('active');
+    clearTimeout(this.searchTimeout);
+  }
+
+  getMentions() {
+    return [...this.mentions];
+  }
+
+  clearMentions() {
+    this.mentions = [];
+  }
+
+  destroy() {
+    this.input.removeEventListener('input', this._onInputBound);
+    this.input.removeEventListener('keydown', this._onKeyDownBound);
+    this.input.removeEventListener('blur', this._onBlurBound);
+    if (this.dropdown && this.dropdown.parentNode) {
+      this.dropdown.parentNode.removeChild(this.dropdown);
+    }
+    this.input._mentionAutocomplete = null;
+  }
+}
+window.MentionAutocomplete = MentionAutocomplete;
+
 // ================== CREATE POST ==================
 let postData = {
   text: '',
@@ -4762,6 +5951,7 @@ let postData = {
   ascent: null,
   location: null
 };
+let postMentionAutocomplete = null;
 
 function initCreatePost() {
   const createBtn = document.getElementById('nav-create-btn');
@@ -4823,6 +6013,11 @@ function initCreatePost() {
       charCount.style.color = '#6b7280';
     }
   });
+
+  // Attach mention autocomplete to post textarea (dropdown appears below)
+  if (textarea && !textarea._mentionAutocomplete) {
+    postMentionAutocomplete = new MentionAutocomplete(textarea, { positionBelow: true });
+  }
 
   // Photo button
   photoBtn?.addEventListener('click', () => {
@@ -5160,6 +6355,7 @@ function resetPostData() {
     ascent: null,
     location: null
   };
+  if (postMentionAutocomplete) postMentionAutocomplete.clearMentions();
   document.getElementById('create-post-text').value = '';
   document.getElementById('create-post-char-count-num').textContent = '0';
   document.getElementById('create-post-char-count-num').style.color = '#6b7280';
@@ -5366,6 +6562,13 @@ async function submitPost() {
     // Only add optional fields if they have values
     if (postData.text.trim()) {
       postDataToSave.content = postData.text.trim();
+      // Validate and store mentions
+      if (postMentionAutocomplete) {
+        const validMentions = extractMentionsFromText(postData.text.trim(), postMentionAutocomplete.getMentions());
+        if (validMentions.length > 0) {
+          postDataToSave.mentions = validMentions;
+        }
+      }
     }
     if (photoUrls.length > 0) {
       postDataToSave.photos = photoUrls;
@@ -5383,7 +6586,12 @@ async function submitPost() {
     log('Saving post data:', postDataToSave);
     log('Current user UID:', currentUser.uid);
 
-    await db.collection('posts').add(postDataToSave);
+    const docRef = await db.collection('posts').add(postDataToSave);
+
+    // Send mention notifications
+    if (postDataToSave.mentions && postDataToSave.mentions.length > 0) {
+      sendMentionNotifications(postDataToSave.mentions, { type: 'post', postId: docRef.id });
+    }
 
     showToast('Publicación creada exitosamente', 'success');
     closeCreatePostModal();
@@ -5697,7 +6905,7 @@ function renderPostCard(post, container) {
         ${post.title ? `<h2 class="feed-text-title">${post.title}</h2>` : ''}
         ${textContent ? `
           <div class="feed-text-body-wrapper">
-            <p class="feed-text-body" data-post-id="${post.id || ''}">${textContent.replace(/\n/g, '<br>')}</p>
+            <p class="feed-text-body" data-post-id="${post.id || ''}">${renderTextWithMentions(textContent, post.mentions)}</p>
             <div class="feed-text-edit-wrapper hidden" data-post-id="${post.id || ''}">
               <textarea class="feed-text-edit-input" data-post-id="${post.id || ''}" rows="4">${textContent}</textarea>
               <div class="feed-text-edit-actions">
@@ -6071,9 +7279,14 @@ async function handleFeedComment(postId, button) {
       commentsList.dataset.loaded = 'true';
     }
 
-    // Focus on input
+    // Focus on input and attach mention autocomplete
     const input = commentsSection.querySelector('.feed-comment-input');
-    if (input) input.focus();
+    if (input) {
+      if (!input._mentionAutocomplete) {
+        new MentionAutocomplete(input);
+      }
+      input.focus();
+    }
   } else {
     // Hide comments section
     commentsSection.classList.add('hidden');
@@ -6153,7 +7366,7 @@ async function loadInlineComments(postId, container) {
               ${menuButton}
             </div>
             <div class="feed-comment-text-wrapper">
-              <p class="feed-comment-text" data-comment-id="${doc.id}">${comment.text || ''}</p>
+              <p class="feed-comment-text" data-comment-id="${doc.id}">${renderTextWithMentions(comment.text || '', comment.mentions)}</p>
               <div class="feed-comment-edit-wrapper hidden" data-comment-id="${doc.id}">
                 <textarea class="feed-comment-edit-input" data-comment-id="${doc.id}" rows="2">${comment.text || ''}</textarea>
                 <div class="feed-comment-edit-actions">
@@ -6504,7 +7717,13 @@ function toggleReplyForm(commentId, container) {
     form.classList.remove('hidden');
     const input = form.querySelector('.feed-comment-reply-input');
     if (input) {
-      input.value = ''; // Input vacÃ­o, sin pre-llenar
+      input.value = '';
+      // Attach mention autocomplete if not already attached
+      if (!input._mentionAutocomplete) {
+        new MentionAutocomplete(input);
+      } else {
+        input._mentionAutocomplete.clearMentions();
+      }
       input.focus();
     }
   }
@@ -6543,6 +7762,12 @@ async function handleSubmitReply(postId, commentId, text, container) {
       cleanText = cleanText.replace(mentionPattern, '').trim();
     }
 
+    // Extract mentions from autocomplete
+    const replyInput = form?.querySelector('.feed-comment-reply-input');
+    const mentionAC = replyInput?._mentionAutocomplete;
+    const mentions = mentionAC ? mentionAC.getMentions() : [];
+    const validMentions = extractMentionsFromText(cleanText, mentions);
+
     // Crear objeto para guardar en Firestore
     const replyData = {
       text: cleanText,
@@ -6552,6 +7777,9 @@ async function handleSubmitReply(postId, commentId, text, container) {
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       likes: []
     };
+    if (validMentions.length > 0) {
+      replyData.mentions = validMentions;
+    }
 
     // AÃ±adir replyToUserName si existe
     if (replyToUserName) {
@@ -6568,8 +7796,9 @@ async function handleSubmitReply(postId, commentId, text, container) {
       repliesCount: firebase.firestore.FieldValue.increment(1)
     });
 
-    // Hide reply form (reutilizar la variable form ya declarada)
+    // Hide reply form and clear mentions
     form?.classList.add('hidden');
+    if (mentionAC) mentionAC.clearMentions();
 
     // Show replies container and load replies
     const repliesContainer = container.querySelector(`.feed-comment-replies[data-comment-id="${commentId}"]`);
@@ -6609,6 +7838,11 @@ async function handleSubmitReply(postId, commentId, text, container) {
     }
 
     showToast('Respuesta publicada', 'success');
+
+    // Send mention notifications
+    if (validMentions.length > 0) {
+      sendMentionNotifications(validMentions, { type: 'reply', postId });
+    }
   } catch (error) {
     console.error('Error submitting reply:', error);
     showToast('Error al publicar respuesta', 'error');
@@ -6708,7 +7942,7 @@ async function loadReplies(postId, commentId, container) {
                 </div>
               ` : ''}
             </div>
-            <p class="feed-comment-text">${reply.text || ''}</p>
+            <p class="feed-comment-text">${renderTextWithMentions(reply.text || '', reply.mentions)}</p>
             <div class="feed-comment-actions">
               <button class="feed-comment-action-btn feed-reply-like-btn ${isLiked ? 'liked' : ''}"
                       data-reply-id="${doc.id}"
@@ -6920,8 +8154,13 @@ function toggleReplyToReplyForm(replyId, parentId, username, container) {
     form.classList.remove('hidden');
     const input = form.querySelector('.feed-comment-reply-input');
     if (input) {
-      // Input vacÃ­o, sin pre-llenar
       input.value = '';
+      // Attach mention autocomplete if not already attached
+      if (!input._mentionAutocomplete) {
+        new MentionAutocomplete(input);
+      } else {
+        input._mentionAutocomplete.clearMentions();
+      }
       input.focus();
     }
   }
@@ -6960,6 +8199,12 @@ async function handleSubmitReplyToReply(postId, parentCommentId, replyToId, text
       cleanText = cleanText.replace(mentionPattern, '').trim();
     }
 
+    // Extract mentions from autocomplete
+    const replyInput = form?.querySelector('.feed-comment-reply-input');
+    const mentionAC = replyInput?._mentionAutocomplete;
+    const mentions = mentionAC ? mentionAC.getMentions() : [];
+    const validMentions = extractMentionsFromText(cleanText, mentions);
+
     // Crear objeto para guardar en Firestore
     const replyData = {
       text: cleanText,
@@ -6970,6 +8215,9 @@ async function handleSubmitReplyToReply(postId, parentCommentId, replyToId, text
       likes: [],
       replyToId: replyToId // Reference to the reply being responded to
     };
+    if (validMentions.length > 0) {
+      replyData.mentions = validMentions;
+    }
 
     // AÃ±adir replyToUserName si existe
     if (replyToUserName) {
@@ -6986,19 +8234,25 @@ async function handleSubmitReplyToReply(postId, parentCommentId, replyToId, text
       repliesCount: firebase.firestore.FieldValue.increment(1)
     });
 
-    // Hide the reply form (reutilizar la variable form ya declarada)
+    // Hide the reply form and clear mentions
     if (form) {
       form.classList.add('hidden');
       const input = form.querySelector('.feed-comment-reply-input');
       if (input) {
         input.value = '';
       }
+      if (mentionAC) mentionAC.clearMentions();
     }
 
     // Reload replies to show the new one
     await loadReplies(postId, parentCommentId, container);
 
     showToast('Respuesta publicada', 'success');
+
+    // Send mention notifications
+    if (validMentions.length > 0) {
+      sendMentionNotifications(validMentions, { type: 'reply', postId });
+    }
   } catch (error) {
     console.error('Error submitting reply to reply:', error);
     showToast('Error al publicar respuesta', 'error');
@@ -7420,23 +8674,35 @@ async function handleInlineCommentSubmit(postId, form) {
     // Disable form while submitting
     input.disabled = true;
 
-    // Add comment to Firestore subcollection
-    await db.collection('posts').doc(postId).collection('comments').add({
+    // Extract mentions from autocomplete
+    const mentionAC = input?._mentionAutocomplete;
+    const mentions = mentionAC ? mentionAC.getMentions() : [];
+    const validMentions = extractMentionsFromText(text, mentions);
+
+    // Build comment data
+    const commentData = {
       userId: currentUser.uid,
       userName: currentUser.displayName || 'Usuario',
       userPhoto: currentUser.photoURL || '',
       text: text,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    };
+    if (validMentions.length > 0) {
+      commentData.mentions = validMentions;
+    }
+
+    // Add comment to Firestore subcollection
+    await db.collection('posts').doc(postId).collection('comments').add(commentData);
 
     // Atomically increment commentsCount in the parent post document
     await db.collection('posts').doc(postId).update({
       commentsCount: firebase.firestore.FieldValue.increment(1)
     });
 
-    // Clear input
+    // Clear input and mentions
     input.value = '';
     input.disabled = false;
+    if (mentionAC) mentionAC.clearMentions();
 
     // Reload comments
     const commentsList = form.parentElement.querySelector('.feed-comments-list');
@@ -7459,6 +8725,11 @@ async function handleInlineCommentSubmit(postId, form) {
     // Create notification for post author
     if (postData && postData.userId && postData.userId !== currentUser.uid) {
       createNotification(postData.userId, 'comment', `comentó en tu publicación`, { postId });
+    }
+
+    // Send mention notifications
+    if (validMentions.length > 0) {
+      sendMentionNotifications(validMentions, { type: 'comment', postId });
     }
 
   } catch (error) {
@@ -7839,7 +9110,7 @@ function renderPostInModal(post, container) {
     if (post.content) {
       contentHTML += `
         <div class="feed-text-content" style="padding: 16px;">
-          <p class="feed-text-body">${post.content.replace(/\n/g, '<br>')}</p>
+          <p class="feed-text-body">${renderTextWithMentions(post.content, post.mentions)}</p>
         </div>
       `;
     }
@@ -7853,7 +9124,7 @@ function renderPostInModal(post, container) {
     if (post.content) {
       contentHTML += `
         <div class="feed-text-content" style="padding: 16px;">
-          <p class="feed-text-body">${post.content.replace(/\n/g, '<br>')}</p>
+          <p class="feed-text-body">${renderTextWithMentions(post.content, post.mentions)}</p>
         </div>
       `;
     }
@@ -7861,7 +9132,7 @@ function renderPostInModal(post, container) {
     contentHTML = `
       <div class="feed-text-content" style="padding: 24px;">
         ${post.title ? `<h3 class="feed-text-title" style="margin: 0 0 12px; font-size: 20px; font-weight: 700;">${post.title}</h3>` : ''}
-        <p class="feed-text-body" style="margin: 0; font-size: 16px; line-height: 1.6; white-space: pre-wrap;">${(post.content || '').replace(/\n/g, '<br>')}</p>
+        <p class="feed-text-body" style="margin: 0; font-size: 16px; line-height: 1.6; white-space: pre-wrap;">${renderTextWithMentions(post.content || '', post.mentions)}</p>
       </div>
     `;
   }

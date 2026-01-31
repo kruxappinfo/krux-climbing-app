@@ -422,6 +422,13 @@ function getSchoolAtCurrentPosition() {
   let closestSchool = null;
   let closestDistance = Infinity;
 
+  // Umbral de proximidad dinámico basado en el zoom
+  // A zoom 12: threshold más grande (~5km) para detectar escuelas desde lejos
+  // A zoom 16+: threshold más pequeño (~1km) para precisión
+  const baseThreshold = 0.05; // ~5km a zoom bajo
+  const zoomFactor = Math.max(0.2, 1 - (zoom - MIN_ZOOM_FOR_AUTO_LOAD) * 0.1);
+  const threshold = baseThreshold * zoomFactor;
+
   // Verificar proximidad a cada escuela configurada
   for (const schoolId in MAPLIBRE_SCHOOLS) {
     const school = MAPLIBRE_SCHOOLS[schoolId];
@@ -432,15 +439,13 @@ function getSchoolAtCurrentPosition() {
     const dLat = Math.abs(center.lat - schoolCenter[1]);
     const distance = Math.sqrt(dLng * dLng + dLat * dLat);
 
-    // Umbral de proximidad (~2km aprox dependiendo de latitud)
-    const threshold = 0.02;
-
-    if (dLng < threshold && dLat < threshold && distance < closestDistance) {
+    if (distance < threshold && distance < closestDistance) {
       closestSchool = schoolId;
       closestDistance = distance;
     }
   }
 
+  console.log(`[AutoLoad] Zoom: ${zoom.toFixed(1)}, Threshold: ${threshold.toFixed(4)}, Escuela cercana: ${closestSchool || 'ninguna'}`);
   return closestSchool;
 }
 
@@ -951,6 +956,12 @@ function onMapLoad() {
 
   // Cargar icono de parking
   loadParkingIcon();
+
+  // Cargar icono de tick para vías completadas
+  loadAscentTickIcon();
+
+  // Configurar actualización de ticks de ascensos
+  setupAscentTicksUpdater();
 
   // Cargar markers de escuelas (vista general)
   loadSchoolMarkers();
@@ -1638,8 +1649,8 @@ async function mlLoadGeoJSONLayer(layerId, url, type, paint, minzoom = 0, layout
  * Limpia las capas de la escuela actual
  */
 function mlClearSchoolLayers() {
-  const layerIds = ['vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer'];
-  const sourceIds = ['vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source'];
+  const layerIds = ['vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'ascent-ticks-layer'];
+  const sourceIds = ['vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'ascent-ticks-source'];
 
   layerIds.forEach(id => {
     if (mlMap.getLayer(id)) {
@@ -1714,6 +1725,16 @@ async function showRoutePopup(props, coords) {
     hasDrawing = await hasRouteDrawing(schoolId, sectorName, routeName);
   }
 
+  // Verificar si el usuario ya tiene un ascenso registrado en esta vía
+  let hasAscent = false;
+  let ascentInfo = null;
+  if (typeof hasUserAscent === 'function') {
+    hasAscent = hasUserAscent(schoolId, routeName);
+    if (hasAscent && typeof getUserAscentInfo === 'function') {
+      ascentInfo = getUserAscentInfo(schoolId, routeName);
+    }
+  }
+
   // Guardar datos de la vía actual para las funciones de los botones
   mlCurrentRouteGrade = grade;
   mlCurrentRouteSector = sectorName;
@@ -1732,37 +1753,88 @@ async function showRoutePopup(props, coords) {
 
   const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 
+  // Icono de check para vía completada (más pequeño, para el header)
+  const iconAscentCheck = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+  // Calcular aleje si hay datos válidos (sumamos +1 express para la reunión)
+  const alejeData = (props.long1 && props.exp1 && parseFloat(props.long1) > 0 && parseFloat(props.exp1) > 0) ? (() => {
+    const metros = parseFloat(props.long1);
+    const express = parseFloat(props.exp1) + 1; // +1 para contar la reunión
+    const aleje = metros / express;
+
+    // Determinar color y posición
+    let alejePosition;
+    if (aleje <= 2) {
+      alejePosition = ((aleje - 1) / 1) * 33.33; // 1-2 ocupa primer tercio
+    } else if (aleje <= 3) {
+      alejePosition = 33.33 + ((aleje - 2) / 1) * 33.33; // 2-3 ocupa segundo tercio
+    } else {
+      alejePosition = 66.66 + Math.min(((aleje - 3) / 2) * 33.33, 33.33); // 3-5+ ocupa último tercio
+    }
+    alejePosition = Math.max(0, Math.min(100, alejePosition));
+
+    return { aleje, alejePosition };
+  })() : null;
+
   const html = `
     <div class="ml-route-popup-new">
-      <!-- Header: Nombre + Grado -->
+      <!-- Header: Nombre + Grado + Check si completada -->
       <div class="ml-route-header">
+        ${hasAscent ? `<span class="ml-route-ascent-check" title="Ya has encadenado esta vía">${iconAscentCheck}</span>` : ''}
         <span class="ml-route-name">${routeName}</span>
         <span class="ml-route-grade" style="background-color: ${gradeColor}">${grade}</span>
       </div>
 
       <!-- Info items con iconos -->
       <div class="ml-route-info">
-        ${props.descripcion ? `
-          <div class="ml-route-item">
-            <span class="ml-route-icon">${iconClimber}</span>
+        <div class="ml-route-item ${!props.descripcion ? 'ml-route-item-missing' : ''}">
+          <span class="ml-route-icon">${iconClimber}</span>
+          ${props.descripcion ? `
             <span class="ml-route-text">${props.descripcion}</span>
-          </div>
-        ` : ''}
-        
-        ${props.exp1 ? `
-          <div class="ml-route-item">
-            <span class="ml-route-icon">${iconExpress}</span>
+          ` : `
+            <span class="ml-route-text ml-route-contribute" onclick="mlContributeField('${encodedName}', 'descripcion', '${schoolId}')">
+              ¿Qué tipo de escalada es?
+            </span>
+          `}
+        </div>
+
+        <div class="ml-route-item ${!props.exp1 ? 'ml-route-item-missing' : ''}">
+          <span class="ml-route-icon">${iconExpress}</span>
+          ${props.exp1 ? `
             <span class="ml-route-text">${props.exp1} express</span>
-          </div>
-        ` : ''}
-        
-        ${props.long1 ? `
-          <div class="ml-route-item">
-            <span class="ml-route-icon">${iconRope}</span>
+          ` : `
+            <span class="ml-route-text ml-route-contribute" onclick="mlContributeField('${encodedName}', 'exp1', '${schoolId}')">
+              ¿Cuántos express tiene?
+            </span>
+          `}
+        </div>
+
+        <div class="ml-route-item ${!props.long1 ? 'ml-route-item-missing' : ''}">
+          <span class="ml-route-icon">${iconRope}</span>
+          ${props.long1 ? `
             <span class="ml-route-text">${props.long1} mts</span>
-          </div>
-        ` : ''}
+          ` : `
+            <span class="ml-route-text ml-route-contribute" onclick="mlContributeField('${encodedName}', 'long1', '${schoolId}')">
+              ¿Cuántos metros tiene?
+            </span>
+          `}
+        </div>
       </div>
+
+      <!-- Gráfica de Aleje (solo si hay metros y express válidos) -->
+      ${alejeData ? `
+        <div class="ml-route-aleje">
+          <span class="ml-route-aleje-label">Aleje</span>
+          <div class="ml-route-aleje-bar">
+            <div class="ml-route-aleje-segment ml-route-aleje-green"></div>
+            <div class="ml-route-aleje-segment ml-route-aleje-yellow"></div>
+            <div class="ml-route-aleje-segment ml-route-aleje-red"></div>
+            <div class="ml-route-aleje-marker" style="left: ${alejeData.alejePosition}%;">
+              <div class="ml-route-aleje-line"></div>
+            </div>
+          </div>
+        </div>
+      ` : ''}
 
       <!-- Botonera -->
       <div class="ml-route-actions">
@@ -2266,6 +2338,153 @@ function loadParkingIcon() {
     }
   };
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgIcon);
+}
+
+/**
+ * Carga icono de tick para vías completadas
+ */
+function loadAscentTickIcon() {
+  if (!mlMap) return;
+
+  // Crear icono SVG de tick minimalista (solo check con contorno blanco, sin fondo)
+  const svgIcon = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+      <polyline points="3 8 6.5 11.5 13 4.5" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <polyline points="3 8 6.5 11.5 13 4.5" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+
+  const img = new Image(16, 16);
+  img.onload = () => {
+    if (!mlMap.hasImage('ascent-tick-icon')) {
+      mlMap.addImage('ascent-tick-icon', img);
+    }
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgIcon);
+}
+
+// ============================================
+// TICKS DE VÍAS COMPLETADAS
+// ============================================
+
+/**
+ * Actualiza la capa de ticks para mostrar vías completadas
+ * Esta función obtiene las vías visibles y marca las que tienen ascenso
+ */
+function updateAscentTicksLayer() {
+  if (!mlMap || !mlCurrentSchool) return;
+
+  // Verificar que existe la función hasUserAscent
+  if (typeof hasUserAscent !== 'function') return;
+
+  // Asegurar que el icono está cargado
+  if (!mlMap.hasImage('ascent-tick-icon')) {
+    loadAscentTickIcon();
+  }
+
+  // Obtener todas las vías de la fuente (vector tiles o GeoJSON)
+  const viasSourceId = mlMap.getSource('vias-source') ? 'vias-source' : 'vias-geojson';
+
+  // Consultar features visibles de la capa de vías
+  const viasFeatures = mlMap.querySourceFeatures(viasSourceId, {
+    sourceLayer: mlMap.getSource('vias-source') ? 'vias' : undefined
+  });
+
+  if (!viasFeatures || viasFeatures.length === 0) return;
+
+  // Filtrar vías que tienen ascenso del usuario
+  const completedRoutes = [];
+  const seenRoutes = new Set(); // Evitar duplicados
+
+  viasFeatures.forEach(feature => {
+    const routeName = feature.properties?.nombre;
+    if (!routeName || seenRoutes.has(routeName)) return;
+
+    if (hasUserAscent(mlCurrentSchool, routeName)) {
+      seenRoutes.add(routeName);
+
+      // Obtener coordenadas del punto
+      let coords;
+      if (feature.geometry.type === 'Point') {
+        coords = feature.geometry.coordinates;
+      }
+
+      if (coords) {
+        completedRoutes.push({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: coords
+          },
+          properties: {
+            nombre: routeName
+          }
+        });
+      }
+    }
+  });
+
+  // Crear/actualizar fuente GeoJSON para los ticks
+  const ticksGeoJSON = {
+    type: 'FeatureCollection',
+    features: completedRoutes
+  };
+
+  if (mlMap.getSource('ascent-ticks-source')) {
+    // Actualizar fuente existente
+    mlMap.getSource('ascent-ticks-source').setData(ticksGeoJSON);
+  } else {
+    // Crear nueva fuente y capa
+    mlMap.addSource('ascent-ticks-source', {
+      type: 'geojson',
+      data: ticksGeoJSON
+    });
+
+    // Obtener el minzoom de las vías para que los ticks desaparezcan al mismo nivel
+    const viasMinZoom = mlCurrentSchool?.zoomLevels?.vias || 17;
+
+    mlMap.addLayer({
+      id: 'ascent-ticks-layer',
+      type: 'symbol',
+      source: 'ascent-ticks-source',
+      minzoom: viasMinZoom, // Mismo minzoom que las vías
+      layout: {
+        'icon-image': 'ascent-tick-icon',
+        'icon-size': [
+          'interpolate', ['linear'], ['zoom'],
+          14, 0.6,
+          16, 0.8,
+          18, 1.0,
+          20, 1.2
+        ],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-offset': [6, -6] // Desplazar hacia arriba-derecha del punto
+      }
+    });
+  }
+
+  console.log(`Ascent ticks updated: ${completedRoutes.length} completed routes`);
+}
+
+/**
+ * Configura la actualización automática de ticks cuando cambia el viewport
+ */
+function setupAscentTicksUpdater() {
+  if (!mlMap) return;
+
+  // Actualizar ticks cuando termina de mover/hacer zoom
+  mlMap.on('moveend', () => {
+    updateAscentTicksLayer();
+  });
+
+  // También actualizar cuando se carga la data
+  mlMap.on('sourcedata', (e) => {
+    if (e.sourceId === 'vias-source' || e.sourceId === 'vias-geojson') {
+      // Pequeño delay para asegurar que los datos están listos
+      setTimeout(() => updateAscentTicksLayer(), 100);
+    }
+  });
 }
 
 // ============================================
@@ -4453,26 +4672,38 @@ async function showUserRoutePopup(props, coords) {
 
       <!-- Info items con iconos -->
       <div class="ml-route-info">
-        ${props.descripcion ? `
-          <div class="ml-route-item">
-            <span class="ml-route-icon">${iconClimber}</span>
+        <div class="ml-route-item ${!props.descripcion ? 'ml-route-item-missing' : ''}">
+          <span class="ml-route-icon">${iconClimber}</span>
+          ${props.descripcion ? `
             <span class="ml-route-text">${props.descripcion}</span>
-          </div>
-        ` : ''}
+          ` : `
+            <span class="ml-route-text ml-route-contribute" onclick="mlContributeField('${encodedName}', 'descripcion', '${schoolId}')">
+              ¿Qué tipo de escalada es?
+            </span>
+          `}
+        </div>
 
-        ${props.exp1 ? `
-          <div class="ml-route-item">
-            <span class="ml-route-icon">${iconExpress}</span>
+        <div class="ml-route-item ${!props.exp1 ? 'ml-route-item-missing' : ''}">
+          <span class="ml-route-icon">${iconExpress}</span>
+          ${props.exp1 ? `
             <span class="ml-route-text">${props.exp1} express</span>
-          </div>
-        ` : ''}
+          ` : `
+            <span class="ml-route-text ml-route-contribute" onclick="mlContributeField('${encodedName}', 'exp1', '${schoolId}')">
+              ¿Cuántos express tiene?
+            </span>
+          `}
+        </div>
 
-        ${props.long1 ? `
-          <div class="ml-route-item">
-            <span class="ml-route-icon">${iconRope}</span>
+        <div class="ml-route-item ${!props.long1 ? 'ml-route-item-missing' : ''}">
+          <span class="ml-route-icon">${iconRope}</span>
+          ${props.long1 ? `
             <span class="ml-route-text">${props.long1} mts</span>
-          </div>
-        ` : ''}
+          ` : `
+            <span class="ml-route-text ml-route-contribute" onclick="mlContributeField('${encodedName}', 'long1', '${schoolId}')">
+              ¿Cuántos metros tiene?
+            </span>
+          `}
+        </div>
       </div>
 
       <!-- Botonera -->
@@ -4528,5 +4759,184 @@ async function showUserRoutePopup(props, coords) {
 
 // Exponer función para uso externo
 window.loadApprovedRoutesFromFirestore = loadApprovedRoutesFromFirestore;
+
+// ============================================
+// CONTRIBUCIÓN DE USUARIOS - Sugerencias de info de vías
+// ============================================
+
+/**
+ * Abre modal para que el usuario contribuya información faltante
+ */
+function mlContributeField(encodedName, fieldName, schoolId) {
+  const routeName = decodeURIComponent(encodedName);
+
+  // Cerrar popup actual
+  if (mlRoutePopup) mlRoutePopup.remove();
+
+  // Verificar que el usuario esté logueado
+  const user = firebase.auth().currentUser;
+  if (!user) {
+    alert('Debes iniciar sesión para contribuir información');
+    return;
+  }
+
+  // Configuración según el campo
+  const fieldConfig = {
+    descripcion: {
+      title: 'Tipo de escalada',
+      question: '¿Qué tipo de escalada es esta vía?',
+      placeholder: 'Ej: Placa, Desplome, Fisura...',
+      inputType: 'select',
+      options: ['Placa', 'Vertical', 'Desplome', 'Extraplomo', 'Fisura', 'Diedro', 'Travesía', 'Técnica', 'Atlética', 'Continuidad']
+    },
+    exp1: {
+      title: 'Número de express',
+      question: '¿Cuántos express necesitas para esta vía?',
+      placeholder: 'Ej: 8',
+      inputType: 'number',
+      min: 1,
+      max: 30
+    },
+    long1: {
+      title: 'Metros de la vía',
+      question: '¿Cuántos metros tiene esta vía?',
+      placeholder: 'Ej: 25',
+      inputType: 'number',
+      min: 5,
+      max: 100
+    }
+  };
+
+  const config = fieldConfig[fieldName];
+  if (!config) return;
+
+  // Crear modal
+  const overlay = document.createElement('div');
+  overlay.className = 'ml-contribute-modal-overlay';
+  overlay.onclick = (e) => {
+    if (e.target === overlay) overlay.remove();
+  };
+
+  let inputHtml;
+  if (config.inputType === 'select') {
+    inputHtml = `
+      <select class="ml-contribute-select" id="ml-contribute-value">
+        <option value="">Selecciona una opción</option>
+        ${config.options.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+      </select>
+    `;
+  } else {
+    inputHtml = `
+      <input
+        type="${config.inputType}"
+        class="ml-contribute-input"
+        id="ml-contribute-value"
+        placeholder="${config.placeholder}"
+        ${config.min ? `min="${config.min}"` : ''}
+        ${config.max ? `max="${config.max}"` : ''}
+      >
+    `;
+  }
+
+  overlay.innerHTML = `
+    <div class="ml-contribute-modal">
+      <h3>${config.title}</h3>
+      <p><strong>${routeName}</strong></p>
+      <p>${config.question}</p>
+      ${inputHtml}
+      <div class="ml-contribute-actions">
+        <button class="ml-contribute-btn ml-contribute-btn-cancel" onclick="this.closest('.ml-contribute-modal-overlay').remove()">
+          Cancelar
+        </button>
+        <button class="ml-contribute-btn ml-contribute-btn-submit" id="ml-contribute-submit">
+          Enviar
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Focus en el input
+  const inputEl = document.getElementById('ml-contribute-value');
+  if (inputEl) inputEl.focus();
+
+  // Manejar envío
+  const submitBtn = document.getElementById('ml-contribute-submit');
+  submitBtn.onclick = async () => {
+    const value = inputEl.value.trim();
+
+    if (!value) {
+      inputEl.style.borderColor = '#ef4444';
+      return;
+    }
+
+    // Validar números
+    if (config.inputType === 'number') {
+      const numValue = parseInt(value);
+      if (isNaN(numValue) || numValue < config.min || numValue > config.max) {
+        inputEl.style.borderColor = '#ef4444';
+        return;
+      }
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Enviando...';
+
+    try {
+      // Guardar sugerencia en Firestore
+      await saveRouteSuggestion(schoolId, routeName, fieldName, value, user);
+
+      // Mostrar éxito
+      const modal = overlay.querySelector('.ml-contribute-modal');
+      modal.innerHTML = `
+        <div class="ml-contribute-success">
+          <div class="ml-contribute-success-icon">✓</div>
+          <h3>¡Gracias por contribuir!</h3>
+          <p>Tu sugerencia ha sido enviada y será revisada por un administrador.</p>
+        </div>
+      `;
+
+      // Cerrar automáticamente
+      setTimeout(() => overlay.remove(), 2000);
+
+    } catch (error) {
+      console.error('Error al guardar sugerencia:', error);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Enviar';
+      alert('Error al enviar la sugerencia. Inténtalo de nuevo.');
+    }
+  };
+
+  // Enviar con Enter
+  inputEl.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') submitBtn.click();
+  });
+}
+
+/**
+ * Guarda una sugerencia de usuario en Firestore
+ */
+async function saveRouteSuggestion(schoolId, routeName, fieldName, value, user) {
+  const db = firebase.firestore();
+
+  const suggestion = {
+    schoolId: schoolId,
+    routeName: routeName,
+    field: fieldName,
+    suggestedValue: value,
+    userId: user.uid,
+    userEmail: user.email,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    status: 'pending' // pending, approved, rejected
+  };
+
+  await db.collection('routeSuggestions').add(suggestion);
+
+  console.log('Sugerencia guardada:', suggestion);
+}
+
+// Exponer función globalmente
+window.mlContributeField = mlContributeField;
 
 console.log('MapLibre Map JS cargado');
