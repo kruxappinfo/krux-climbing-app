@@ -2334,7 +2334,15 @@ async function loadSuggestionsBadge() {
 }
 
 /**
- * Carga las sugerencias según los filtros
+ * Carga las sugerencias según los filtros.
+ *
+ * NOTA: Los documentos en routeSuggestions se guardan con esta estructura:
+ *   { routeName, schoolId, userId, userEmail, status, timestamp, data: { descripcion?, exp1?, long1? } }
+ * El campo de fecha es "timestamp" (no "createdAt") y los valores sugeridos están
+ * dentro del objeto "data" (no en campos "field"/"suggestedValue" a nivel raíz).
+ *
+ * Para evitar problemas de índices compuestos en Firestore, solo aplicamos
+ * el filtro de estado en la query y filtramos el campo en el cliente.
  */
 async function loadSuggestions() {
     const container = document.getElementById('suggestionsList');
@@ -2351,25 +2359,52 @@ async function loadSuggestions() {
 
         let query = db.collection('routeSuggestions');
 
-        // Aplicar filtro de estado
+        // Aplicar filtro de estado en Firestore
         if (statusFilter !== 'all') {
             query = query.where('status', '==', statusFilter);
         }
 
-        // Aplicar filtro de campo
-        if (fieldFilter !== 'all') {
-            query = query.where('field', '==', fieldFilter);
-        }
-
-        // Ordenar por fecha de creación (más recientes primero)
-        query = query.orderBy('createdAt', 'desc');
+        // Ordenar por fecha — el campo real es "timestamp"
+        query = query.orderBy('timestamp', 'desc');
 
         const snapshot = await query.get();
         allSuggestions = [];
 
         snapshot.forEach(doc => {
-            allSuggestions.push({ id: doc.id, ...doc.data() });
+            const raw = doc.data();
+
+            // Normalizar: expandir el objeto "data" a pares campo/valor individuales
+            // para que renderSuggestions pueda iterar sobre cada campo sugerido
+            const dataFields = raw.data || {};
+            const fieldKeys = Object.keys(dataFields);
+
+            // Si no hay campos dentro de data, incluir el doc tal cual
+            // (por si en el futuro se guardan con estructura plana)
+            if (fieldKeys.length === 0) {
+                // Formato plano (field + suggestedValue a nivel raíz) — compatibilidad
+                allSuggestions.push({ id: doc.id, ...raw });
+            } else {
+                // Formato anidado: crear una entrada por cada campo sugerido
+                fieldKeys.forEach(fieldKey => {
+                    allSuggestions.push({
+                        id: doc.id,
+                        routeName: raw.routeName,
+                        schoolId: raw.schoolId,
+                        userId: raw.userId,
+                        userEmail: raw.userEmail,
+                        status: raw.status,
+                        createdAt: raw.timestamp || raw.createdAt || null,
+                        field: fieldKey,
+                        suggestedValue: String(dataFields[fieldKey])
+                    });
+                });
+            }
         });
+
+        // Filtrar por campo en el cliente (evita índice compuesto en Firestore)
+        if (fieldFilter !== 'all') {
+            allSuggestions = allSuggestions.filter(s => s.field === fieldFilter);
+        }
 
         renderSuggestions(allSuggestions);
 
@@ -2419,7 +2454,10 @@ function renderSuggestions(suggestions) {
         long1: ' metros'
     };
 
-    container.innerHTML = suggestions.map(suggestion => {
+    container.innerHTML = suggestions.map((suggestion, idx) => {
+        // Usar un ID único por entrada (docId + campo) para evitar colisiones
+        const uniqueKey = suggestion.field ? `${suggestion.id}_${suggestion.field}` : `${suggestion.id}_${idx}`;
+
         const date = suggestion.createdAt?.toDate?.() ?
             suggestion.createdAt.toDate().toLocaleDateString('es-ES', {
                 day: '2-digit',
@@ -2432,31 +2470,31 @@ function renderSuggestions(suggestions) {
         const userInitial = suggestion.userEmail ?
             suggestion.userEmail.charAt(0).toUpperCase() : '?';
 
-        const fieldLabel = fieldLabels[suggestion.field] || suggestion.field;
+        const fieldLabel = fieldLabels[suggestion.field] || suggestion.field || 'Desconocido';
         const fieldUnit = fieldUnits[suggestion.field] || '';
 
         const isPending = suggestion.status === 'pending';
 
         return `
-            <div class="suggestion-card ${suggestion.status}" data-id="${suggestion.id}">
+            <div class="suggestion-card ${suggestion.status}" data-id="${suggestion.id}" data-field="${suggestion.field || ''}">
                 <div class="suggestion-header">
                     <div class="suggestion-route-info">
                         <div class="suggestion-route-name">${escapeHtml(suggestion.routeName)}</div>
                         <div class="suggestion-school">${escapeHtml(suggestion.schoolId || 'Escuela desconocida')}</div>
                     </div>
-                    <span class="suggestion-field-badge ${suggestion.field}">${fieldLabel}</span>
+                    <span class="suggestion-field-badge ${suggestion.field || ''}">${fieldLabel}</span>
                 </div>
 
                 <div class="suggestion-content">
                     <div class="suggestion-value-label">Valor sugerido</div>
-                    <div class="suggestion-value" id="value-${suggestion.id}">
-                        ${escapeHtml(suggestion.suggestedValue)}${fieldUnit}
+                    <div class="suggestion-value" id="value-${uniqueKey}">
+                        ${escapeHtml(suggestion.suggestedValue || '')}${fieldUnit}
                     </div>
                     ${isPending ? `
                         <input type="${suggestion.field === 'descripcion' ? 'text' : 'number'}"
                                class="suggestion-edit-input"
-                               id="input-${suggestion.id}"
-                               value="${escapeHtml(suggestion.suggestedValue)}"
+                               id="input-${uniqueKey}"
+                               value="${escapeHtml(suggestion.suggestedValue || '')}"
                                placeholder="Editar valor antes de aprobar...">
                     ` : ''}
                 </div>
@@ -2471,7 +2509,7 @@ function renderSuggestions(suggestions) {
 
                 ${isPending ? `
                     <div class="suggestion-actions">
-                        <button class="btn btn-success btn-sm" onclick="approveSuggestion('${suggestion.id}')">
+                        <button class="btn btn-success btn-sm" onclick="approveSuggestion('${suggestion.id}', '${suggestion.field || ''}')">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                             </svg>
@@ -2505,12 +2543,14 @@ function renderSuggestions(suggestions) {
 /**
  * Aprueba una sugerencia y actualiza la vía en los datos
  */
-async function approveSuggestion(suggestionId) {
-    const suggestion = allSuggestions.find(s => s.id === suggestionId);
+async function approveSuggestion(suggestionId, fieldName) {
+    // Buscar la sugerencia por docId + campo (para docs con múltiples campos)
+    const suggestion = allSuggestions.find(s => s.id === suggestionId && (!fieldName || s.field === fieldName));
     if (!suggestion) return;
 
-    // Obtener el valor editado (puede ser diferente al original)
-    const inputEl = document.getElementById(`input-${suggestionId}`);
+    // Obtener el valor editado — el input usa el uniqueKey (docId_field)
+    const uniqueKey = fieldName ? `${suggestionId}_${fieldName}` : suggestionId;
+    const inputEl = document.getElementById(`input-${uniqueKey}`);
     const finalValue = inputEl ? inputEl.value.trim() : suggestion.suggestedValue;
 
     if (!finalValue) {

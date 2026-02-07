@@ -210,6 +210,18 @@ service cloud.firestore {
       allow update, delete: if isAuthenticated() && (isAdmin() || isSuperAdmin());
     }
 
+    // Aleje votes (votaciones de aleje por ruta)
+    match /aleje_votes/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Estado votes (votaciones de estado de la vía por ruta)
+    match /estado_votes/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
     // Route suggestions (sugerencias de usuarios para información faltante de vías)
     match /routeSuggestions/{suggestionId} {
       // Admins pueden leer todas las sugerencias

@@ -1770,210 +1770,103 @@ async function loadProfileLikedPostsForUser(userId, loadId = null) {
 
 // ================== MENTIONS TAB ==================
 
-const MOCK_MENTIONS_POSTS = [
-  {
-    id: 'mock-mention-1',
-    userId: 'user-carlos',
-    userName: 'Carlos Ruiz',
-    userPhoto: '',
-    type: 'text',
-    content: 'Gran día en la escuela con @Krux y @Jaime! El sector estaba perfecto para escalar 🧗',
-    photos: ['https://images.unsplash.com/photo-1522163182402-834f871fd851?w=600'],
-    createdAt: { toDate: () => new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) },
-    time: 'Hace 2 días',
-    likes: ['user-carlos', 'user-ana'],
-    likesCount: 2,
-    commentsCount: 3,
-    mentions: [
-      { uid: 'mock-krux', displayName: 'Krux', startIndex: 30, endIndex: 35 },
-      { uid: 'mock-jaime', displayName: 'Jaime', startIndex: 38, endIndex: 44 }
-    ]
-  },
-  {
-    id: 'mock-mention-2',
-    userId: 'user-ana',
-    userName: 'Ana García',
-    userPhoto: '',
-    type: 'text',
-    content: 'Gracias @Krux por el aseguramiento hoy! Menudo 7a hemos sacado 💪',
-    photos: [],
-    createdAt: { toDate: () => new Date(Date.now() - 5 * 24 * 60 * 60 * 1000) },
-    time: 'Hace 5 días',
-    likes: ['user-ana', 'user-carlos', 'user-pedro'],
-    likesCount: 3,
-    commentsCount: 1,
-    mentions: [
-      { uid: 'mock-krux', displayName: 'Krux', startIndex: 8, endIndex: 13 }
-    ]
-  },
-  {
-    id: 'mock-mention-3',
-    userId: 'user-pedro',
-    userName: 'Pedro Martínez',
-    userPhoto: '',
-    type: 'text',
-    content: 'Fin de semana en Mora con @Jaime y @Carlos Ruiz. Vías nuevas increíbles!',
-    photos: ['https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=600'],
-    createdAt: { toDate: () => new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-    time: 'Hace 1 semana',
-    likes: ['user-pedro'],
-    likesCount: 1,
-    commentsCount: 0,
-    mentions: [
-      { uid: 'mock-jaime', displayName: 'Jaime', startIndex: 26, endIndex: 32 },
-      { uid: 'mock-carlos', displayName: 'Carlos Ruiz', startIndex: 35, endIndex: 47 }
-    ]
-  },
-  {
-    id: 'mock-mention-4',
-    userId: 'user-lucia',
-    userName: 'Lucía Fernández',
-    userPhoto: '',
-    type: 'text',
-    content: 'Primera escalada del año con @Krux en Toledo. Qué buena roca! 🪨',
-    photos: ['https://images.unsplash.com/photo-1507034589631-9433cc6bc453?w=600'],
-    createdAt: { toDate: () => new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) },
-    time: 'Hace 10 días',
-    likes: ['user-lucia', 'user-ana'],
-    likesCount: 2,
-    commentsCount: 4,
-    mentions: [
-      { uid: 'mock-krux', displayName: 'Krux', startIndex: 29, endIndex: 34 }
-    ]
-  },
-  {
-    id: 'mock-mention-5',
-    userId: 'user-miguel',
-    userName: 'Miguel Torres',
-    userPhoto: '',
-    type: 'text',
-    content: 'Nuevo proyecto con @Ana García y @Jaime en Aranjuez. El sector sur tiene líneas brutales.',
-    photos: [],
-    createdAt: { toDate: () => new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) },
-    time: 'Hace 2 semanas',
-    likes: ['user-miguel', 'user-ana', 'user-carlos'],
-    likesCount: 3,
-    commentsCount: 2,
-    mentions: [
-      { uid: 'mock-ana', displayName: 'Ana García', startIndex: 19, endIndex: 30 },
-      { uid: 'mock-jaime', displayName: 'Jaime', startIndex: 33, endIndex: 39 }
-    ]
-  },
-  {
-    id: 'mock-mention-6',
-    userId: 'user-carlos',
-    userName: 'Carlos Ruiz',
-    userPhoto: '',
-    type: 'text',
-    content: 'Sesión de búlder con @Pedro Martínez en el rocódromo. @Krux nos dio buenos consejos de técnica.',
-    photos: ['https://images.unsplash.com/photo-1564769662533-4f00a87b4056?w=600'],
-    createdAt: { toDate: () => new Date(Date.now() - 20 * 24 * 60 * 60 * 1000) },
-    time: 'Hace 20 días',
-    likes: ['user-carlos', 'user-pedro'],
-    likesCount: 2,
-    commentsCount: 1,
-    mentions: [
-      { uid: 'mock-pedro', displayName: 'Pedro Martínez', startIndex: 21, endIndex: 37 },
-      { uid: 'mock-krux', displayName: 'Krux', startIndex: 54, endIndex: 59 }
-    ]
-  }
-];
-
 /**
- * Get the display name of the profile currently being viewed.
- * Works for both own profile and other user's profiles.
+ * Render posts that mention the current profile user.
+ * Queries Firestore for posts where the user's UID is in mentionedUserIds array.
  */
-function getCurrentProfileDisplayName() {
-  const nameEl = document.getElementById('profile-name');
-  return nameEl ? nameEl.textContent.trim() : '';
-}
+async function renderMentionsPosts() {
+  // Use firebase.auth().currentUser to ensure we have the most up-to-date user
+  const authUser = firebase.auth().currentUser;
 
-/**
- * Render posts that mention the current profile user (mock data).
- * Dynamically filters by the display name shown in the profile.
- */
-function renderMentionsPosts() {
   const grid = document.getElementById('profile-mentions-grid');
   if (!grid) return;
 
   grid.innerHTML = '<div class="empty-message" style="text-align: center; padding: 20px;">Cargando menciones...</div>';
 
-  const profileName = getCurrentProfileDisplayName();
-  if (!profileName) {
+  if (!authUser || !authUser.uid) {
     grid.innerHTML = '<div class="empty-message" style="text-align: center; padding: 40px 20px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin: 0 auto 16px; opacity: 0.5;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><p style="margin: 0; color: #6b7280;">No se pudo determinar el usuario</p></div>';
     return;
   }
 
-  // Filter mock posts: find those whose content contains @profileName
-  const mentionTag = '@' + profileName;
-  const mentionedPosts = MOCK_MENTIONS_POSTS.filter(post => {
-    const content = post.content || '';
-    return content.includes(mentionTag);
-  });
-
-  if (mentionedPosts.length === 0) {
-    grid.innerHTML = `
-      <div class="empty-message" style="text-align: center; padding: 40px 20px;">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin: 0 auto 16px; opacity: 0.5;">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-        </svg>
-        <p style="margin: 0; color: #6b7280;">Nadie te ha mencionado aún</p>
-        <p style="margin: 8px 0 0; color: #9ca3af; font-size: 14px;">Cuando alguien te mencione en una publicación, aparecerá aquí</p>
-      </div>
-    `;
-    return;
-  }
-
-  grid.innerHTML = '';
-  mentionedPosts.forEach(post => {
-    renderPostCard(post, grid);
-  });
-
-  attachFeedEventListeners(grid);
+  // Use loadProfileMentionsForUser for consistency - it handles the query the same way
+  // but uses the userId parameter directly instead of relying on global currentUser
+  await loadProfileMentionsForUser(authUser.uid, null);
 }
 
 /**
- * Load mentions for another user's profile (mock data).
- * Filters by the display name of the profile being viewed.
+ * Load mentions for another user's profile.
+ * Queries Firestore for posts where the user's UID is in mentionedUserIds array.
  */
-function loadProfileMentionsForUser(userId, loadId = null) {
+async function loadProfileMentionsForUser(userId, loadId = null) {
   const container = document.getElementById('profile-mentions-grid');
   if (!container) return;
 
   if (loadId && profileLoadingState.currentLoadId !== loadId) return;
 
-  const profileName = getCurrentProfileDisplayName();
-  if (!profileName) {
+  if (!userId) {
     container.innerHTML = '<div class="empty-message" style="text-align: center; padding: 40px 20px;"><p style="margin: 0; color: #6b7280;">No hay menciones</p></div>';
     return;
   }
 
-  const mentionTag = '@' + profileName;
-  const mentionedPosts = MOCK_MENTIONS_POSTS.filter(post => {
-    const content = post.content || '';
-    return content.includes(mentionTag);
-  });
+  container.innerHTML = '<div class="empty-message" style="text-align: center; padding: 20px;">Cargando menciones...</div>';
 
-  if (loadId && profileLoadingState.currentLoadId !== loadId) return;
+  try {
+    // Query posts where user is mentioned using mentionedUserIds array
+    const mentionsSnapshot = await db.collection('posts')
+      .where('mentionedUserIds', 'array-contains', userId)
+      .orderBy('createdAt', 'desc')
+      .limit(50)
+      .get();
 
-  if (mentionedPosts.length === 0) {
+    // Check if this request is still valid
+    if (loadId && profileLoadingState.currentLoadId !== loadId) return;
+
+    const mentionedPosts = [];
+    mentionsSnapshot.forEach(doc => {
+      const data = doc.data();
+      mentionedPosts.push({
+        id: doc.id,
+        ...data,
+        likesCount: Array.isArray(data.likes) ? data.likes.length : (data.likesCount || 0),
+        commentsCount: data.commentsCount || 0
+      });
+    });
+
+    // Final check before DOM update
+    if (loadId && profileLoadingState.currentLoadId !== loadId) return;
+
+    if (mentionedPosts.length === 0) {
+      container.innerHTML = `
+        <div class="empty-message" style="text-align: center; padding: 40px 20px;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin: 0 auto 16px; opacity: 0.5;">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <p style="margin: 0; color: #6b7280;">No hay menciones aún</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = '';
+    mentionedPosts.forEach(post => {
+      renderPostCard(post, container);
+    });
+
+    attachFeedEventListeners(container);
+  } catch (error) {
+    console.error('Error loading mentions for user:', error);
+
+    if (loadId && profileLoadingState.currentLoadId !== loadId) return;
+
     container.innerHTML = `
       <div class="empty-message" style="text-align: center; padding: 40px 20px;">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin: 0 auto 16px; opacity: 0.5;">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
         </svg>
-        <p style="margin: 0; color: #6b7280;">No hay menciones aún</p>
+        <p style="margin: 0; color: #6b7280;">Error al cargar menciones</p>
       </div>
     `;
-    return;
   }
-
-  container.innerHTML = '';
-  mentionedPosts.forEach(post => {
-    renderPostCard(post, container);
-  });
-
-  attachFeedEventListeners(container);
 }
 
 /**
@@ -2983,7 +2876,7 @@ function initNotifications() {
     list.innerHTML = notifications.map(n => {
       const timeAgo = getTimeAgo(n.createdAt?.toDate ? n.createdAt.toDate() : new Date());
       const unreadClass = n.read ? '' : 'unread';
-      const clickHandler = n.fromUserId ? `onclick="handleNotificationClick('${n.id}', '${n.type}', '${n.fromUserId}', '${n.postId || ''}')"` : '';
+      const clickHandler = n.fromUserId ? `onclick="handleNotificationClick('${n.id}', '${n.type}', '${n.fromUserId}', '${n.postId || ''}', '${n.commentId || ''}', '${n.replyId || ''}')"` : '';
       // Use notification ID directly - Firestore IDs are safe for HTML attributes
       const notificationId = String(n.id);
 
@@ -2992,7 +2885,7 @@ function initNotifications() {
           <div class="notification-clickable-area" ${clickHandler} style="cursor: pointer; display: flex; align-items: center; flex: 1; min-width: 0;">
             <img src="${n.fromUserPhoto || generateAvatarFallback(n.fromUserName || 'Usuario', 44)}" class="notification-avatar" alt="" referrerPolicy="no-referrer" onerror="this.src='${generateAvatarFallback(n.fromUserName || 'Usuario', 44)}'; this.onerror=null;">
           <div class="notification-content">
-            <div class="notification-text">${n.text}</div>
+            <div class="notification-text"><strong>${n.fromUserName || 'Usuario'}</strong> ${n.text}</div>
             <div class="notification-time">${timeAgo}</div>
           </div>
           </div>
@@ -3022,6 +2915,8 @@ function initNotifications() {
         return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
       case 'mention':
         return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"></path></svg>';
+      case 'reply':
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>';
       default:
         return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"></circle></svg>';
     }
@@ -3162,26 +3057,18 @@ function initNotifications() {
   if (icon) icon.src = 'Visuales/Interfaz/Publicaciones/Notificacion NO.png';
 }
 
-// Handle notification click - navigate to relevant content
-window.handleNotificationClick = async function (notificationId, type, fromUserId, postId) {
+// Handle notification click - navigate to relevant content with deep-link to comment
+window.handleNotificationClick = async function (notificationId, type, fromUserId, postId, commentId, replyId) {
   document.getElementById('notification-dropdown')?.classList.add('hidden');
   if (type === 'follow' && fromUserId) {
     openPublicProfile(fromUserId);
-  } else if (type === 'mention') {
-    // Navigate to the post where the mention occurred
-    if (postId && typeof openPostModal === 'function') {
-      switchView('feed-view');
-      openPostModal(postId);
-    } else if (fromUserId) {
-      openPublicProfile(fromUserId);
-    }
-  } else if (type === 'like' || type === 'comment') {
-    if (postId && typeof openPostModal === 'function') {
-      switchView('feed-view');
-      openPostModal(postId);
-    } else if (fromUserId) {
-      openPublicProfile(fromUserId);
-    }
+  } else if (postId && typeof openPostModal === 'function') {
+    // For all post-related notifications (comment, reply, like, mention),
+    // open the post modal with deep-link to the specific comment/reply
+    switchView('feed-view');
+    openPostModal(postId, commentId || '', replyId || '');
+  } else if (fromUserId) {
+    openPublicProfile(fromUserId);
   }
 };
 
@@ -3192,7 +3079,8 @@ window.createNotification = async function (targetUserId, type, text, additional
   try {
     // Generate idempotency key based on notification type and context
     // This prevents duplicate notifications for the same action
-    const resourceId = additionalData.postId || additionalData.routeId || additionalData.resourceId || '';
+    // For replies, use replyId to allow multiple reply notifications per post from the same user
+    const resourceId = additionalData.replyId || additionalData.postId || additionalData.routeId || additionalData.resourceId || '';
     const idempotencyKey = `${type}_${currentUser.uid}_${resourceId}`.replace(/[^a-zA-Z0-9_]/g, '_');
 
     const notificationsRef = db.collection('users').doc(targetUserId).collection('notifications');
@@ -3986,7 +3874,7 @@ function renderSavedList(projects) {
       <div class="ascent-grade" style="background: #FFC107; color: #000;">${project.grade || '?'}</div>
       <div class="ascent-info">
         <div class="ascent-name">${project.name}</div>
-        <div class="ascent-location">🏗 Proyecto</div>
+        <div class="ascent-location">🎯 Intento</div>
       </div>
       <div class="ascent-meta">
         <button class="icon-btn" onclick="toggleProject('${project.id}', '${project.name}', '${project.grade}')">
@@ -6567,6 +6455,8 @@ async function submitPost() {
         const validMentions = extractMentionsFromText(postData.text.trim(), postMentionAutocomplete.getMentions());
         if (validMentions.length > 0) {
           postDataToSave.mentions = validMentions;
+          // Store array of mentioned user IDs for efficient querying
+          postDataToSave.mentionedUserIds = validMentions.map(m => m.uid);
         }
       }
     }
@@ -7260,7 +7150,19 @@ async function handleFeedLike(postId, button) {
 async function handleFeedComment(postId, button) {
   // Find the parent card and the comments section
   const card = button.closest('.feed-card');
-  if (!card) return;
+
+  // If inside modal (no .feed-card), scroll to and focus the comment input
+  if (!card) {
+    const modalBody = button.closest('.view-post-body');
+    if (modalBody) {
+      const commentInput = modalBody.querySelector('.feed-comment-input');
+      if (commentInput) {
+        commentInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        commentInput.focus();
+      }
+    }
+    return;
+  }
 
   const commentsSection = card.querySelector('.feed-comments-section');
   if (!commentsSection) return;
@@ -7788,13 +7690,22 @@ async function handleSubmitReply(postId, commentId, text, container) {
 
     // Create reply in subcollection
     const replyRef = db.collection('posts').doc(postId).collection('comments').doc(commentId).collection('replies');
-    await replyRef.add(replyData);
+    const newReplyDoc = await replyRef.add(replyData);
+
+    // Get parent comment data to notify its author
+    const commentRef = db.collection('posts').doc(postId).collection('comments').doc(commentId);
+    const commentDoc = await commentRef.get();
+    const commentData = commentDoc.exists ? commentDoc.data() : null;
 
     // Update repliesCount on parent comment
-    const commentRef = db.collection('posts').doc(postId).collection('comments').doc(commentId);
     await commentRef.update({
       repliesCount: firebase.firestore.FieldValue.increment(1)
     });
+
+    // Send reply notification to the comment author
+    if (commentData && commentData.userId && commentData.userId !== currentUser.uid) {
+      createNotification(commentData.userId, 'reply', `respondió a tu comentario`, { postId, commentId, replyId: newReplyDoc.id });
+    }
 
     // Hide reply form and clear mentions
     form?.classList.add('hidden');
@@ -8226,13 +8137,22 @@ async function handleSubmitReplyToReply(postId, parentCommentId, replyToId, text
 
     // Save to the SAME subcollection as the parent comment's replies (no sub-sub-collections)
     const repliesRef = db.collection('posts').doc(postId).collection('comments').doc(parentCommentId).collection('replies');
-    await repliesRef.add(replyData);
+    const newReplyDoc = await repliesRef.add(replyData);
+
+    // Get the reply being responded to, to notify its author
+    const replyToDoc = await db.collection('posts').doc(postId).collection('comments').doc(parentCommentId).collection('replies').doc(replyToId).get();
+    const replyToData = replyToDoc.exists ? replyToDoc.data() : null;
 
     // Update repliesCount on parent comment
     const commentRef = db.collection('posts').doc(postId).collection('comments').doc(parentCommentId);
     await commentRef.update({
       repliesCount: firebase.firestore.FieldValue.increment(1)
     });
+
+    // Send reply notification to the author of the reply being responded to
+    if (replyToData && replyToData.userId && replyToData.userId !== currentUser.uid) {
+      createNotification(replyToData.userId, 'reply', `respondió a tu comentario`, { postId, commentId: parentCommentId, replyId: newReplyDoc.id });
+    }
 
     // Hide the reply form and clear mentions
     if (form) {
@@ -8692,7 +8612,7 @@ async function handleInlineCommentSubmit(postId, form) {
     }
 
     // Add comment to Firestore subcollection
-    await db.collection('posts').doc(postId).collection('comments').add(commentData);
+    const newCommentDoc = await db.collection('posts').doc(postId).collection('comments').add(commentData);
 
     // Atomically increment commentsCount in the parent post document
     await db.collection('posts').doc(postId).update({
@@ -8724,7 +8644,7 @@ async function handleInlineCommentSubmit(postId, form) {
 
     // Create notification for post author
     if (postData && postData.userId && postData.userId !== currentUser.uid) {
-      createNotification(postData.userId, 'comment', `comentó en tu publicación`, { postId });
+      createNotification(postData.userId, 'comment', `comentó en tu publicación`, { postId, commentId: newCommentDoc.id });
     }
 
     // Send mention notifications
@@ -9011,7 +8931,7 @@ function formatTimeAgo(date) {
 }
 
 // ================== VIEW POST MODAL ==================
-async function openPostModal(postId) {
+async function openPostModal(postId, targetCommentId, targetReplyId) {
   const modal = document.getElementById('view-post-modal');
   const body = document.getElementById('view-post-body');
 
@@ -9041,6 +8961,9 @@ async function openPostModal(postId) {
     // Render post in modal
     renderPostInModal(post, body);
 
+    // Load comments section inside modal
+    await loadModalComments(postId, body, targetCommentId, targetReplyId);
+
   } catch (error) {
     console.error('Error loading post:', error);
     body.innerHTML = '<div style="text-align: center; padding: 40px; color: #ef4444;">Error al cargar la publicación</div>';
@@ -9054,37 +8977,83 @@ function renderPostInModal(post, container) {
   const isAuthor = currentUser && post.userId === currentUser.uid;
   const postId = post.id;
 
-  // Header
+  const userName = post.userName || post.user || 'Usuario';
+  const userPhoto = post.userPhoto || post.avatar || '';
+
+  // Extract location name
+  let locationName = '';
+  if (post.location) {
+    if (typeof post.location === 'object' && post.location.name) {
+      locationName = post.location.name;
+    } else if (typeof post.location === 'string') {
+      locationName = post.location;
+    }
+  } else if (post.locationName) {
+    locationName = post.locationName;
+  }
+
+  // Header - Matches feed card layout: avatar, user+time, location, three-dot menu
   const headerHTML = `
     <div class="feed-card-header" style="padding: 16px; border-bottom: 1px solid #f3f4f6; position: relative;">
-      <div class="feed-user-info">
-        <img src="${post.userPhoto || post.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(post.userName || post.user || 'Usuario') + '&background=6366f1&color=fff&size=200'}" alt="${post.userName || post.user}" class="feed-avatar">
-        <div>
-          <div class="feed-username">${post.userName || post.user}</div>
-          ${post.location ? `<span class="feed-location">${post.location}</span>` : ''}
+      <img src="${userPhoto || generateAvatarFallback(userName, 200)}" alt="${userName}" class="feed-avatar" referrerPolicy="no-referrer" onerror="this.src='${generateAvatarFallback(userName, 200)}'; this.onerror=null;">
+      <div class="feed-header-content">
+        <div class="feed-header-row">
+          <span class="feed-username">${userName}</span>
+          <span class="feed-dot">&middot;</span>
+          <span class="feed-time">${post.time || 'Ahora'}</span>
         </div>
+        ${locationName ? `<div class="feed-location-text">📍 ${locationName}</div>` : ''}
       </div>
-      <div style="display: flex; align-items: center; gap: 12px;">
-        ${isAuthor ? `
-          <div style="display: flex; gap: 8px;">
-            <button id="edit-post-btn" class="feed-action-btn" data-post-id="${postId}" style="padding: 6px 12px; font-size: 14px; border-radius: 8px; background: #f3f4f6; border: none; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-              </svg>
-              Editar
-            </button>
-            <button id="delete-post-btn" class="feed-action-btn" data-post-id="${postId}" style="padding: 6px 12px; font-size: 14px; border-radius: 8px; background: #fee2e2; border: none; cursor: pointer; display: flex; align-items: center; gap: 6px; color: #dc2626;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-              Eliminar
-            </button>
+      ${currentUser ? `
+        <div class="feed-post-menu-wrapper">
+          <button class="feed-post-menu-btn modal-post-menu-btn"
+                  data-post-id="${postId}"
+                  data-is-owner="${isAuthor}"
+                  title="Opciones">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="1"></circle>
+              <circle cx="19" cy="12" r="1"></circle>
+              <circle cx="5" cy="12" r="1"></circle>
+            </svg>
+          </button>
+          <div class="feed-post-menu-dropdown hidden" data-post-id="${postId}">
+            ${isAuthor ? `
+              <button class="feed-post-menu-item modal-menu-action" data-action="edit" data-post-id="${postId}">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                <span>Editar</span>
+              </button>
+              <button class="feed-post-menu-item feed-post-menu-item-danger modal-menu-action" data-action="delete" data-post-id="${postId}">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>Borrar</span>
+              </button>
+            ` : `
+              <button class="feed-post-menu-item modal-menu-action" data-action="share" data-post-id="${postId}">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="18" cy="5" r="3"></circle>
+                  <circle cx="6" cy="12" r="3"></circle>
+                  <circle cx="18" cy="19" r="3"></circle>
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                </svg>
+                <span>Compartir</span>
+              </button>
+              <button class="feed-post-menu-item feed-post-menu-item-danger modal-menu-action" data-action="report" data-post-id="${postId}">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <span>Denunciar</span>
+              </button>
+            `}
           </div>
-        ` : ''}
-        <div class="feed-time">${post.time || 'Ahora'}</div>
-      </div>
+        </div>
+      ` : ''}
     </div>
   `;
 
@@ -9137,47 +9106,185 @@ function renderPostInModal(post, container) {
     `;
   }
 
-  // Actions bar
+  // Support both array (new) and number (legacy) format for likes
+  const likesArray = post.likes;
+  const likesCount = post.likesCount || (Array.isArray(likesArray) ? likesArray.length : (typeof likesArray === 'number' ? likesArray : 0));
+  const commentsCount = post.commentsCount || 0;
+
+  const formatCount = (num) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+    return num > 0 ? num.toString() : '';
+  };
+
+  const likeColor = post.liked ? '#ef4444' : 'none';
+  const likeStroke = post.liked ? '#ef4444' : 'currentColor';
+
+  // Actions bar - matching feed card layout (like + count, comment + count)
   const actionsHTML = `
-    <div class="feed-actions-bar" style="padding: 14px 16px; border-top: 1px solid #f3f4f6;">
-      <div class="feed-actions-left">
-        <button class="feed-action-btn ${post.liked ? 'liked' : ''}" data-post-id="${post.id || ''}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
-        </button>
-        <button class="feed-action-btn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-        </button>
-        <button class="feed-action-btn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-        </button>
-      </div>
-      <button class="feed-action-btn">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+    <div class="feed-actions-bar modal-actions-bar">
+      <button class="feed-action-btn ${post.liked ? 'liked' : ''}" data-action="like" data-post-id="${post.id || ''}">
+        <svg viewBox="0 0 24 24" fill="${likeColor}" stroke="${likeStroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+        </svg>
+        <span class="feed-action-count">${likesCount > 0 ? formatCount(likesCount) : ''}</span>
+      </button>
+      <button class="feed-action-btn" data-action="comment" data-post-id="${post.id || ''}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+        </svg>
+        <span class="feed-action-count">${commentsCount > 0 ? formatCount(commentsCount) : ''}</span>
       </button>
     </div>
   `;
 
-  // Footer
-  const footerHTML = `
-    <div style="padding: 0 16px 16px; border-top: 1px solid #f3f4f6;">
-      <div class="feed-likes" style="padding: 12px 0 8px; font-weight: 600;">${(post.likes || 0).toLocaleString()} Me gusta</div>
-      ${post.caption ? `<div class="feed-caption" style="padding-bottom: 8px;"><span class="feed-caption-user">${post.userName || post.user}</span> ${post.caption}</div>` : ''}
+  container.innerHTML = headerHTML + contentHTML + actionsHTML;
+
+  // Attach three-dot menu listeners in modal
+  const menuBtn = container.querySelector('.modal-post-menu-btn');
+  if (menuBtn) {
+    menuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const dropdown = container.querySelector(`.feed-post-menu-dropdown[data-post-id="${postId}"]`);
+      if (dropdown) {
+        dropdown.classList.toggle('hidden');
+      }
+    });
+  }
+
+  // Attach menu action listeners (edit, delete, share, report)
+  container.querySelectorAll('.modal-menu-action').forEach(item => {
+    item.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const action = item.dataset.action;
+
+      // Close dropdown
+      const dropdown = item.closest('.feed-post-menu-dropdown');
+      if (dropdown) dropdown.classList.add('hidden');
+
+      if (action === 'edit') {
+        enablePostEditMode(post, container);
+      } else if (action === 'delete') {
+        confirmDeletePost(postId, post);
+      } else if (action === 'share') {
+        await handleFeedShare(postId);
+      } else if (action === 'report') {
+        await handleReportPost(postId);
+      }
+    });
+  });
+
+  // Close dropdown on outside click
+  const closeModalDropdown = (e) => {
+    if (!e.target.closest('.feed-post-menu-wrapper')) {
+      container.querySelectorAll('.feed-post-menu-dropdown').forEach(dd => {
+        dd.classList.add('hidden');
+      });
+    }
+  };
+  document.addEventListener('click', closeModalDropdown);
+
+  // Clean up listener when modal is closed
+  const modal = document.getElementById('view-post-modal');
+  if (modal) {
+    const observer = new MutationObserver(() => {
+      if (modal.classList.contains('hidden')) {
+        document.removeEventListener('click', closeModalDropdown);
+        observer.disconnect();
+      }
+    });
+    observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+  }
+}
+
+// Load comments inside the post modal with deep-link support
+async function loadModalComments(postId, container, targetCommentId, targetReplyId) {
+  // Create comments section container
+  const commentsSection = document.createElement('div');
+  commentsSection.className = 'modal-comments-section';
+  commentsSection.innerHTML = `
+    <div style="padding: 12px 16px 8px; border-top: 1px solid #f3f4f6;">
+      <h4 style="margin: 0; font-size: 15px; font-weight: 600; color: #374151;">Comentarios</h4>
+    </div>
+    <div class="feed-comments-section" data-post-id="${postId}" style="display: block;">
+      <form class="feed-comment-form">
+        <img src="${currentUser?.photoURL || generateAvatarFallback(currentUser?.displayName || 'U', 40)}" alt="Tu avatar" class="feed-comment-form-avatar" referrerPolicy="no-referrer" onerror="this.src='${generateAvatarFallback(currentUser?.displayName || 'U', 40)}'; this.onerror=null;">
+        <input type="text" class="feed-comment-input" placeholder="Añade un comentario, @ para mencionar" autocomplete="off">
+        <button type="submit" class="feed-comment-submit" title="Publicar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </form>
+      <div class="feed-comments-list"></div>
     </div>
   `;
+  container.appendChild(commentsSection);
 
-  container.innerHTML = headerHTML + contentHTML + actionsHTML + footerHTML;
-
-  // Add edit and delete button listeners if author
-  if (isAuthor) {
-    const editBtn = document.getElementById('edit-post-btn');
-    editBtn?.addEventListener('click', () => {
-      enablePostEditMode(post, container);
+  // Setup comment form submission
+  const form = commentsSection.querySelector('.feed-comment-form');
+  const input = commentsSection.querySelector('.feed-comment-input');
+  if (input && !input._mentionAutocomplete) {
+    new MentionAutocomplete(input);
+  }
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await handleInlineCommentSubmit(postId, form);
     });
+  }
 
-    const deleteBtn = document.getElementById('delete-post-btn');
-    deleteBtn?.addEventListener('click', () => {
-      confirmDeletePost(postId, post);
-    });
+  // Load comments
+  const commentsList = commentsSection.querySelector('.feed-comments-list');
+  if (commentsList) {
+    await loadInlineComments(postId, commentsList);
+    commentsList.dataset.loaded = 'true';
+  }
+
+  // Deep-link: position target comment in viewport instantly (no delayed animation)
+  if (targetCommentId && commentsList) {
+    await scrollToTargetComment(commentsList, targetCommentId, targetReplyId);
+  }
+}
+
+// Scroll to a specific comment (or reply) inside a comments list, highlight it, and expand replies if needed
+async function scrollToTargetComment(commentsList, targetCommentId, targetReplyId) {
+  const commentEl = commentsList.querySelector(`.feed-comment-item[data-comment-id="${targetCommentId}"]`);
+  if (!commentEl) return;
+
+  if (targetReplyId) {
+    // Need to expand replies first, then position the specific reply in viewport
+    const viewRepliesBtn = commentEl.querySelector('.feed-comment-view-replies');
+    const repliesContainer = commentsList.querySelector(`.feed-comment-replies[data-comment-id="${targetCommentId}"]`);
+
+    if (repliesContainer) {
+      // Expand replies immediately (thread already visible)
+      repliesContainer.classList.remove('hidden');
+      if (viewRepliesBtn) {
+        viewRepliesBtn.querySelector('svg')?.setAttribute('style', 'transform: rotate(180deg)');
+      }
+
+      // Load replies if not loaded yet
+      if (!repliesContainer.dataset.loaded) {
+        const postId = commentEl.dataset.postId;
+        await loadReplies(postId, targetCommentId, repliesContainer);
+        repliesContainer.dataset.loaded = 'true';
+      }
+
+      // Position reply in viewport instantly
+      requestAnimationFrame(() => {
+        const replyEl = repliesContainer.querySelector(`.feed-reply-item[data-reply-id="${targetReplyId}"]`);
+        if (replyEl) {
+          replyEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+        } else {
+          commentEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+        }
+      });
+    }
+  } else {
+    // Position comment in viewport instantly
+    commentEl.scrollIntoView({ behavior: 'instant', block: 'center' });
   }
 }
 
@@ -10796,7 +10903,7 @@ function getMainStyle(styles) {
     flash: 'Flash',
     redpoint: 'Redpoint',
     onsight: 'A vista',
-    project: 'Proyecto',
+    project: 'Intento',
     toprope: 'Top rope'
   };
 

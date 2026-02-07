@@ -844,7 +844,7 @@
               <button class="filter-chip active" data-filter="all">Todas</button>
               <button class="filter-chip" data-filter="flash">Flash ⚡</button>
               <button class="filter-chip" data-filter="redpoint">Redpoint 🔴</button>
-              <button class="filter-chip" data-filter="project">Proyectos 🎯</button>
+              <button class="filter-chip" data-filter="project">Intentos 🎯</button>
             </div>
             <button class="filter-btn" id="activity-filter-btn">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1162,14 +1162,37 @@
         </div>
 
         <div class="form-group">
-          <label for="ascent-style">Estilo</label>
-          <select id="ascent-style" required>
-            <option value="redpoint">🔴 Redpoint (Encadenado)</option>
-            <option value="onsight">👁️ A vista</option>
-            <option value="flash">⚡ Flash</option>
-            <option value="toprope">🪀 Top Rope</option>
-            <option value="project">🎯 Proyecto (No encadenado)</option>
-          </select>
+          <label>Estilo</label>
+          <input type="hidden" id="ascent-style" value="redpoint">
+          <div class="style-dropdown">
+            <div class="style-dropdown-toggle" id="style-dropdown-toggle">
+              <span class="style-icon">🔴</span>
+              <span class="style-dropdown-label"><strong>Redpoint</strong> — Encadenada tras haberla probado antes</span>
+              <span class="style-dropdown-arrow">&#9662;</span>
+            </div>
+            <div class="style-dropdown-menu" id="style-dropdown-menu">
+              <div class="style-option selected" data-value="redpoint">
+                <span class="style-icon">🔴</span>
+                <span class="style-text"><strong>Redpoint</strong> — Encadenada tras haberla probado antes</span>
+              </div>
+              <div class="style-option" data-value="onsight">
+                <span class="style-icon">👁️</span>
+                <span class="style-text"><strong>A vista</strong> — Encadenada a la primera, sin info previa</span>
+              </div>
+              <div class="style-option" data-value="flash">
+                <span class="style-icon">⚡</span>
+                <span class="style-text"><strong>Flash</strong> — Encadenada a la primera, con info previa</span>
+              </div>
+              <div class="style-option" data-value="toprope">
+                <span class="style-icon">🪀</span>
+                <span class="style-text"><strong>Top Rope</strong> — Escalada con cuerda por arriba</span>
+              </div>
+              <div class="style-option" data-value="project">
+                <span class="style-icon">🎯</span>
+                <span class="style-text"><strong>Intento</strong> — Probada, pero sin encadenar</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="form-group">

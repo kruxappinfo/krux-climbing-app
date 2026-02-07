@@ -535,6 +535,19 @@ function closeAscentModal() {
     modal.classList.add('hidden');
     form.reset();
 
+    // Reset style dropdown to default (redpoint)
+    document.getElementById('ascent-style').value = 'redpoint';
+    document.querySelectorAll('.style-dropdown-menu .style-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.value === 'redpoint');
+    });
+    const styleToggle = document.getElementById('style-dropdown-toggle');
+    if (styleToggle) {
+        styleToggle.querySelector('.style-icon').textContent = '🔴';
+        styleToggle.querySelector('.style-dropdown-label').innerHTML = '<strong>Redpoint</strong> — Encadenada tras haberla probado antes';
+    }
+    const styleDropdown = document.querySelector('.style-dropdown');
+    if (styleDropdown) styleDropdown.classList.remove('open');
+
     // Reset edit mode
     delete form.dataset.ascentId;
     delete form.dataset.editMode;
@@ -575,6 +588,16 @@ function openEditAscentModal(ascent) {
     document.getElementById('ascent-date').value = dateStr;
     document.getElementById('ascent-sector').value = ascent.sector || '';
     document.getElementById('ascent-style').value = ascent.style;
+    document.querySelectorAll('.style-dropdown-menu .style-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.value === ascent.style);
+        if (o.dataset.value === ascent.style) {
+            const toggle = document.getElementById('style-dropdown-toggle');
+            if (toggle) {
+                toggle.querySelector('.style-icon').textContent = o.querySelector('.style-icon').textContent;
+                toggle.querySelector('.style-dropdown-label').innerHTML = o.querySelector('.style-text').innerHTML;
+            }
+        }
+    });
     document.getElementById('ascent-tries').value = ascent.tries || 1;
     document.getElementById('ascent-notes').value = ascent.notes || '';
 
@@ -2015,6 +2038,42 @@ document.addEventListener('DOMContentLoaded', () => {
     if (closeBtn) {
         closeBtn.addEventListener('click', closeAscentModal);
     }
+
+    // Style dropdown toggle
+    const styleDropdown = document.querySelector('.style-dropdown');
+    const styleToggle = document.getElementById('style-dropdown-toggle');
+    const styleMenu = document.getElementById('style-dropdown-menu');
+
+    if (styleToggle) {
+        styleToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            styleDropdown.classList.toggle('open');
+        });
+    }
+
+    // Style dropdown option selection
+    document.querySelectorAll('.style-dropdown-menu .style-option').forEach(option => {
+        option.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('.style-dropdown-menu .style-option').forEach(o => o.classList.remove('selected'));
+            option.classList.add('selected');
+            document.getElementById('ascent-style').value = option.dataset.value;
+
+            // Update toggle display
+            const icon = option.querySelector('.style-icon').textContent;
+            const text = option.querySelector('.style-text').innerHTML;
+            styleToggle.querySelector('.style-icon').textContent = icon;
+            styleToggle.querySelector('.style-dropdown-label').innerHTML = text;
+
+            // Close dropdown
+            styleDropdown.classList.remove('open');
+        });
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', () => {
+        if (styleDropdown) styleDropdown.classList.remove('open');
+    });
 
     // Close My Routes modal
     const closeRoutesBtn = document.getElementById('close-my-routes-modal');
