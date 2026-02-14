@@ -1542,6 +1542,11 @@ async function mlLoadSchoolGeoJSON(school) {
     setupParkingsInteraction();
   }
 
+  // Cargar puntos de interés
+  if (school.geojson.puntosInteres) {
+    await mlLoadPuntosInteres(school.geojson.puntosInteres);
+  }
+
   // Cargar rutas de acceso (línea naranja intermitente)
   if (school.geojson.rutasAcceso) {
     await mlLoadRutasAcceso(school.geojson.rutasAcceso);
@@ -2101,6 +2106,19 @@ async function showRoutePopup(props, coords) {
     if (typeof db !== 'undefined') {
       const routeId2 = `${schoolId}_${routeId}`;
       const commentsSnap = await db.collection('comments').where('routeId', '==', routeId2).get();
+      commentCount = commentsSnap.size;
+    }
+  } catch (e) {
+    console.warn('Error fetching comment count:', e);
+  }
+  const commentBadge = commentCount > 0 ? `<span class="ml-comment-count">${commentCount}</span>` : '';
+
+  // Obtener número de comentarios
+  let commentCount = 0;
+  try {
+    if (typeof db !== 'undefined' && typeof normalizeId === 'function') {
+      const routeId = `${schoolId}_${normalizeId(routeName)}`;
+      const commentsSnap = await db.collection('comments').where('routeId', '==', routeId).get();
       commentCount = commentsSnap.size;
     }
   } catch (e) {
@@ -5614,6 +5632,19 @@ async function showUserRoutePopup(props, coords) {
     if (typeof db !== 'undefined') {
       const routeId2 = `${schoolId}_${routeId}`;
       const commentsSnap = await db.collection('comments').where('routeId', '==', routeId2).get();
+      commentCount = commentsSnap.size;
+    }
+  } catch (e) {
+    console.warn('Error fetching comment count:', e);
+  }
+  const commentBadge = commentCount > 0 ? `<span class="ml-comment-count">${commentCount}</span>` : '';
+
+  // Obtener número de comentarios
+  let commentCount = 0;
+  try {
+    if (typeof db !== 'undefined' && typeof normalizeId === 'function') {
+      const routeId = `${schoolId}_${normalizeId(routeName)}`;
+      const commentsSnap = await db.collection('comments').where('routeId', '==', routeId).get();
       commentCount = commentsSnap.size;
     }
   } catch (e) {

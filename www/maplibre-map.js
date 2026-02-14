@@ -2108,6 +2108,19 @@ async function showRoutePopup(props, coords) {
   }
   const commentBadge = commentCount > 0 ? `<span class="ml-comment-count">${commentCount}</span>` : '';
 
+  // Obtener número de comentarios
+  let commentCount = 0;
+  try {
+    if (typeof db !== 'undefined' && typeof normalizeId === 'function') {
+      const routeId = `${schoolId}_${normalizeId(routeName)}`;
+      const commentsSnap = await db.collection('comments').where('routeId', '==', routeId).get();
+      commentCount = commentsSnap.size;
+    }
+  } catch (e) {
+    console.warn('Error fetching comment count:', e);
+  }
+  const commentBadge = commentCount > 0 ? `<span class="ml-comment-count">${commentCount}</span>` : '';
+
   // Iconos PNG para info (tamaño 32x32)
   const iconClimber = `<img src="icons/placa.png" alt="Tipo" width="32" height="32">`;
   const iconExpress = `<img src="icons/mosq.png" alt="Expresos" width="32" height="32">`;
@@ -5614,6 +5627,19 @@ async function showUserRoutePopup(props, coords) {
     if (typeof db !== 'undefined') {
       const routeId2 = `${schoolId}_${routeId}`;
       const commentsSnap = await db.collection('comments').where('routeId', '==', routeId2).get();
+      commentCount = commentsSnap.size;
+    }
+  } catch (e) {
+    console.warn('Error fetching comment count:', e);
+  }
+  const commentBadge = commentCount > 0 ? `<span class="ml-comment-count">${commentCount}</span>` : '';
+
+  // Obtener número de comentarios
+  let commentCount = 0;
+  try {
+    if (typeof db !== 'undefined' && typeof normalizeId === 'function') {
+      const routeId = `${schoolId}_${normalizeId(routeName)}`;
+      const commentsSnap = await db.collection('comments').where('routeId', '==', routeId).get();
       commentCount = commentsSnap.size;
     }
   } catch (e) {
