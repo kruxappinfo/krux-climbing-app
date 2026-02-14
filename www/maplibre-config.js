@@ -253,7 +253,7 @@ const MAPLIBRE_SCHOOLS = {
       vias: 'Cartografia/Toledo/Toledo_vias.geojson',
       sectores: 'Cartografia/Toledo/Toledo_Sectores.geojson',
       parkings: 'Cartografia/Toledo/Toledo_Parkings.geojson',
-      puntosInteres: null,
+      puntosInteres: 'Cartografia/Toledo/Toledo_Puntos_interes.geojson',
       rutasAcceso: 'Cartografia/Toledo/Toledo_Rutas_acceso.geojson'
     },
     zoomLevels: {

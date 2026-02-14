@@ -694,10 +694,11 @@ document.addEventListener('click', async (e) => {
   const checkBtn = e.target.closest('.check-btn');
   if (checkBtn) {
     const btnSchoolId = checkBtn.dataset.schoolId;
+    const btnRouteId = checkBtn.dataset.routeId != null ? Number(checkBtn.dataset.routeId) : undefined;
     const btnRouteName = checkBtn.dataset.routeName;
     const btnGrade = checkBtn.dataset.grade;
     const btnSector = checkBtn.dataset.sector;
-    openAscentModal(btnSchoolId, currentSchoolName || btnSchoolId, btnRouteName, btnGrade, btnSector);
+    openAscentModal(btnSchoolId, currentSchoolName || btnSchoolId, btnRouteId, btnRouteName, btnGrade, btnSector);
     return;
   }
 
@@ -748,13 +749,13 @@ document.addEventListener('click', async (e) => {
   // 4. Comment Button
   const commentBtn = e.target.closest('.comment-btn');
   if (commentBtn) {
-    // Need to get title from data attribute or context
-    const title = commentBtn.dataset.routeName;
+    const commentRouteId = commentBtn.dataset.routeId != null ? Number(commentBtn.dataset.routeId) : undefined;
+    const commentRouteName = commentBtn.dataset.routeName;
     const schoolId = commentBtn.dataset.schoolId || currentSchoolId;
 
-    log('Opening comments for:', title);
+    log('Opening comments for routeId:', commentRouteId, 'name:', commentRouteName);
     if (typeof openCommentsModal === 'function') {
-      openCommentsModal(schoolId, title);
+      openCommentsModal(schoolId, commentRouteId, commentRouteName);
     } else {
       console.error('openCommentsModal not found');
     }
@@ -788,6 +789,7 @@ document.addEventListener('click', async (e) => {
   const uploadBtn = e.target.closest('.upload-photo-btn');
   if (uploadBtn) {
     const schoolId = uploadBtn.dataset.schoolId;
+    const uploadRouteId = uploadBtn.dataset.routeId != null ? Number(uploadBtn.dataset.routeId) : undefined;
     const routeName = uploadBtn.dataset.routeName;
 
     // Create file input
@@ -803,7 +805,7 @@ document.addEventListener('click', async (e) => {
 
       try {
         if (typeof uploadRoutePhoto === 'function') {
-          await uploadRoutePhoto(schoolId, routeName, file);
+          await uploadRoutePhoto(schoolId, uploadRouteId, routeName, file);
           showToast('Foto subida correctamente', 'success');
 
           // Refresh the popup to show new photo

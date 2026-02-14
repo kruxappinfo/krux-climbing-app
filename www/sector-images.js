@@ -14,9 +14,9 @@
 // CONFIGURACIÓN
 // ============================================
 const SECTOR_GALLERY_CONFIG = {
-  maxImages: 8,              // Máximo de fotos por sector
+  maxImages: Infinity,       // Sin límite de fotos por sector
   maxFileSize: 10 * 1024 * 1024, // 10MB
-  allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
+  allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
   compressThreshold: 2 * 1024 * 1024, // Comprimir si > 2MB
   maxDimension: 2000         // Máx dimensión en px
 };
@@ -207,7 +207,6 @@ async function openSectorImageViewer(schoolId, sectorName, startIndex = 0) {
 
   const isAdmin = await isSectorImageAdmin();
   const hasImages = sectorGalleryImages.length > 0;
-  const canAddMore = sectorGalleryImages.length < SECTOR_GALLERY_CONFIG.maxImages;
 
   // Crear el visor
   const viewer = document.createElement('div');
@@ -236,7 +235,6 @@ async function openSectorImageViewer(schoolId, sectorName, startIndex = 0) {
                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
               </svg>
             </button>
-            ${canAddMore ? `
               <button class="sector-viewer-upload" onclick="showSectorUploadModal('${schoolId}', '${encodeURIComponent(sectorName)}')" title="Añadir foto">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -244,7 +242,6 @@ async function openSectorImageViewer(schoolId, sectorName, startIndex = 0) {
                   <line x1="12" y1="3" x2="12" y2="15"/>
                 </svg>
               </button>
-            ` : ''}
             <button class="sector-viewer-manage" onclick="openGalleryManageModal('${schoolId}', '${encodeURIComponent(sectorName)}')" title="Gestionar galería">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="7" height="7"></rect>
@@ -296,8 +293,8 @@ async function openSectorImageViewer(schoolId, sectorName, startIndex = 0) {
         </div>
       ` : ''}
 
-      <!-- Botón flotante para añadir más fotos (solo admins y si no se alcanzó el límite) -->
-      ${isAdmin && canAddMore ? `
+      <!-- Botón flotante para añadir más fotos (solo admins) -->
+      ${isAdmin ? `
         <button class="gallery-add-fab" onclick="showSectorUploadModal('${schoolId}', '${encodeURIComponent(sectorName)}')" title="Añadir más fotos">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -311,7 +308,7 @@ async function openSectorImageViewer(schoolId, sectorName, startIndex = 0) {
         <span class="sector-viewer-hint">
           ${sectorGalleryImages.length > 1 ? 'Desliza para ver más fotos • ' : ''}
           Pellizca para hacer zoom • Toca las líneas para ver información de las vías
-          ${isAdmin && canAddMore ? ` • ${sectorGalleryImages.length}/${SECTOR_GALLERY_CONFIG.maxImages} fotos` : ''}
+          ${isAdmin ? ` • ${sectorGalleryImages.length} fotos` : ''}
         </span>
       </div>
     `;
@@ -1011,12 +1008,16 @@ function setupImageZoom() {
         svZoomState.translateY = (centerY - touchY);
         constrainPan();
 
-        // Desactivar resaltado mientras hay zoom
+        // Desactivar resaltado temporalmente durante la transición de zoom
         svHighlightEnabled = false;
         if (svHighlightReenableTimer) {
           clearTimeout(svHighlightReenableTimer);
-          svHighlightReenableTimer = null;
         }
+        // Reactivar resaltado después del delay para permitir interacción con zoom
+        svHighlightReenableTimer = setTimeout(() => {
+          svHighlightEnabled = true;
+          svHighlightReenableTimer = null;
+        }, SV_HIGHLIGHT_REENABLE_DELAY);
       }
       applyZoomTransform();
     }
@@ -1073,7 +1074,7 @@ function showSectorUploadModal(schoolId, encodedSectorName) {
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
             <p>Arrastra una imagen aquí o haz clic para seleccionar</p>
-            <span class="dropzone-hint">JPG, PNG - Máx 10MB</span>
+            <span class="dropzone-hint">JPG, PNG, HEIC - Máx 10MB</span>
           </div>
         </div>
 
@@ -1153,9 +1154,13 @@ function setupUploadEvents() {
  */
 let pendingSectorFile = null;
 
-function handleSectorFile(file) {
+async function handleSectorFile(file) {
+  // Detectar HEIC por tipo MIME o extensión (algunos navegadores no reportan el MIME correcto)
+  const isHeic = file.type === 'image/heic' || file.type === 'image/heif' ||
+    /\.heic$/i.test(file.name) || /\.heif$/i.test(file.name);
+
   // Validar tipo
-  if (!file.type.startsWith('image/')) {
+  if (!file.type.startsWith('image/') && !isHeic) {
     showSectorToast('Solo se permiten imágenes', 'error');
     return;
   }
@@ -1164,6 +1169,31 @@ function handleSectorFile(file) {
   if (file.size > 10 * 1024 * 1024) {
     showSectorToast('La imagen es demasiado grande (máx 10MB)', 'error');
     return;
+  }
+
+  // Convertir HEIC a JPEG si es necesario
+  if (isHeic) {
+    if (typeof heic2any === 'undefined') {
+      showSectorToast('No se pudo cargar el conversor HEIC. Intenta con JPG o PNG.', 'error');
+      return;
+    }
+    try {
+      showSectorToast('Convirtiendo imagen HEIC...', 'info');
+      const blob = await heic2any({
+        blob: file,
+        toType: 'image/jpeg',
+        quality: 0.9
+      });
+      // heic2any puede devolver un array de blobs o un solo blob
+      const resultBlob = Array.isArray(blob) ? blob[0] : blob;
+      file = new File([resultBlob], file.name.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg'), {
+        type: 'image/jpeg'
+      });
+    } catch (err) {
+      console.error('Error convirtiendo HEIC:', err);
+      showSectorToast('Error al convertir imagen HEIC. Intenta con JPG o PNG.', 'error');
+      return;
+    }
   }
 
   pendingSectorFile = file;
@@ -1204,12 +1234,7 @@ async function uploadSectorImage(schoolId, encodedSectorName) {
   const normalizedName = normalizeSectorName(sectorName);
   const docId = `${schoolId}_${normalizedName}`;
 
-  // Verificar límite de imágenes
   const existingImages = await getSectorGalleryImages(schoolId, sectorName);
-  if (existingImages.length >= SECTOR_GALLERY_CONFIG.maxImages) {
-    showSectorToast(`Máximo ${SECTOR_GALLERY_CONFIG.maxImages} imágenes por sector`, 'warning');
-    return;
-  }
 
   // Generar ID único para la imagen
   const imageId = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1626,10 +1651,39 @@ async function setupSectorViewerCanvasForGallery(schoolId, sectorName, imageInde
   svCtx = canvas.getContext('2d');
 
   // Esperar a que la imagen se cargue para obtener dimensiones
+  // En WebViews móviles (Capacitor), img.complete puede ser true mientras
+  // naturalWidth sigue siendo 0 (imagen cacheada pero dimensiones no resueltas).
+  // Si onload ya disparó, nunca volverá a disparar → usar polling como fallback.
   if (img.complete && img.naturalWidth > 0) {
     initCanvasOverlayForGallery(img, container, imageIndex);
   } else {
-    img.onload = () => initCanvasOverlayForGallery(img, container, imageIndex);
+    let resolved = false;
+    img.onload = () => {
+      if (!resolved) {
+        resolved = true;
+        initCanvasOverlayForGallery(img, container, imageIndex);
+      }
+    };
+    // Fallback: polling para WebViews donde img.complete=true pero naturalWidth=0
+    // y onload nunca vuelve a disparar
+    const pollInterval = setInterval(() => {
+      if (resolved) {
+        clearInterval(pollInterval);
+        return;
+      }
+      if (img.naturalWidth > 0) {
+        resolved = true;
+        clearInterval(pollInterval);
+        initCanvasOverlayForGallery(img, container, imageIndex);
+      }
+    }, 50);
+    // Timeout de seguridad: dejar de intentar después de 5 segundos
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      if (!resolved) {
+        console.warn('[SectorViewer] Timeout esperando naturalWidth de la imagen');
+      }
+    }, 5000);
   }
 }
 
@@ -1690,13 +1744,13 @@ function initCanvasOverlayForGallery(img, container, imageIndex) {
 
   console.log('[SectorViewer] Canvas overlay configurado para galería:', imgWidth, 'x', imgHeight, '@ DPR:', dpr);
 
-  // Aplicar highlight pendiente si existe
+  // Aplicar highlight pendiente si existe (svPendingHighlightRoute stores routeId)
   if (svPendingHighlightRoute) {
     svHighlightedRoute = svPendingHighlightRoute;
     svLockedRoute = svPendingHighlightRoute;
-    console.log('[SectorViewer] Aplicando highlight a:', svHighlightedRoute);
+    console.log('[SectorViewer] Aplicando highlight a routeId:', svHighlightedRoute);
 
-    const drawing = svDrawings.find(d => d.routeName === svPendingHighlightRoute);
+    const drawing = svDrawings.find(d => d.routeId === svPendingHighlightRoute);
     if (drawing) {
       const index = svDrawings.indexOf(drawing);
       setTimeout(() => {
@@ -1730,6 +1784,12 @@ async function loadViewerRouteDrawingsForImage(schoolId, sectorName, imageId) {
     if (doc.exists) {
       const data = doc.data();
       const allDrawings = data.drawings || [];
+
+      // Normalizar routeId de los dibujos a Number para evitar problemas de tipo (string vs number)
+      // Esto es crítico en WebViews móviles (Capacitor) donde Firestore puede devolver tipos distintos
+      allDrawings.forEach(d => {
+        if (d.routeId !== undefined) d.routeId = Number(d.routeId);
+      });
 
       // Filtrar dibujos por imagen
       // Si el dibujo no tiene imageId, pertenece a la imagen legacy (primera imagen)
@@ -1806,7 +1866,7 @@ async function openGalleryManageModal(schoolId, encodedSectorName) {
       </div>
 
       <div class="gallery-manage-footer">
-        <span class="gallery-manage-count">${images.length} / ${SECTOR_GALLERY_CONFIG.maxImages} imágenes</span>
+        <span class="gallery-manage-count">${images.length} imágenes</span>
         <button class="sector-btn-upload gallery-btn-done" onclick="closeGalleryManageModal()">Hecho</button>
       </div>
     </div>
@@ -2054,7 +2114,7 @@ async function deleteGalleryImage(schoolId, encodedSectorName, imageId) {
       // Actualizar contador
       const countSpan = document.querySelector('.gallery-manage-count');
       if (countSpan) {
-        countSpan.textContent = `${images.length} / ${SECTOR_GALLERY_CONFIG.maxImages} imágenes`;
+        countSpan.textContent = `${images.length} imágenes`;
       }
     }
 
@@ -2131,10 +2191,27 @@ async function setupSectorViewerCanvas(schoolId, sectorName, imageUrl) {
   svCtx = canvas.getContext('2d');
 
   // Esperar a que la imagen se cargue para obtener dimensiones
-  if (img.complete) {
+  // En WebViews móviles, img.complete puede ser true sin que onload dispare de nuevo
+  if (img.complete && img.naturalWidth > 0) {
     initCanvasOverlay(img);
   } else {
-    img.onload = () => initCanvasOverlay(img);
+    let resolved = false;
+    img.onload = () => {
+      if (!resolved) {
+        resolved = true;
+        initCanvasOverlay(img);
+      }
+    };
+    // Fallback: polling para WebViews donde img.complete=true pero naturalWidth=0
+    const pollInterval = setInterval(() => {
+      if (resolved) { clearInterval(pollInterval); return; }
+      if (img.naturalWidth > 0) {
+        resolved = true;
+        clearInterval(pollInterval);
+        initCanvasOverlay(img);
+      }
+    }, 50);
+    setTimeout(() => clearInterval(pollInterval), 5000);
   }
 }
 
@@ -2197,14 +2274,14 @@ function initCanvasOverlay(img) {
 
   console.log('[SectorViewer] Canvas overlay configurado:', imgWidth, 'x', imgHeight, '@ DPR:', dpr);
 
-  // Aplicar highlight pendiente si existe
+  // Aplicar highlight pendiente si existe (svPendingHighlightRoute stores routeId)
   if (svPendingHighlightRoute) {
     svHighlightedRoute = svPendingHighlightRoute;
     svLockedRoute = svPendingHighlightRoute; // Bloquear también
-    console.log('[SectorViewer] Aplicando highlight a:', svHighlightedRoute);
+    console.log('[SectorViewer] Aplicando highlight a routeId:', svHighlightedRoute);
 
     // Buscar el dibujo para mostrar el popup
-    const drawing = svDrawings.find(d => d.routeName === svPendingHighlightRoute);
+    const drawing = svDrawings.find(d => d.routeId === svPendingHighlightRoute);
     if (drawing) {
       const index = svDrawings.indexOf(drawing);
       // Mostrar popup después de un pequeño delay para que el canvas esté listo
@@ -2242,17 +2319,22 @@ function redrawCanvasOverlay() {
   const imgWidth = displayWidth;
   const imgHeight = displayHeight;
 
-  // Separar la vía resaltada del resto
+  // Separar la vía resaltada del resto (matching by routeId)
   const highlightedDrawing = svHighlightedRoute
-    ? svDrawings.find(d => d.routeName === svHighlightedRoute)
+    ? svDrawings.find(d => d.routeId === svHighlightedRoute)
     : null;
   const normalDrawings = svHighlightedRoute
-    ? svDrawings.filter(d => d.routeName !== svHighlightedRoute)
+    ? svDrawings.filter(d => d.routeId !== svHighlightedRoute)
     : svDrawings;
 
   // PASO 1: Dibujar las líneas normales primero
   normalDrawings.forEach((drawing) => {
     drawOverlayRouteLine(drawing, imgWidth, imgHeight);
+  });
+
+  // PASO 1.5: Dibujar las reuniones normales encima de las líneas
+  normalDrawings.forEach((drawing) => {
+    drawOverlayRouteAnchor(drawing, imgWidth, imgHeight);
   });
 
   // PASO 2: Dibujar los puntos de las vías normales
@@ -2263,6 +2345,7 @@ function redrawCanvasOverlay() {
   // PASO 3: Dibujar la línea resaltada encima de todo
   if (highlightedDrawing) {
     drawOverlayRouteLine(highlightedDrawing, imgWidth, imgHeight);
+    drawOverlayRouteAnchor(highlightedDrawing, imgWidth, imgHeight);
     drawOverlayRoutePoint(highlightedDrawing, imgWidth, imgHeight);
   }
 }
@@ -2280,6 +2363,12 @@ function getScaledPoints(drawing, canvasWidth, canvasHeight) {
     return null;
   }
 
+  // Prevenir división por cero si naturalWidth/Height no están disponibles
+  if (!svImage || !svImage.naturalWidth || !svImage.naturalHeight) {
+    console.warn('[SectorViewer] svImage.naturalWidth/Height es 0, no se pueden escalar puntos');
+    return null;
+  }
+
   return points.map(p => ({
     x: (p.x / svImage.naturalWidth) * canvasWidth,
     y: (p.y / svImage.naturalHeight) * canvasHeight
@@ -2287,10 +2376,63 @@ function getScaledPoints(drawing, canvasWidth, canvasHeight) {
 }
 
 /**
+ * Convierte un drawing en array de paths renderizables (tronco + ramas) para el visor
+ * Retrocompatible: si no hay branches, devuelve un solo path
+ * @returns {Array} Array de {branchId, points (scaled), anchorType, isTrunk, forkPoint (scaled)}
+ */
+function getScaledPathsMulti(drawing, canvasWidth, canvasHeight) {
+  const scaledTrunk = getScaledPoints(drawing, canvasWidth, canvasHeight);
+  if (!scaledTrunk) return [];
+
+  const paths = [{
+    branchId: 0,
+    points: scaledTrunk,
+    anchorType: drawing.anchorType,
+    isTrunk: true,
+    forkPoint: null
+  }];
+
+  if (drawing.branches && drawing.branches.length > 0) {
+    drawing.branches.forEach(branch => {
+      try {
+        if (!branch || !branch.forkPoint || !branch.points || branch.points.length === 0) {
+          console.warn('[SectorViewer] Rama con datos incompletos, omitiendo:', branch?.branchId);
+          return;
+        }
+        if (!svImage || !svImage.naturalWidth || !svImage.naturalHeight) return;
+        const branchFullPoints = [branch.forkPoint, ...branch.points];
+        const scaledBranchPoints = branchFullPoints.map(p => ({
+          x: (p.x / svImage.naturalWidth) * canvasWidth,
+          y: (p.y / svImage.naturalHeight) * canvasHeight
+        }));
+        const scaledFork = {
+          x: (branch.forkPoint.x / svImage.naturalWidth) * canvasWidth,
+          y: (branch.forkPoint.y / svImage.naturalHeight) * canvasHeight
+        };
+        paths.push({
+          branchId: branch.branchId,
+          points: scaledBranchPoints,
+          anchorType: branch.anchorType,
+          isTrunk: false,
+          forkPoint: scaledFork
+        });
+      } catch (e) {
+        console.error('[SectorViewer] Error procesando rama:', e);
+      }
+    });
+  }
+
+  return paths;
+}
+
+/**
  * Obtiene el color de una vía según su grado
  */
 function getRouteColor(drawing) {
-  const route = svRoutesList.find(r => r.nombre === drawing.routeName);
+  const route = svRoutesList.find(r =>
+    (drawing.routeId !== undefined && r.routeId === drawing.routeId) ||
+    (drawing.routeId === undefined && r.nombre === drawing.routeName)
+  );
   return route && typeof getGradeColor === 'function'
     ? getGradeColor(route.grado)
     : '#10b981';
@@ -2352,19 +2494,16 @@ function getLineScaleFactor() {
  * Dibuja solo la LÍNEA de una vía (sin el punto de inicio)
  */
 function drawOverlayRouteLine(drawing, canvasWidth, canvasHeight) {
-  const scaledPoints = getScaledPoints(drawing, canvasWidth, canvasHeight);
-  if (!scaledPoints) return;
+  const paths = getScaledPathsMulti(drawing, canvasWidth, canvasHeight);
+  if (paths.length === 0) return;
 
   const color = getRouteColor(drawing);
-  const isHighlighted = svHighlightedRoute === drawing.routeName;
+  const isHighlighted = svHighlightedRoute === drawing.routeId;
   const isZoomed = svZoomState.scale > 1;
 
   // Factor de escala para que las líneas se vean consistentes en diferentes tamaños de pantalla
   const scaleFactor = getLineScaleFactor();
 
-  // Grosor según si está resaltada o no (líneas más gruesas para mejor visibilidad)
-  // Ajustado con scaleFactor para consistencia entre móvil y desktop
-  // Con zoom: líneas más finas para ver mejor la roca
   let borderWidth, lineWidth;
   if (isZoomed) {
     borderWidth = (isHighlighted ? 4 : 3) * scaleFactor;
@@ -2374,61 +2513,76 @@ function drawOverlayRouteLine(drawing, canvasWidth, canvasHeight) {
     lineWidth = (isHighlighted ? 5 : 4) * scaleFactor;
   }
 
-  // Con zoom: línea discontinua para ver mejor la roca
   const dashPattern = isZoomed ? [8 * scaleFactor, 6 * scaleFactor] : [];
 
-  // Aplicar transparencia adicional cuando hay zoom
   let borderColor, mainColor;
   if (isZoomed) {
     borderColor = isHighlighted ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.35)';
-    // Extraer componentes RGB del color y aplicar transparencia
     mainColor = addAlphaToColor(color, 0.6);
   } else {
     borderColor = isHighlighted ? 'rgba(255, 255, 255, 0.85)' : 'rgba(0, 0, 0, 0.65)';
     mainColor = color;
   }
 
-  // Dibujar borde/sombra oscura para mejor visibilidad
-  svCtx.strokeStyle = borderColor;
-  svCtx.lineWidth = borderWidth;
-  svCtx.lineCap = 'round';
-  svCtx.lineJoin = 'round';
-  svCtx.shadowColor = 'transparent';
-  svCtx.shadowBlur = 0;
-  svCtx.setLineDash(dashPattern);
+  // Dibujar cada path (tronco + ramas)
+  paths.forEach(path => {
+    if (!path.points || path.points.length < 2) return;
 
-  svCtx.beginPath();
-  svCtx.moveTo(scaledPoints[0].x, scaledPoints[0].y);
-  for (let i = 1; i < scaledPoints.length; i++) {
-    svCtx.lineTo(scaledPoints[i].x, scaledPoints[i].y);
-  }
-  svCtx.stroke();
+    // Borde/sombra
+    svCtx.strokeStyle = borderColor;
+    svCtx.lineWidth = borderWidth;
+    svCtx.lineCap = 'round';
+    svCtx.lineJoin = 'round';
+    svCtx.shadowColor = 'transparent';
+    svCtx.shadowBlur = 0;
+    svCtx.setLineDash(dashPattern);
 
-  // Dibujar línea principal con color del grado
-  svCtx.strokeStyle = mainColor;
-  svCtx.lineWidth = lineWidth;
-  svCtx.lineCap = 'round';
-  svCtx.lineJoin = 'round';
-  svCtx.setLineDash(dashPattern);
+    svCtx.beginPath();
+    svCtx.moveTo(path.points[0].x, path.points[0].y);
+    for (let i = 1; i < path.points.length; i++) {
+      svCtx.lineTo(path.points[i].x, path.points[i].y);
+    }
+    svCtx.stroke();
 
-  svCtx.beginPath();
-  svCtx.moveTo(scaledPoints[0].x, scaledPoints[0].y);
-  for (let i = 1; i < scaledPoints.length; i++) {
-    svCtx.lineTo(scaledPoints[i].x, scaledPoints[i].y);
-  }
-  svCtx.stroke();
+    // Línea principal
+    svCtx.strokeStyle = mainColor;
+    svCtx.lineWidth = lineWidth;
+    svCtx.lineCap = 'round';
+    svCtx.lineJoin = 'round';
+    svCtx.setLineDash(dashPattern);
 
-  // Restaurar línea sólida para otros dibujos
+    svCtx.beginPath();
+    svCtx.moveTo(path.points[0].x, path.points[0].y);
+    for (let i = 1; i < path.points.length; i++) {
+      svCtx.lineTo(path.points[i].x, path.points[i].y);
+    }
+    svCtx.stroke();
+  });
+
   svCtx.setLineDash([]);
+}
 
-  // Dibujar icono de reunión al final de la vía si existe
-  if (drawing.anchorType && scaledPoints.length >= 2) {
-    const lastPoint = scaledPoints[scaledPoints.length - 1];
-    const prevPoint = scaledPoints[scaledPoints.length - 2];
-    const iconSize = isZoomed ? 10 * scaleFactor : 14 * scaleFactor;
-    const iconAlpha = isZoomed ? 0.6 : 1;
-    drawSvAnchorIcon(lastPoint.x, lastPoint.y, prevPoint.x, prevPoint.y, drawing.anchorType, mainColor, iconSize, iconAlpha);
-  }
+/**
+ * Dibuja solo el icono de reunión de una vía (separado para controlar z-order)
+ */
+function drawOverlayRouteAnchor(drawing, canvasWidth, canvasHeight) {
+  const paths = getScaledPathsMulti(drawing, canvasWidth, canvasHeight);
+  if (paths.length === 0) return;
+
+  const color = getRouteColor(drawing);
+  const isZoomed = svZoomState.scale > 1;
+  const scaleFactor = getLineScaleFactor();
+  const mainColor = isZoomed ? addAlphaToColor(color, 0.6) : color;
+  const iconSize = isZoomed ? 10 * scaleFactor : 14 * scaleFactor;
+  const iconAlpha = isZoomed ? 0.6 : 1;
+
+  // Dibujar reunión al final de cada path
+  paths.forEach(path => {
+    if (!path.anchorType || !path.points || path.points.length < 2) return;
+    const lastPoint = path.points[path.points.length - 1];
+    const prevPoint = path.points[path.points.length - 2];
+    drawSvAnchorIcon(lastPoint.x, lastPoint.y, prevPoint.x, prevPoint.y, path.anchorType, mainColor, iconSize, iconAlpha);
+  });
 }
 
 /**
@@ -2437,13 +2591,20 @@ function drawOverlayRouteLine(drawing, canvasWidth, canvasHeight) {
 function drawSvAnchorIcon(x, y, prevX, prevY, anchorType, color, size, alpha) {
   svCtx.save();
 
-  // Trasladar al punto final (sin rotación - siempre mira hacia arriba)
-  svCtx.translate(x, y);
-
   // Aplicar alpha global si es necesario
   if (alpha < 1) {
     svCtx.globalAlpha = alpha;
   }
+
+  // Sin terminar: usa sus propias coordenadas y rotación
+  if (anchorType === 'sin_terminar') {
+    drawSvAnchorSinTerminar(x, y, prevX, prevY, size, color);
+    svCtx.restore();
+    return;
+  }
+
+  // Trasladar al punto final (sin rotación - siempre mira hacia arriba)
+  svCtx.translate(x, y);
 
   // Dibujar según el tipo de reunión
   switch(anchorType) {
@@ -2736,6 +2897,61 @@ function drawSvAnchorMosqueton(x, y, size, color) {
 }
 
 /**
+ * Dibuja flecha de vía sin terminar (visor de sector)
+ * La flecha apunta en la dirección del último segmento
+ */
+function drawSvAnchorSinTerminar(x, y, prevX, prevY, size, color) {
+  const scale = size / 20;
+
+  // Calcular ángulo desde prevPoint → lastPoint
+  const angle = Math.atan2(y - prevY, x - prevX);
+
+  svCtx.save();
+  svCtx.translate(x, y);
+  svCtx.rotate(angle);
+
+  const arrowLen = 14 * scale;
+  const arrowW = 7 * scale;
+  const stemLen = 8 * scale;
+  const stemW = 3 * scale;
+
+  // Contorno blanco
+  svCtx.strokeStyle = 'white';
+  svCtx.lineWidth = 3 * scale;
+  svCtx.lineJoin = 'round';
+  svCtx.beginPath();
+  svCtx.moveTo(arrowLen, 0);
+  svCtx.lineTo(0, -arrowW);
+  svCtx.lineTo(0, -stemW);
+  svCtx.lineTo(-stemLen, -stemW);
+  svCtx.lineTo(-stemLen, stemW);
+  svCtx.lineTo(0, stemW);
+  svCtx.lineTo(0, arrowW);
+  svCtx.closePath();
+  svCtx.stroke();
+
+  // Relleno con color de la vía
+  svCtx.fillStyle = color;
+  svCtx.beginPath();
+  svCtx.moveTo(arrowLen, 0);
+  svCtx.lineTo(0, -arrowW);
+  svCtx.lineTo(0, -stemW);
+  svCtx.lineTo(-stemLen, -stemW);
+  svCtx.lineTo(-stemLen, stemW);
+  svCtx.lineTo(0, stemW);
+  svCtx.lineTo(0, arrowW);
+  svCtx.closePath();
+  svCtx.fill();
+
+  // Borde oscuro sutil
+  svCtx.strokeStyle = 'rgba(0,0,0,0.4)';
+  svCtx.lineWidth = 1;
+  svCtx.stroke();
+
+  svCtx.restore();
+}
+
+/**
  * Dibuja solo el PUNTO de inicio de una vía
  */
 function drawOverlayRoutePoint(drawing, canvasWidth, canvasHeight) {
@@ -2743,7 +2959,7 @@ function drawOverlayRoutePoint(drawing, canvasWidth, canvasHeight) {
   if (!scaledPoints) return;
 
   const color = getRouteColor(drawing);
-  const isHighlighted = svHighlightedRoute === drawing.routeName;
+  const isHighlighted = svHighlightedRoute === drawing.routeId;
   const isZoomed = svZoomState.scale > 1;
 
   // Factor de escala para consistencia entre móvil y desktop
@@ -2759,8 +2975,6 @@ function drawOverlayRoutePoint(drawing, canvasWidth, canvasHeight) {
     borderRadius = radius + (2 * scaleFactor);
   }
 
-  // Borde para contraste (blanco si resaltado, oscuro si no)
-  // Con zoom: más transparente
   svCtx.shadowColor = 'transparent';
   svCtx.shadowBlur = 0;
   let borderColor, pointColor;
@@ -2772,16 +2986,18 @@ function drawOverlayRoutePoint(drawing, canvasWidth, canvasHeight) {
     pointColor = color;
   }
 
+  // Punto de inicio del tronco
   svCtx.fillStyle = borderColor;
   svCtx.beginPath();
   svCtx.arc(scaledPoints[0].x, scaledPoints[0].y, borderRadius, 0, Math.PI * 2);
   svCtx.fill();
 
-  // Punto de color
   svCtx.fillStyle = pointColor;
   svCtx.beginPath();
   svCtx.arc(scaledPoints[0].x, scaledPoints[0].y, radius, 0, Math.PI * 2);
   svCtx.fill();
+
+  // (Diamante de bifurcación eliminado - la línea se une directamente)
 }
 
 /**
@@ -2863,9 +3079,9 @@ function setupCanvasInteraction() {
 // Variable para controlar el debounce del hover
 let svHoverTimeout = null;
 let svCurrentHoverRoute = null;
-let svHighlightedRoute = null; // Vía actualmente resaltada
-let svPendingHighlightRoute = null; // Vía que debe resaltarse al abrir el visor
-let svLockedRoute = null; // Vía bloqueada (seleccionada por click/tap)
+let svHighlightedRoute = null; // routeId de la vía actualmente resaltada
+let svPendingHighlightRoute = null; // routeId de la vía que debe resaltarse al abrir el visor
+let svLockedRoute = null; // routeId de la vía bloqueada (seleccionada por click/tap)
 
 /**
  * Maneja hover sobre el canvas para mostrar popup de vía
@@ -2881,23 +3097,23 @@ function handleOverlayHover(event) {
   // Usar dimensiones lógicas del canvas (sin DPR) para escalar coordenadas
   const displayWidth = svCanvas.displayWidth || svCanvas.width;
   const displayHeight = svCanvas.displayHeight || svCanvas.height;
-  const scaleX = displayWidth / rect.width;
-  const scaleY = displayHeight / rect.height;
 
-  // Convertir coordenadas del mouse a coordenadas del canvas
-  // Compensando el zoom y la traslación
+  // Convertir coordenadas del mouse a coordenadas del canvas lógicas
   const mouseX = event.clientX - rect.left;
   const mouseY = event.clientY - rect.top;
 
-  // Obtener el centro del rect para calcular offset
-  const centerX = rect.width / 2;
-  const centerY = rect.height / 2;
-
-  // Invertir la transformación de zoom para obtener coordenadas originales
-  // La transformación es: translate(tx, ty) scale(s)
-  // Para invertir: primero desescalar, luego destraducir
-  const x = ((mouseX - centerX) / svZoomState.scale + centerX - svZoomState.translateX / svZoomState.scale) * scaleX;
-  const y = ((mouseY - centerY) / svZoomState.scale + centerY - svZoomState.translateY / svZoomState.scale) * scaleY;
+  let x, y;
+  if (svZoomState.scale === 1 && svZoomState.translateX === 0 && svZoomState.translateY === 0) {
+    x = (mouseX / rect.width) * displayWidth;
+    y = (mouseY / rect.height) * displayHeight;
+  } else {
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const scaleX = displayWidth / rect.width;
+    const scaleY = displayHeight / rect.height;
+    x = ((mouseX - centerX) / svZoomState.scale + centerX - svZoomState.translateX / svZoomState.scale) * scaleX;
+    y = ((mouseY - centerY) / svZoomState.scale + centerY - svZoomState.translateY / svZoomState.scale) * scaleY;
+  }
 
   // El threshold se ajusta inversamente al zoom para que sea más fácil seleccionar con zoom
   const threshold = 15 / svZoomState.scale;
@@ -2910,36 +3126,25 @@ function handleOverlayHover(event) {
 
   for (let i = 0; i < svDrawings.length; i++) {
     const drawing = svDrawings[i];
+    const paths = getScaledPathsMulti(drawing, canvasWidth, canvasHeight);
 
-    // Soportar formato antiguo y nuevo
-    let points = [];
-    if (drawing.points && drawing.points.length > 0) {
-      points = drawing.points;
-    } else if (drawing.startPoint && drawing.endPoint) {
-      points = [drawing.startPoint, drawing.endPoint];
-    } else {
-      continue;
-    }
-
-    // Escalar puntos
-    const scaledPoints = points.map(p => ({
-      x: (p.x / svImage.naturalWidth) * canvasWidth,
-      y: (p.y / svImage.naturalHeight) * canvasHeight
-    }));
-
-    // Verificar distancia a cada segmento de la polyline
-    for (let j = 0; j < scaledPoints.length - 1; j++) {
-      const dist = distanceToLine(
-        x, y,
-        scaledPoints[j].x, scaledPoints[j].y,
-        scaledPoints[j + 1].x, scaledPoints[j + 1].y
-      );
-
-      if (dist < threshold) {
-        foundRoute = drawing;
-        foundNumber = i + 1;
-        break;
+    let found = false;
+    for (const path of paths) {
+      if (!path.points || path.points.length < 2) continue;
+      for (let j = 0; j < path.points.length - 1; j++) {
+        const dist = distanceToLine(
+          x, y,
+          path.points[j].x, path.points[j].y,
+          path.points[j + 1].x, path.points[j + 1].y
+        );
+        if (dist < threshold) {
+          foundRoute = drawing;
+          foundNumber = i + 1;
+          found = true;
+          break;
+        }
       }
+      if (found) break;
     }
     if (foundRoute) break;
   }
@@ -2947,16 +3152,16 @@ function handleOverlayHover(event) {
   // Cambiar cursor según si está sobre una vía
   svCanvas.style.cursor = foundRoute ? 'pointer' : 'default';
 
-  // Detectar si cambió la vía resaltada
-  const newHighlight = foundRoute ? foundRoute.routeName : null;
+  // Detectar si cambió la vía resaltada (using routeId)
+  const newHighlight = foundRoute ? foundRoute.routeId : null;
   const highlightChanged = newHighlight !== svHighlightedRoute;
 
   // Si encontramos una vía diferente a la actual
   if (foundRoute && highlightChanged) {
     // Una vez que pasamos a otra vía, desbloquear (volver a comportamiento normal)
     svLockedRoute = null;
-    svHighlightedRoute = foundRoute.routeName;
-    svCurrentHoverRoute = foundRoute.routeName;
+    svHighlightedRoute = foundRoute.routeId;
+    svCurrentHoverRoute = foundRoute.routeId;
 
     // Redibujar el canvas
     redrawCanvasOverlay();
@@ -2999,9 +3204,12 @@ function updateHoverPopupPosition(mouseX, mouseY) {
  * Muestra popup flotante con info de la vía al hacer hover
  */
 function showHoverRoutePopup(drawing, number, mouseX, mouseY) {
-  // Buscar datos completos de la vía
-  const route = svRoutesList.find(r => r.nombre === drawing.routeName);
-  const routeName = drawing.routeName;
+  // Buscar datos completos de la vía (by routeId with fallback to routeName)
+  const route = svRoutesList.find(r =>
+    (drawing.routeId !== undefined && r.routeId === drawing.routeId) ||
+    (drawing.routeId === undefined && r.nombre === drawing.routeName)
+  );
+  const routeName = route?.nombre || drawing.routeName || 'Sin nombre';
   const grado = route?.grado || '?';
   const gradeColor = typeof getGradeColor === 'function' ? getGradeColor(grado) : '#10b981';
 
@@ -3079,21 +3287,31 @@ function handleOverlayTap(event) {
   // Usar dimensiones lógicas del canvas (sin DPR) para escalar coordenadas
   const displayWidth = svCanvas.displayWidth || svCanvas.width;
   const displayHeight = svCanvas.displayHeight || svCanvas.height;
-  const scaleX = displayWidth / rect.width;
-  const scaleY = displayHeight / rect.height;
 
-  // Convertir coordenadas del tap a coordenadas del canvas
-  // Compensando el zoom y la traslación
+  // Convertir coordenadas del tap a coordenadas del canvas lógicas
+  // Paso 1: Obtener posición del tap relativa al rect visual del canvas
   const mouseX = event.clientX - rect.left;
   const mouseY = event.clientY - rect.top;
 
-  // Obtener el centro del rect para calcular offset
-  const centerX = rect.width / 2;
-  const centerY = rect.height / 2;
-
-  // Invertir la transformación de zoom para obtener coordenadas originales
-  const x = ((mouseX - centerX) / svZoomState.scale + centerX - svZoomState.translateX / svZoomState.scale) * scaleX;
-  const y = ((mouseY - centerY) / svZoomState.scale + centerY - svZoomState.translateY / svZoomState.scale) * scaleY;
+  // Paso 2: Convertir a coordenadas lógicas del canvas, invirtiendo la transformación CSS
+  // La transformación CSS es: transform-origin: center + translate(tx, ty) + scale(s)
+  // Para invertir: restar el translate, desescalar respecto al centro
+  let x, y;
+  if (svZoomState.scale === 1 && svZoomState.translateX === 0 && svZoomState.translateY === 0) {
+    // Sin zoom: conversión directa (más precisa, evita errores de redondeo)
+    x = (mouseX / rect.width) * displayWidth;
+    y = (mouseY / rect.height) * displayHeight;
+  } else {
+    // Con zoom: invertir la transformación CSS
+    // El canvas tiene transform-origin: center center
+    // La transformación visual es: translate(tx, ty) scale(s) aplicada desde el centro
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const scaleX = displayWidth / rect.width;
+    const scaleY = displayHeight / rect.height;
+    x = ((mouseX - centerX) / svZoomState.scale + centerX - svZoomState.translateX / svZoomState.scale) * scaleX;
+    y = ((mouseY - centerY) / svZoomState.scale + centerY - svZoomState.translateY / svZoomState.scale) * scaleY;
+  }
 
   // El threshold se ajusta inversamente al zoom para que sea más fácil seleccionar con zoom
   const threshold = 30 / svZoomState.scale;
@@ -3103,43 +3321,39 @@ function handleOverlayTap(event) {
 
   for (let i = 0; i < svDrawings.length; i++) {
     const drawing = svDrawings[i];
+    try {
+      const paths = getScaledPathsMulti(drawing, canvasWidth, canvasHeight);
 
-    // Soportar formato antiguo y nuevo
-    let points = [];
-    if (drawing.points && drawing.points.length > 0) {
-      points = drawing.points;
-    } else if (drawing.startPoint && drawing.endPoint) {
-      points = [drawing.startPoint, drawing.endPoint];
-    } else {
-      continue;
-    }
+      let found = false;
+      for (const path of paths) {
+        if (!path.points || path.points.length < 2) continue;
+        for (let j = 0; j < path.points.length - 1; j++) {
+          const dist = distanceToLine(
+            x, y,
+            path.points[j].x, path.points[j].y,
+            path.points[j + 1].x, path.points[j + 1].y
+          );
 
-    // Escalar puntos
-    const scaledPoints = points.map(p => ({
-      x: (p.x / svImage.naturalWidth) * canvasWidth,
-      y: (p.y / svImage.naturalHeight) * canvasHeight
-    }));
+          if (dist < threshold) {
+            found = true;
+            const mobile = typeof isMobileDevice === 'function' && isMobileDevice();
 
-    // Verificar distancia a cada segmento de la polyline
-    for (let j = 0; j < scaledPoints.length - 1; j++) {
-      const dist = distanceToLine(
-        x, y,
-        scaledPoints[j].x, scaledPoints[j].y,
-        scaledPoints[j + 1].x, scaledPoints[j + 1].y
-      );
-
-      if (dist < threshold) {
-        // Bloquear esta vía como seleccionada
-        svLockedRoute = drawing.routeName;
-        svHighlightedRoute = drawing.routeName;
-
-        // Redibujar con el nuevo highlight
-        redrawCanvasOverlay();
-
-        // Mostrar popup fijo de la vía
-        showLockedRoutePopup(drawing, i + 1);
-        return;
+            if (!mobile) {
+              svNavigateToRouteOnMap(drawing.routeId);
+            } else {
+              if (svLockedRoute === drawing.routeId) return;
+              svLockedRoute = drawing.routeId;
+              svHighlightedRoute = drawing.routeId;
+              redrawCanvasOverlay();
+              showLockedRoutePopup(drawing, i + 1);
+            }
+            return;
+          }
+        }
+        if (found) break;
       }
+    } catch (e) {
+      console.error('[SectorViewer] Error en hit detection para drawing:', drawing.routeId, e);
     }
   }
 
@@ -3157,9 +3371,12 @@ function handleOverlayTap(event) {
  * Posicionado cerca del punto de inicio de la vía
  */
 function showLockedRoutePopup(drawing, number) {
-  // Buscar datos completos de la vía
-  const route = svRoutesList.find(r => r.nombre === drawing.routeName);
-  const routeName = drawing.routeName;
+  // Buscar datos completos de la vía (by routeId with fallback to routeName)
+  const route = svRoutesList.find(r =>
+    (drawing.routeId !== undefined && r.routeId === drawing.routeId) ||
+    (drawing.routeId === undefined && r.nombre === drawing.routeName)
+  );
+  const routeName = route?.nombre || drawing.routeName || 'Sin nombre';
   const grado = route?.grado || '?';
   const gradeColor = typeof getGradeColor === 'function' ? getGradeColor(grado) : '#10b981';
 
@@ -3186,13 +3403,16 @@ function showLockedRoutePopup(drawing, number) {
   const screenX = rect.left + (startPoint.x / svImage.naturalWidth) * displayWidth * scaleX;
   const screenY = rect.top + (startPoint.y / svImage.naturalHeight) * displayHeight * scaleY;
 
+  const routeIdForBtn = drawing.routeId;
+
   const popup = document.createElement('div');
   popup.id = 'sv-locked-popup';
   popup.className = 'sv-locked-popup';
   popup.innerHTML = `
-    <div class="sv-locked-popup-content">
+    <div class="sv-locked-popup-content sv-locked-popup-navigable">
       <span class="sv-locked-grade" style="background-color: ${gradeColor}">${grado}</span>
       <span class="sv-locked-name">${routeName}</span>
+      <span class="sv-locked-nav-arrow">&#x279C;</span>
     </div>
   `;
 
@@ -3204,6 +3424,30 @@ function showLockedRoutePopup(drawing, number) {
 
   document.body.appendChild(popup);
 
+  // Hacer todo el popup navegable: al pulsar cualquier parte, navegar al mapa.
+  // Se usa el contenedor externo (popup) para capturar todos los toques,
+  // incluso los que caigan entre el borde del content y el wrapper.
+  let popupTouchStarted = false;
+  popup.addEventListener('touchstart', (e) => {
+    e.stopPropagation();
+    popupTouchStarted = true;
+  }, { passive: false });
+
+  popup.addEventListener('touchend', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (popupTouchStarted) {
+      popupTouchStarted = false;
+      svNavigateToRouteOnMap(routeIdForBtn);
+    }
+  }, { passive: false });
+
+  popup.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    svNavigateToRouteOnMap(routeIdForBtn);
+  });
+
   // Ajustar si se sale de la pantalla
   const popupRect = popup.getBoundingClientRect();
   if (popupRect.right > window.innerWidth) {
@@ -3211,6 +3455,11 @@ function showLockedRoutePopup(drawing, number) {
   }
   if (popupRect.top < 0) {
     popup.style.top = `${screenY + 30}px`;
+  }
+  // Asegurar que no se sale por abajo en pantallas pequeñas
+  const popupRectUpdated = popup.getBoundingClientRect();
+  if (popupRectUpdated.bottom > window.innerHeight) {
+    popup.style.top = `${screenY - popupRectUpdated.height - 10}px`;
   }
 }
 
@@ -3222,6 +3471,29 @@ function hideLockedPopup() {
   if (popup) {
     popup.remove();
   }
+}
+
+/**
+ * Navega al mapa y resalta la vía seleccionada.
+ * Cierra el visor de sector, centra el mapa en la vía y aplica un highlight temporal.
+ * Compatible con Web y App Nativa (Capacitor).
+ */
+function svNavigateToRouteOnMap(routeId) {
+  // Haptic feedback en app nativa
+  if (window.kruxHaptics && typeof window.kruxHaptics.vibrate === 'function') {
+    try { window.kruxHaptics.vibrate(); } catch (e) {}
+  }
+
+  // Cerrar el visor de sector
+  closeSectorImageViewer();
+
+  // Pequeño delay para permitir que la animación de cierre termine
+  // antes de iniciar el vuelo del mapa (evita jank en móvil)
+  setTimeout(() => {
+    if (typeof mlHighlightRouteOnMap === 'function') {
+      mlHighlightRouteOnMap(routeId);
+    }
+  }, 250);
 }
 
 /**
@@ -3243,6 +3515,7 @@ async function loadViewerSectorRoutes(schoolId, sectorName) {
             svRoutesList = geojson.features
               .filter(f => f.properties.sector === sectorName)
               .map(f => ({
+                routeId: Number(f.properties.id),
                 nombre: f.properties.nombre,
                 grado: f.properties.grado1 || '?',
                 sector: f.properties.sector
@@ -3268,9 +3541,11 @@ async function loadViewerSectorRoutes(schoolId, sectorName) {
           approvedSnapshot.forEach(doc => {
             const data = doc.data();
             // Solo añadir si no existe ya en la lista (evitar duplicados)
-            const exists = svRoutesList.some(r => r.nombre === data.nombre);
+            const numRouteId = data.routeId !== undefined ? Number(data.routeId) : undefined;
+            const exists = svRoutesList.some(r => r.routeId === numRouteId || r.nombre === data.nombre);
             if (!exists) {
               approvedRoutes.push({
+                routeId: numRouteId || doc.id,
                 nombre: data.nombre,
                 grado: data.grado1 || '?',
                 sector: data.sector,
@@ -3312,6 +3587,10 @@ async function loadViewerRouteDrawings(schoolId, sectorName) {
     if (doc.exists) {
       const data = doc.data();
       svDrawings = data.drawings || [];
+      // Normalizar routeId a Number para consistencia entre plataformas
+      svDrawings.forEach(d => {
+        if (d.routeId !== undefined) d.routeId = Number(d.routeId);
+      });
       console.log('[SectorViewer] Dibujos cargados:', svDrawings.length);
     } else {
       console.log('[SectorViewer] No hay dibujos guardados para este sector');
@@ -3359,7 +3638,11 @@ function distanceToLine(px, py, x1, y1, x2, y2) {
  * Muestra información de una vía tocada
  */
 function showViewerRouteInfo(drawing, number) {
-  const routeName = drawing.routeName;
+  const route = svRoutesList.find(r =>
+    (drawing.routeId !== undefined && r.routeId === drawing.routeId) ||
+    (drawing.routeId === undefined && r.nombre === drawing.routeName)
+  );
+  const routeName = route?.nombre || drawing.routeName || 'Sin nombre';
 
   // Crear mini popup
   const existing = document.querySelector('.sv-route-info');
@@ -3394,13 +3677,15 @@ function showViewerRouteInfo(drawing, number) {
  * Abre el visor del sector con una vía específica resaltada
  * @param {string} schoolId - ID de la escuela
  * @param {string} sectorName - Nombre del sector
- * @param {string} routeName - Nombre de la vía a resaltar
+ * @param {string} routeId - ID de la vía (GeoJSON properties.id)
  */
-async function openSectorImageViewerWithHighlight(schoolId, sectorName, routeName) {
-  console.log('[SectorViewer] Abriendo visor con vía resaltada:', routeName);
+async function openSectorImageViewerWithHighlight(schoolId, sectorName, routeId) {
+  // Normalizar routeId a Number para consistencia entre plataformas
+  routeId = Number(routeId);
+  console.log('[SectorViewer] Abriendo visor con vía resaltada, routeId:', routeId);
 
-  // Guardar la vía a resaltar para cuando el canvas se configure
-  svPendingHighlightRoute = routeName;
+  // Guardar el routeId a resaltar para cuando el canvas se configure
+  svPendingHighlightRoute = routeId;
 
   // Buscar en qué imagen está dibujada la vía
   let startIndex = 0;
@@ -3413,7 +3698,7 @@ async function openSectorImageViewerWithHighlight(schoolId, sectorName, routeNam
     if (drawingsDoc.exists) {
       const data = drawingsDoc.data();
       const drawings = data.drawings || [];
-      const routeDrawing = drawings.find(d => d.routeName === routeName);
+      const routeDrawing = drawings.find(d => Number(d.routeId) === routeId);
 
       if (routeDrawing && routeDrawing.imageId) {
         // Obtener las imágenes del sector para encontrar el índice
@@ -3438,10 +3723,10 @@ async function openSectorImageViewerWithHighlight(schoolId, sectorName, routeNam
  * Verifica si una vía tiene dibujo en la imagen del sector
  * @param {string} schoolId - ID de la escuela
  * @param {string} sectorName - Nombre del sector
- * @param {string} routeName - Nombre de la vía
+ * @param {string} routeId - ID de la vía (GeoJSON properties.id)
  * @returns {Promise<boolean>} - true si la vía tiene dibujo
  */
-async function hasRouteDrawing(schoolId, sectorName, routeName) {
+async function hasRouteDrawing(schoolId, sectorName, routeId) {
   try {
     if (typeof db === 'undefined' || !db) {
       return false;
@@ -3453,7 +3738,8 @@ async function hasRouteDrawing(schoolId, sectorName, routeName) {
     if (doc.exists) {
       const data = doc.data();
       const drawings = data.drawings || [];
-      return drawings.some(d => d.routeName === routeName);
+      const numRouteId = Number(routeId);
+      return drawings.some(d => Number(d.routeId) === numRouteId);
     }
     return false;
   } catch (error) {

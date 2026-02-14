@@ -108,7 +108,7 @@ let userFavorites = new Map(); // Map of "type:id" -> timestamp
 let userProjects = new Map(); // Map of "route_id" -> {name, grade, addedAt, notes}
 
 // Global ascents cache - para mostrar check en vías completadas
-let userAscentsCache = new Map(); // Map of "schoolId:routeName" -> {date, style, grade}
+let userAscentsCache = new Map(); // Map of "schoolId:routeId" -> {date, style, grade}
 
 // Load user ascents into cache
 async function loadUserAscentsCache() {
@@ -122,8 +122,9 @@ async function loadUserAscentsCache() {
         userAscentsCache.clear();
 
         ascents.forEach(ascent => {
-            // Crear clave única: schoolId + routeName
-            const key = `${ascent.schoolId}:${ascent.routeName}`;
+            // Crear clave única: schoolId + routeId (fallback to routeName for old data)
+            const id = ascent.routeId || ascent.routeName;
+            const key = `${ascent.schoolId}:${id}`;
             // Solo guardar el primer (más reciente) ascenso de cada vía
             if (!userAscentsCache.has(key)) {
                 userAscentsCache.set(key, {
@@ -146,20 +147,20 @@ async function loadUserAscentsCache() {
 }
 
 // Check if user has ascent for a specific route
-function hasUserAscent(schoolId, routeName) {
-    const key = `${schoolId}:${routeName}`;
+function hasUserAscent(schoolId, routeId) {
+    const key = `${schoolId}:${routeId}`;
     return userAscentsCache.has(key);
 }
 
 // Get user ascent info for a route (returns null if no ascent)
-function getUserAscentInfo(schoolId, routeName) {
-    const key = `${schoolId}:${routeName}`;
+function getUserAscentInfo(schoolId, routeId) {
+    const key = `${schoolId}:${routeId}`;
     return userAscentsCache.get(key) || null;
 }
 
 // Add ascent to cache (called after successful logAscent)
-function addAscentToCache(schoolId, routeName, ascentData) {
-    const key = `${schoolId}:${routeName}`;
+function addAscentToCache(schoolId, routeId, ascentData) {
+    const key = `${schoolId}:${routeId}`;
     userAscentsCache.set(key, {
         date: ascentData.date || new Date(),
         style: ascentData.style,
@@ -276,6 +277,7 @@ async function logAscent(ascentData) {
             userName: currentUser.displayName,
             schoolId: ascentData.schoolId,
             schoolName: ascentData.schoolName,
+            routeId: ascentData.routeId,
             routeName: ascentData.routeName,
             grade: ascentData.grade,
             sector: ascentData.sector || '',
@@ -296,7 +298,7 @@ async function logAscent(ascentData) {
         });
 
         // Actualizar caché de ascensos para mostrar check inmediatamente
-        addAscentToCache(ascentData.schoolId, ascentData.routeName, {
+        addAscentToCache(ascentData.schoolId, ascentData.routeId, {
             date: data.date,
             style: data.style,
             grade: data.grade
@@ -466,6 +468,7 @@ async function updateAscent(ascentId, ascentData) {
         const data = {
             schoolId: ascentData.schoolId,
             schoolName: ascentData.schoolName,
+            routeId: ascentData.routeId,
             routeName: ascentData.routeName,
             grade: ascentData.grade,
             sector: ascentData.sector || '',
@@ -504,13 +507,14 @@ async function getUserStats() {
     }
 }
 // Open ascent modal
-function openAscentModal(schoolId, schoolName, routeName, grade, sector) {
+function openAscentModal(schoolId, schoolName, routeId, routeName, grade, sector) {
     if (!currentUser) {
         showToast('Inicia sesión para registrar tus ascensiones', 'info');
         return;
     }
 
     const modal = document.getElementById('ascent-modal');
+    const form = document.getElementById('ascent-form');
 
     // Set hidden fields
     document.getElementById('ascent-school-id').value = schoolId;
@@ -518,6 +522,9 @@ function openAscentModal(schoolId, schoolName, routeName, grade, sector) {
     document.getElementById('ascent-route-name').value = routeName;
     document.getElementById('ascent-grade').value = grade;
     document.getElementById('ascent-sector').value = sector || '';
+
+    // Store routeId in form dataset
+    form.dataset.routeId = routeId;
 
     // Set display fields
     document.getElementById('display-route-name').textContent = `${routeName} (${grade})`;
@@ -551,6 +558,7 @@ function closeAscentModal() {
     // Reset edit mode
     delete form.dataset.ascentId;
     delete form.dataset.editMode;
+    delete form.dataset.routeId;
 
     // Reset title and button text
     modalTitle.textContent = 'Registrar Ascenso';
@@ -576,6 +584,9 @@ function openEditAscentModal(ascent) {
     document.getElementById('ascent-school-name').value = ascent.schoolName;
     document.getElementById('ascent-route-name').value = ascent.routeName;
     document.getElementById('ascent-grade').value = ascent.grade;
+
+    // Store routeId in form dataset (fallback to routeName for old data)
+    form.dataset.routeId = ascent.routeId || ascent.routeName;
 
     // Set display fields
     document.getElementById('display-route-name').textContent = `${ascent.routeName} (${ascent.grade})`;
@@ -1199,14 +1210,14 @@ function renderAscentsList(ascents) {
         Object.keys(grouped[school]).sort().forEach(sector => {
             const routes = grouped[school][sector];
 
-            // Group routes by route name
+            // Group routes by routeId (fallback to routeName for old data)
             const routesByName = {};
             routes.forEach(ascent => {
-                const routeName = ascent.routeName;
-                if (!routesByName[routeName]) {
-                    routesByName[routeName] = [];
+                const groupKey = ascent.routeId || ascent.routeName;
+                if (!routesByName[groupKey]) {
+                    routesByName[groupKey] = [];
                 }
-                routesByName[routeName].push(ascent);
+                routesByName[groupKey].push(ascent);
             });
 
             html += `
@@ -1226,12 +1237,13 @@ function renderAscentsList(ascents) {
                 const latestA = Math.max(...a[1].map(r => new Date(r.date)));
                 const latestB = Math.max(...b[1].map(r => new Date(r.date)));
                 return latestB - latestA;
-            }).forEach(([routeName, ascents]) => {
+            }).forEach(([groupKey, ascents]) => {
                 const count = ascents.length;
                 const latestAscent = ascents.reduce((a, b) =>
                     new Date(a.date) > new Date(b.date) ? a : b
                 );
                 const grade = latestAscent.grade;
+                const routeName = latestAscent.routeName; // Display name from ascent data
 
                 // Get best style (priority: onsight > flash > redpoint > toprope)
                 const stylePriority = { 'onsight': 4, 'flash': 3, 'redpoint': 2, 'toprope': 1, 'project': 0 };
@@ -1244,7 +1256,7 @@ function renderAscentsList(ascents) {
                 const avgRating = Math.round(ratingsSum / ascents.length);
 
                 html += `
-                    <div class="route-card compact" data-route-name="${routeName}">
+                    <div class="route-card compact" data-route-id="${groupKey}" data-route-name="${routeName}">
                         <div class="route-card-main">
                             <div class="route-card-header">
                                 <span class="route-card-title">
@@ -1259,7 +1271,7 @@ function renderAscentsList(ascents) {
                             </div>
                         </div>
                         <div class="route-card-actions">
-                            <button class="view-ascents-btn" data-route-name="${routeName}" data-count="${count}">
+                            <button class="view-ascents-btn" data-route-id="${groupKey}" data-count="${count}">
                                 👁️ Ver ${count > 1 ? 'todos' : 'detalles'}
                             </button>
                         </div>
@@ -1320,9 +1332,9 @@ function renderAscentsList(ascents) {
     document.querySelectorAll('.view-ascents-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const routeName = btn.dataset.routeName;
-            // Find all ascents for this route
-            const routeAscents = ascents.filter(a => a.routeName === routeName);
+            const groupKey = btn.dataset.routeId;
+            // Find all ascents for this route (match by routeId, fallback to routeName for old data)
+            const routeAscents = ascents.filter(a => (a.routeId || a.routeName) === groupKey);
             showRouteDetailsModal(routeAscents);
         });
     });
@@ -1798,14 +1810,14 @@ function navigateToFavorite(type, id) {
 // ==================== COMMENTS SYSTEM ====================
 
 // Open comments modal
-async function openCommentsModal(schoolId, routeName) {
+async function openCommentsModal(schoolId, routeId, routeName) {
     const modal = document.getElementById('comments-modal');
     const listContainer = document.getElementById('comments-list');
     const form = document.getElementById('comment-form');
     const userPhoto = document.getElementById('comment-user-photo');
     const modalTitle = document.getElementById('comments-modal-title');
 
-    // Set modal title
+    // Set modal title (display routeName for user)
     if (modalTitle) {
         modalTitle.textContent = `Comentarios: ${routeName}`;
     }
@@ -1823,11 +1835,12 @@ async function openCommentsModal(schoolId, routeName) {
 
     // Store context in form
     form.dataset.schoolId = schoolId;
+    form.dataset.routeId = routeId;
     form.dataset.routeName = routeName;
 
-    // Load comments
-    const routeId = `${schoolId}_${normalizeId(routeName)}`;
-    await loadComments(routeId);
+    // Load comments using routeId
+    const commentRouteId = `${schoolId}_${routeId}`;
+    await loadComments(commentRouteId);
 }
 
 // Load comments from Firestore
@@ -1905,8 +1918,8 @@ function renderComments(comments) {
                 await deleteComment(btn.dataset.id);
                 // Reload comments
                 const form = document.getElementById('comment-form');
-                const routeId = `${form.dataset.schoolId}_${normalizeId(form.dataset.routeName)}`;
-                loadComments(routeId);
+                const commentRouteId = `${form.dataset.schoolId}_${form.dataset.routeId}`;
+                loadComments(commentRouteId);
             }
         });
     });
@@ -1921,8 +1934,7 @@ async function postComment(text) {
 
     const form = document.getElementById('comment-form');
     const schoolId = form.dataset.schoolId;
-    const routeName = form.dataset.routeName;
-    const routeId = `${schoolId}_${normalizeId(routeName)}`;
+    const routeId = `${schoolId}_${form.dataset.routeId}`;
 
     try {
         // Extract mentions from autocomplete
@@ -2192,6 +2204,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     userId: currentUser.uid,
                     schoolId: document.getElementById('ascent-school-id').value,
                     schoolName: document.getElementById('ascent-school-name').value,
+                    routeId: form.dataset.routeId || document.getElementById('ascent-route-name').value,
                     routeName: document.getElementById('ascent-route-name').value,
                     grade: document.getElementById('ascent-grade').value,
                     sector: document.getElementById('ascent-sector').value,
