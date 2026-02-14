@@ -209,6 +209,33 @@ const MAPLIBRE_SCHOOLS = {
       parkings: 15
     }
   },
+  cuenca: {
+    id: 'cuenca',
+    name: 'Cuenca',
+    center: [-2.1280, 40.0880],
+    zoom: 14,
+    bounds: [[-2.135, 40.077], [-2.097, 40.110]],
+    // Vector Tiles (preferido - más rápido)
+    tiles: {
+      vias: 'tiles/cuenca/vias/{z}/{x}/{y}.pbf',
+      sectores: 'tiles/cuenca/sectores/{z}/{x}/{y}.pbf',
+      parkings: 'tiles/cuenca/parkings/{z}/{x}/{y}.pbf'
+    },
+    // GeoJSON fallback
+    geojson: {
+      vias: 'Cartografia/Cuenca/Cuenca_Vias.geojson',
+      sectores: 'Cartografia/Cuenca/Cuenca_Sectores.geojson',
+      parkings: 'Cartografia/Cuenca/Cuenca_Parkings.geojson',
+      puntosInteres: 'Cartografia/Cuenca/Cuenca_Puntos_interes.geojson',
+      rutasAcceso: 'Cartografia/Cuenca/Cuenca_Rutas_acceso.geojson'
+    },
+    zoomLevels: {
+      sectores: 12,
+      sectorNames: 16,
+      vias: 17,
+      parkings: 15
+    }
+  },
   toledo: {
     id: 'toledo',
     name: 'Toledo',
@@ -226,7 +253,7 @@ const MAPLIBRE_SCHOOLS = {
       vias: 'Cartografia/Toledo/Toledo_vias.geojson',
       sectores: 'Cartografia/Toledo/Toledo_Sectores.geojson',
       parkings: 'Cartografia/Toledo/Toledo_Parkings.geojson',
-      puntosInteres: null,
+      puntosInteres: 'Cartografia/Toledo/Toledo_Puntos_interes.geojson',
       rutasAcceso: 'Cartografia/Toledo/Toledo_Rutas_acceso.geojson'
     },
     zoomLevels: {
@@ -277,9 +304,9 @@ const SCHOOL_MARKERS = [
   {
     id: 'cuenca',
     nombre: 'Cuenca',
-    coords: [-2.1300, 40.0700],
-    zoom: 15,
-    isOpen: false,
+    coords: [-2.1280, 40.0880],
+    zoom: 14,
+    isOpen: true,
     rockType: 'Caliza'
   },
   {

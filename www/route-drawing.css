@@ -83,6 +83,56 @@
   gap: 8px;
 }
 
+/* Navegación de imágenes en el header */
+.rd-image-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 10px;
+  padding: 4px 8px;
+}
+
+.rd-btn-nav-image {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.rd-btn-nav-image:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.3);
+  color: #ffffff;
+  border-color: #10b981;
+}
+
+.rd-btn-nav-image:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.rd-btn-nav-image:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.rd-image-indicator {
+  font-size: 13px;
+  font-weight: 600;
+  color: #10b981;
+  white-space: nowrap;
+  min-width: 70px;
+  text-align: center;
+}
+
 .rd-btn-icon {
   width: 40px;
   height: 40px;
@@ -772,6 +822,7 @@
 }
 
 .ml-route-dev-btn:hover {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
 }
@@ -822,11 +873,24 @@
 
   .rd-editor-header {
     padding: 12px 15px;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   .rd-btn-icon {
     width: 32px;
     height: 32px;
+  }
+
+  .rd-image-nav {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    padding: 6px 12px;
+  }
+
+  .rd-image-indicator {
+    font-size: 12px;
   }
 }
 
@@ -906,7 +970,7 @@
    ============================================ */
 
 .sv-locked-popup {
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 999999 !important;
   animation: sv-locked-in 0.2s ease-out;
 }
@@ -947,10 +1011,34 @@
   color: #ffffff;
   font-weight: 600;
   font-size: 14px;
-  max-width: 220px;
+  max-width: 180px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sv-locked-popup-navigable {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background 0.15s, transform 0.12s;
+}
+
+.sv-locked-popup-navigable:active {
+  background: rgba(51, 61, 75, 0.98);
+  transform: scale(0.96);
+}
+
+.sv-locked-nav-arrow {
+  color: #f59e0b;
+  font-size: 16px;
+  margin-left: 2px;
+  opacity: 0.85;
+  transition: transform 0.15s;
+}
+
+.sv-locked-popup-navigable:active .sv-locked-nav-arrow {
+  transform: translateX(2px);
 }
 
 /* ============================================
@@ -1279,6 +1367,37 @@
   color: #9ca3af;
 }
 
+.rd-anchor-separator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+}
+
+.rd-anchor-separator::before,
+.rd-anchor-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #374151;
+}
+
+.rd-anchor-separator span {
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.rd-anchor-option-unfinished {
+  border-color: #92400e;
+  background: #1c1207;
+}
+
+.rd-anchor-option-unfinished:hover {
+  border-color: #f59e0b !important;
+  background: #27200f;
+}
+
 /* Responsive para modal de anchor */
 @media (max-width: 480px) {
   .rd-anchor-modal-container {
@@ -1437,5 +1556,233 @@
 
   .rd-image-selector-subtitle {
     font-size: 14px;
+  }
+}
+
+/* ============================================
+   MODAL DE ACCIÓN (Editar / Bifurcar)
+   ============================================ */
+
+.rd-action-modal-container {
+  max-width: 380px;
+}
+
+.rd-action-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rd-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 16px;
+  background: #111827;
+  border: 2px solid #374151;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rd-action-btn:hover {
+  transform: translateX(4px);
+}
+
+.rd-action-btn:active {
+  transform: translateX(2px) scale(0.98);
+}
+
+.rd-action-btn svg {
+  flex-shrink: 0;
+}
+
+/* Botón Editar - azul */
+.rd-action-edit {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  color: #93c5fd;
+}
+
+.rd-action-edit:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #60a5fa;
+}
+
+/* Botón Bifurcar - violeta */
+.rd-action-bifurcate {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.1);
+  color: #c4b5fd;
+}
+
+.rd-action-bifurcate:hover {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: #a78bfa;
+}
+
+/* ============================================
+   MODAL SELECTOR DE RAMAS
+   ============================================ */
+
+.rd-branch-modal-container {
+  max-width: 420px;
+}
+
+.rd-branch-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.rd-branch-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: #111827;
+  border: 2px solid #374151;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rd-branch-option:hover {
+  background: #1f2937;
+  border-color: #8b5cf6;
+  transform: translateX(4px);
+}
+
+.rd-branch-option:active {
+  transform: translateX(2px) scale(0.98);
+}
+
+.rd-branch-option svg {
+  flex-shrink: 0;
+  color: #9ca3af;
+}
+
+.rd-branch-option:hover svg {
+  color: #c4b5fd;
+}
+
+/* Tronco principal - verde */
+.rd-branch-trunk {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.rd-branch-trunk:hover {
+  border-color: #34d399;
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.rd-branch-trunk svg {
+  color: #10b981;
+}
+
+/* Badge de puntos por rama */
+.rd-branch-points {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  background: rgba(107, 114, 128, 0.15);
+  padding: 3px 8px;
+  border-radius: 8px;
+}
+
+/* Sección de eliminar ramas */
+.rd-branch-delete-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid #374151;
+}
+
+.rd-branch-delete-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(153, 27, 27, 0.15);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #fca5a5;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.rd-branch-delete-btn:hover {
+  background: rgba(220, 38, 38, 0.25);
+  border-color: #dc2626;
+  color: #fecaca;
+}
+
+.rd-branch-delete-btn:active {
+  transform: scale(0.98);
+}
+
+.rd-branch-delete-btn svg {
+  flex-shrink: 0;
+}
+
+/* ============================================
+   BADGE DE RAMALES EN LISTA DE VÍAS
+   ============================================ */
+
+.rd-branch-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  padding: 2px 7px;
+  border-radius: 8px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+/* ============================================
+   RESPONSIVE PARA BIFURCACIÓN
+   ============================================ */
+
+@media (max-width: 480px) {
+  .rd-action-modal-container {
+    max-width: 100%;
+    margin: 0 10px;
+  }
+
+  .rd-action-btn {
+    padding: 14px;
+    font-size: 14px;
+  }
+
+  .rd-branch-modal-container {
+    max-width: 100%;
+    margin: 0 10px;
+  }
+
+  .rd-branch-option {
+    padding: 12px 14px;
+    font-size: 13px;
   }
 }

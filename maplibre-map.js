@@ -14,6 +14,9 @@ let mlRoutePopup = null;             // Popup para rutas
 let mlUserMarker = null;             // Marcador de ubicación del usuario
 let mlLoadedSources = new Set();     // Sources cargados
 let mlIs3DEnabled = false;           // Estado del terreno 3D
+let mlFilterPanelOpen = false;        // Estado del panel de filtro
+let mlGradeRangeMin = 0;              // Índice mínimo del rango de grado (0 = primer grado)
+let mlGradeRangeMax = -1;             // Índice máximo del rango de grado (-1 = se inicializa al total)
 
 // ============================================
 // PALETA DE COLORES PARA SECTORES
@@ -396,6 +399,9 @@ function addMapControls() {
     showUserHeading: true
   });
   mlMap.addControl(geolocateControl, 'bottom-right');
+
+  // Botón de filtro por grado (esquina superior derecha)
+  addGradeFilterButton();
 }
 
 // Estado del modo 3D
@@ -952,6 +958,14 @@ function onMapLoad() {
   // Cargar icono de parking
   loadParkingIcon();
 
+  // Listener para actualizar ticks de ascensos al moverse/zoom
+  mlMap.on('moveend', scheduleTicksUpdate);
+  mlMap.on('sourcedata', (e) => {
+    if (e.sourceId === 'vias-source' && e.isSourceLoaded) {
+      scheduleTicksUpdate();
+    }
+  });
+
   // Cargar markers de escuelas (vista general)
   loadSchoolMarkers();
 
@@ -1249,12 +1263,16 @@ async function mlLoadSchool(schoolId, skipFlyTo = false) {
 
     console.log(`Escuela ${school.name} cargada correctamente`);
 
+    // Re-aplicar filtro de grados si había uno activo
+    applyGradeFilter();
+
   } catch (error) {
     console.error('Error cargando escuela:', error);
     // Fallback a GeoJSON si falla Vector Tiles
     if (useVectorTiles) {
       console.log('Fallback a GeoJSON...');
       await mlLoadSchoolGeoJSON(school);
+      applyGradeFilter();
     }
   }
 }
@@ -1528,6 +1546,11 @@ async function mlLoadSchoolGeoJSON(school) {
   if (school.geojson.rutasAcceso) {
     await mlLoadRutasAcceso(school.geojson.rutasAcceso);
   }
+
+  // Cargar puntos de interés (emojis diferenciados por tipo)
+  if (school.geojson.puntosInteres) {
+    await mlLoadPuntosInteres(school.geojson.puntosInteres);
+  }
 }
 
 /**
@@ -1586,6 +1609,199 @@ async function mlLoadRutasAcceso(url) {
   }
 }
 
+// ============================================
+// MAPA DE EMOJIS PARA PUNTOS DE INTERÉS
+// ============================================
+const POI_EMOJI_MAP = {
+  'fuente': '🚰',
+  'ducha': '🚿',
+  'hospital': '🏥',
+  'parking': '🅿️',
+  'refugio': '🏠',
+  'mirador': '👁️',
+  'cueva': '🕳️',
+  'bar': '🍺',
+  'restaurante': '🍽️',
+  'tienda': '🛒',
+  'farmacia': '💊',
+  'gasolinera': '⛽',
+  'camping': '⛺',
+  'wc': '🚻',
+  'baño': '🚻',
+  'escalera': '🪜',
+  'puente': '🌉',
+  'peligro': '⚠️',
+  'informacion': 'ℹ️',
+  'telefono': '📞',
+  'iglesia': '⛪',
+  'ermita': '⛪',
+  'ruina': '🏚️',
+  'agua': '💧',
+  'rio': '🏞️',
+  'arroyo': '🏞️',
+  'piscina': '🏊',
+  'bomberos': '🚒',
+  'policia': '🚔',
+  'supermercado': '🛒',
+  'albergue': '🛏️',
+  'hotel': '🏨',
+  'correos': '📮',
+  'merendero': '🧺'
+};
+
+/**
+ * Obtiene el emoji correspondiente a un tipo de punto de interés
+ */
+function getPOIEmoji(descripcion) {
+  if (!descripcion) return '📍';
+  const desc = descripcion.toLowerCase().trim();
+  return POI_EMOJI_MAP[desc] || '📍';
+}
+
+/**
+ * Genera una imagen de emoji en un canvas para usar como icono en MapLibre.
+ * MapLibre SDF fonts no soportan emojis, así que los renderizamos como imágenes.
+ */
+function createEmojiImage(emoji, size = 48) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${Math.round(size * 0.75)}px sans-serif`;
+  ctx.fillText(emoji, size / 2, size / 2);
+  return { data: ctx.getImageData(0, 0, size, size).data, width: size, height: size };
+}
+
+/**
+ * Carga los puntos de interés con emojis diferenciados por tipo.
+ * Usa icon-image con imágenes generadas por canvas (los SDF glyphs no soportan emoji).
+ */
+async function mlLoadPuntosInteres(url) {
+  const sourceId = 'puntos-interes-source';
+  const layerId = 'puntos-interes-layer';
+
+  const urlWithCache = `${url}?v=${Date.now()}`;
+
+  try {
+    const response = await fetch(urlWithCache);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const geojson = await response.json();
+
+    // Verificar que hay features
+    if (!geojson.features || geojson.features.length === 0) {
+      console.log('Puntos de interés: sin elementos');
+      return;
+    }
+
+    // Recoger emojis únicos y registrar como imágenes en el mapa
+    const usedEmojis = new Set();
+    geojson.features.forEach(f => {
+      const desc = f.properties.descripcio || f.properties.descripcion || f.properties.Descripcion || f.properties.tipo || '';
+      const emoji = getPOIEmoji(desc);
+      f.properties._emoji = emoji;
+      f.properties._poiType = desc;
+      f.properties._emojiIcon = 'poi-emoji-' + desc.toLowerCase().trim();
+      usedEmojis.add(emoji);
+    });
+
+    // Registrar cada emoji único como imagen en el mapa
+    for (const emoji of usedEmojis) {
+      const imgId = 'poi-emoji-' + emoji;
+      if (!mlMap.hasImage(imgId)) {
+        const img = createEmojiImage(emoji, 48);
+        mlMap.addImage(imgId, img, { sdf: false });
+      }
+    }
+    // Registrar el fallback
+    if (!mlMap.hasImage('poi-emoji-📍')) {
+      const fallbackImg = createEmojiImage('📍', 48);
+      mlMap.addImage('poi-emoji-📍', fallbackImg, { sdf: false });
+    }
+
+    // Asignar el id de imagen a cada feature
+    geojson.features.forEach(f => {
+      f.properties._emojiIcon = 'poi-emoji-' + f.properties._emoji;
+    });
+
+    // Remover si ya existe
+    if (mlMap.getLayer(layerId)) {
+      mlMap.removeLayer(layerId);
+    }
+    if (mlMap.getSource(sourceId)) {
+      mlMap.removeSource(sourceId);
+    }
+
+    mlMap.addSource(sourceId, {
+      type: 'geojson',
+      data: geojson
+    });
+    mlLoadedSources.add(sourceId);
+
+    // Capa de iconos con emojis renderizados como imágenes
+    mlMap.addLayer({
+      id: layerId,
+      type: 'symbol',
+      source: sourceId,
+      minzoom: 14,
+      layout: {
+        'icon-image': ['get', '_emojiIcon'],
+        'icon-size': [
+          'interpolate', ['linear'], ['zoom'],
+          14, 0.45,
+          16, 0.65,
+          18, 0.85,
+          20, 1.0
+        ],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-anchor': 'center'
+      }
+    });
+
+    // Interactividad: mostrar tooltip con descripción al hacer click
+    mlMap.on('click', layerId, (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const props = e.features[0].properties;
+      const coords = e.features[0].geometry.coordinates.slice();
+      const desc = props._poiType || 'Punto de interés';
+      const nombre = props.Nombre || props.nombre || '';
+      const emoji = props._emoji || '📍';
+
+      // Ajustar coordenadas si es MultiPoint
+      while (Math.abs(e.lngLat.lng - coords[0]) > 180) {
+        coords[0] += e.lngLat.lng > coords[0] ? 360 : -360;
+      }
+
+      new maplibregl.Popup({ offset: 15, className: 'poi-popup' })
+        .setLngLat(coords)
+        .setHTML(`
+          <div style="text-align:center; padding: 4px 8px;">
+            <div style="font-size: 28px;">${emoji}</div>
+            <div style="font-weight: bold; font-size: 14px; margin-top: 4px;">${desc.charAt(0).toUpperCase() + desc.slice(1)}</div>
+            ${nombre ? `<div style="font-size: 12px; color: #666;">${nombre}</div>` : ''}
+          </div>
+        `)
+        .addTo(mlMap);
+    });
+
+    // Cursor pointer al hover
+    mlMap.on('mouseenter', layerId, () => {
+      mlMap.getCanvas().style.cursor = 'pointer';
+    });
+    mlMap.on('mouseleave', layerId, () => {
+      mlMap.getCanvas().style.cursor = '';
+    });
+
+    console.log(`Capa puntos de interés cargada: ${geojson.features.length} elementos`);
+
+  } catch (error) {
+    console.error('Error cargando puntos de interés:', error);
+  }
+}
+
 /**
  * Carga una capa GeoJSON
  */
@@ -1638,8 +1854,8 @@ async function mlLoadGeoJSONLayer(layerId, url, type, paint, minzoom = 0, layout
  * Limpia las capas de la escuela actual
  */
 function mlClearSchoolLayers() {
-  const layerIds = ['vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer'];
-  const sourceIds = ['vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source'];
+  const layerIds = ['vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer'];
+  const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source'];
 
   layerIds.forEach(id => {
     if (mlMap.getLayer(id)) {
@@ -1653,6 +1869,156 @@ function mlClearSchoolLayers() {
       mlLoadedSources.delete(id);
     }
   });
+}
+
+// ============================================
+// CAPA DE TICKS (CHECKS) EN VÍAS COMPLETADAS
+// ============================================
+
+/**
+ * Crea o actualiza la capa de ticks (checks) sobre las vías que el usuario ha ascendido.
+ * Usa userAscentsCache de user-features.js para determinar qué vías marcar.
+ */
+function updateAscentTicksLayer() {
+  if (!mlMap || !mlCurrentSchool) return;
+  if (typeof userAscentsCache === 'undefined' || !userAscentsCache.size) return;
+
+  const tickSourceId = 'vias-ticks-source';
+  const tickLayerId = 'vias-ticks-layer';
+
+  // Recopilar features de vías visibles que el usuario ha completado
+  const tickFeatures = [];
+
+  // Intentar obtener features del source de vías (vector tiles o geojson)
+  let viasFeatures = [];
+  try {
+    if (mlMap.getSource('vias-source')) {
+      viasFeatures = mlMap.querySourceFeatures('vias-source', {
+        sourceLayer: 'vias'
+      });
+      // Fallback: si no hay sourceLayer (geojson mode)
+      if (!viasFeatures.length) {
+        viasFeatures = mlMap.querySourceFeatures('vias-source');
+      }
+    }
+  } catch (e) {
+    // querySourceFeatures puede fallar si los tiles no están cargados
+  }
+
+  const addedRoutes = new Set();
+
+  viasFeatures.forEach(feature => {
+    const routeId = feature.properties?.id;
+    if (!routeId && routeId !== 0) return;
+
+    const routeName = feature.properties?.nombre;
+    const key = `${mlCurrentSchool}:${routeId}`;
+    if (userAscentsCache.has(key) && !addedRoutes.has(routeId)) {
+      addedRoutes.add(routeId);
+
+      // Obtener coordenadas del feature
+      let coords;
+      if (feature.geometry.type === 'Point') {
+        coords = feature.geometry.coordinates;
+      } else if (feature.geometry.type === 'MultiPoint') {
+        coords = feature.geometry.coordinates[0];
+      } else {
+        return;
+      }
+
+      tickFeatures.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: coords },
+        properties: { nombre: routeName, id: routeId }
+      });
+    }
+  });
+
+  const tickGeoJSON = {
+    type: 'FeatureCollection',
+    features: tickFeatures
+  };
+
+  // Actualizar o crear source/layer
+  if (mlMap.getSource(tickSourceId)) {
+    mlMap.getSource(tickSourceId).setData(tickGeoJSON);
+  } else {
+    // Cargar icono de check si no existe
+    loadTickIcon().then(() => {
+      if (mlMap.getSource(tickSourceId)) {
+        mlMap.getSource(tickSourceId).setData(tickGeoJSON);
+        return;
+      }
+
+      mlMap.addSource(tickSourceId, {
+        type: 'geojson',
+        data: tickGeoJSON
+      });
+
+      mlMap.addLayer({
+        id: tickLayerId,
+        type: 'symbol',
+        source: tickSourceId,
+        minzoom: 16,
+        layout: {
+          'icon-image': 'tick-icon',
+          'icon-size': [
+            'interpolate', ['linear'], ['zoom'],
+            16, isMobileDevice() ? 0.12 : 0.16,
+            18, isMobileDevice() ? 0.2 : 0.28,
+            20, isMobileDevice() ? 0.3 : 0.42
+          ],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'icon-anchor': 'center',
+          'icon-offset': [0, 0]
+        }
+      });
+    });
+  }
+}
+
+/**
+ * Carga el icono de tick/check para la capa de vías completadas
+ */
+function loadTickIcon() {
+  return new Promise((resolve) => {
+    if (mlMap.hasImage('tick-icon')) {
+      resolve();
+      return;
+    }
+
+    const size = 48;
+    const svgIcon = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 48 48">
+        <polyline points="14,25 22,33 34,15" fill="none" stroke="#15803d" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline points="14,25 22,33 34,15" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `;
+
+    const img = new Image(size, size);
+    img.onload = () => {
+      if (!mlMap.hasImage('tick-icon')) {
+        mlMap.addImage('tick-icon', img);
+      }
+      resolve();
+    };
+    img.onerror = () => {
+      console.warn('Error cargando tick-icon');
+      resolve();
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgIcon);
+  });
+}
+
+// Escuchar eventos de movimiento del mapa para actualizar ticks
+// (los tiles se cargan progresivamente, hay que refrescar al moverse)
+let mlTicksUpdateTimer = null;
+function scheduleTicksUpdate() {
+  if (mlTicksUpdateTimer) clearTimeout(mlTicksUpdateTimer);
+  mlTicksUpdateTimer = setTimeout(() => {
+    updateAscentTicksLayer();
+  }, 500);
 }
 
 // ============================================
@@ -1670,6 +2036,11 @@ function setupViasInteraction() {
     const feature = e.features[0];
     const props = feature.properties;
     const coords = e.lngLat;
+
+    // Normalizar campo descripcio → descripcion (GeoJSON usa "descripcio")
+    if (!props.descripcion && props.descripcio) {
+      props.descripcion = props.descripcio;
+    }
 
     // Auto-centrar con padding para evitar que el popup quede cortado
     mlMap.flyTo({
@@ -1699,8 +2070,8 @@ function setupViasInteraction() {
 async function showRoutePopup(props, coords) {
   const grade = props.grado1 || '?';
   const gradeColor = getGradeColor(grade);
+  const routeId = Number(props.id);
   const routeName = props.nombre || 'Sin nombre';
-  const encodedName = encodeURIComponent(routeName);
   const sectorName = props.sector || '';
   const encodedSector = encodeURIComponent(sectorName);
   const schoolId = mlCurrentSchool || 'valeria';
@@ -1711,12 +2082,31 @@ async function showRoutePopup(props, coords) {
   // Verificar si la vía tiene dibujo en la imagen del sector (para mostrar botón "Ver vía")
   let hasDrawing = false;
   if (sectorName && typeof hasRouteDrawing === 'function') {
-    hasDrawing = await hasRouteDrawing(schoolId, sectorName, routeName);
+    hasDrawing = await hasRouteDrawing(schoolId, sectorName, routeId);
   }
+
+  // Verificar si el usuario ha completado esta vía
+  const hasAscent = (typeof hasUserAscent === 'function') && hasUserAscent(schoolId, routeId);
+  const ascentInfo = hasAscent && (typeof getUserAscentInfo === 'function') ? getUserAscentInfo(schoolId, routeId) : null;
 
   // Guardar datos de la vía actual para las funciones de los botones
   mlCurrentRouteGrade = grade;
   mlCurrentRouteSector = sectorName;
+  mlCurrentRouteId = routeId;
+  mlCurrentRouteName = routeName;
+
+  // Obtener número de comentarios
+  let commentCount = 0;
+  try {
+    if (typeof db !== 'undefined') {
+      const routeId2 = `${schoolId}_${routeId}`;
+      const commentsSnap = await db.collection('comments').where('routeId', '==', routeId2).get();
+      commentCount = commentsSnap.size;
+    }
+  } catch (e) {
+    console.warn('Error fetching comment count:', e);
+  }
+  const commentBadge = commentCount > 0 ? `<span class="ml-comment-count">${commentCount}</span>` : '';
 
   // Iconos PNG para info (tamaño 32x32)
   const iconClimber = `<img src="icons/placa.png" alt="Tipo" width="32" height="32">`;
@@ -1732,50 +2122,93 @@ async function showRoutePopup(props, coords) {
 
   const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 
+  // Check de ascenso para el header
+  const ascentCheckHTML = hasAscent ? `
+    <span class="ml-route-ascent-check">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </span>
+  ` : '';
+
+  // Detectar campos vacíos para sugerir contribuir (sugerencias independientes por campo)
+  const hasDescripcion = props.descripcion && props.descripcion.trim();
+  const hasExp = props.exp1;
+  const hasLong = props.long1;
+
+  // Obtener votaciones de aleje desde Firestore
+  const alejeData = await getAlejeVotes(schoolId, routeId);
+  const alejeHTML = generateAlejeBarHTML(routeId, schoolId, alejeData.avg, alejeData.userVote);
+
+  // Obtener votaciones de estado de la vía desde Firestore
+  const estadoData = await getEstadoVotes(schoolId, routeId);
+  const estadoHTML = generateEstadoStarsHTML(routeId, schoolId, estadoData.avg, estadoData.userVote);
+
   const html = `
     <div class="ml-route-popup-new">
-      <!-- Header: Nombre + Grado -->
+      <!-- Header: Check + Nombre + Grado -->
       <div class="ml-route-header">
+        ${ascentCheckHTML}
         <span class="ml-route-name">${routeName}</span>
         <span class="ml-route-grade" style="background-color: ${gradeColor}">${grade}</span>
       </div>
 
-      <!-- Info items con iconos -->
+      <!-- Info items con iconos + sugerencias independientes por campo -->
       <div class="ml-route-info">
-        ${props.descripcion ? `
+        ${hasDescripcion ? `
           <div class="ml-route-item">
             <span class="ml-route-icon">${iconClimber}</span>
             <span class="ml-route-text">${props.descripcion}</span>
           </div>
-        ` : ''}
-        
-        ${props.exp1 ? `
+        ` : `
+          <div class="ml-route-item ml-route-item-missing" onclick="mlContributeField(${routeId}, '${schoolId}', 'tipo')">
+            <span class="ml-route-icon">${iconClimber}</span>
+            <span class="ml-route-text ml-route-contribute">&iquest;Qu&eacute; tipo de escalada es?</span>
+          </div>
+        `}
+
+        ${hasExp ? `
           <div class="ml-route-item">
             <span class="ml-route-icon">${iconExpress}</span>
             <span class="ml-route-text">${props.exp1} express</span>
           </div>
-        ` : ''}
-        
-        ${props.long1 ? `
+        ` : `
+          <div class="ml-route-item ml-route-item-missing" onclick="mlContributeField(${routeId}, '${schoolId}', 'express')">
+            <span class="ml-route-icon">${iconExpress}</span>
+            <span class="ml-route-text ml-route-contribute">&iquest;Cu&aacute;ntos express tiene?</span>
+          </div>
+        `}
+
+        ${hasLong ? `
           <div class="ml-route-item">
             <span class="ml-route-icon">${iconRope}</span>
             <span class="ml-route-text">${props.long1} mts</span>
           </div>
-        ` : ''}
+        ` : `
+          <div class="ml-route-item ml-route-item-missing" onclick="mlContributeField(${routeId}, '${schoolId}', 'metros')">
+            <span class="ml-route-icon">${iconRope}</span>
+            <span class="ml-route-text ml-route-contribute">&iquest;Cu&aacute;ntos metros mide?</span>
+          </div>
+        `}
       </div>
+
+      <!-- Indicador de Aleje -->
+      ${alejeHTML}
+
+      <!-- Estado de la Vía (estrellas) -->
+      ${estadoHTML}
 
       <!-- Botonera -->
       <div class="ml-route-actions">
-        <button class="ml-route-action-btn" onclick="mlRegisterAscent('${encodedName}')" title="Registrar ascenso">
+        <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">
           ${iconCheck}
         </button>
-        <button class="ml-route-action-btn" onclick="mlToggleBookmark('${encodedName}')" title="Guardar">
+        <button class="ml-route-action-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
           ${iconBookmark}
         </button>
-        <button class="ml-route-action-btn" onclick="mlOpenComments('${encodedName}')" title="Comentarios">
+        <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">
           ${iconComment}
+          ${commentBadge}
         </button>
-        <button class="ml-route-action-btn" onclick="mlShareRoute('${encodedName}')" title="Compartir">
+        <button class="ml-route-action-btn" onclick="mlShareRoute(${routeId}, '${encodeURIComponent(routeName)}')" title="Compartir">
           ${iconShare}
         </button>
       </div>
@@ -1783,7 +2216,7 @@ async function showRoutePopup(props, coords) {
       <!-- Botón Ver vía (solo si tiene dibujo en la imagen) -->
       ${hasDrawing ? `
         <div class="ml-route-view-section">
-          <button class="ml-route-view-btn" onclick="mlViewRouteInSector('${schoolId}', '${encodedSector}', '${encodedName}')">
+          <button class="ml-route-view-btn" onclick="mlViewRouteInSector('${schoolId}', '${encodedSector}', ${routeId})">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
               <circle cx="12" cy="12" r="3"/>
@@ -1796,7 +2229,7 @@ async function showRoutePopup(props, coords) {
       <!-- Botón de desarrollador (solo admins) -->
       ${isAdmin ? `
         <div class="ml-route-dev-section">
-          <button class="ml-route-dev-btn" onclick="mlOpenDrawingEditor('${encodedName}')">
+          <button class="ml-route-dev-btn" onclick="mlOpenDrawingEditor(${routeId})">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
@@ -1814,10 +2247,515 @@ async function showRoutePopup(props, coords) {
     .addTo(mlMap);
 }
 
+/**
+ * Genera el HTML del indicador de aleje con 5 segmentos iguales y votación por click.
+ * Cada segmento representa un nivel discreto (1-5). Los usuarios votan clickando un segmento.
+ * El marcador indica la media de las votaciones.
+ * @param {number} routeId - ID numérico de la ruta (from GeoJSON properties.id)
+ * @param {string} schoolId - ID de la escuela
+ * @param {number|null} avgVote - Media actual de votaciones (1-5), null si no hay votos
+ * @param {number|null} userVote - Voto del usuario actual (1-5), null si no ha votado
+ * @returns {string} HTML string
+ */
+function generateAlejeBarHTML(routeId, schoolId, avgVote, userVote) {
+  const segments = [
+    { level: 1, cls: 'ml-route-aleje-g1' },
+    { level: 2, cls: 'ml-route-aleje-g2' },
+    { level: 3, cls: 'ml-route-aleje-y' },
+    { level: 4, cls: 'ml-route-aleje-o' },
+    { level: 5, cls: 'ml-route-aleje-r' }
+  ];
+
+  const segmentsHTML = segments.map(s => {
+    const activeClass = userVote === s.level ? 'ml-route-aleje-active' : '';
+    return `<div class="ml-route-aleje-segment ${s.cls} ${activeClass}" onclick="mlVoteAleje(${routeId}, '${schoolId}', ${s.level})" data-level="${s.level}"></div>`;
+  }).join('');
+
+  // Marcador de media: posicionar en % sobre la barra (cada segmento = 20%)
+  let markerHTML = '';
+  if (avgVote !== null && avgVote > 0) {
+    const pct = ((avgVote - 1) / 4) * 100;
+    markerHTML = `<div class="ml-route-aleje-marker" style="left: ${pct}%"><div class="ml-route-aleje-line"></div></div>`;
+  }
+
+  return `
+    <div class="ml-route-aleje">
+      <span class="ml-route-aleje-label">Aleje ${userVote === null ? '<span class="ml-route-aleje-hint">(vota)</span>' : ''}</span>
+      <div class="ml-route-aleje-bar">
+        ${segmentsHTML}
+        ${markerHTML}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Vota el aleje de una ruta. Guarda en Firestore y actualiza la barra visualmente.
+ * @param {number} routeId - ID numérico de la ruta
+ * @param {string} schoolId - ID de la escuela
+ * @param {number} level - Nivel votado (1-5)
+ */
+async function mlVoteAleje(routeId, schoolId, level) {
+  try {
+    if (typeof auth === 'undefined' || !auth.currentUser) {
+      if (typeof showToast === 'function') showToast('Inicia sesión para votar el aleje');
+      return;
+    }
+
+    const userId = auth.currentUser.uid;
+    const docId = `${schoolId}_${routeId}`;
+
+    const db = firebase.firestore();
+    const alejeRef = db.collection('aleje_votes').doc(docId);
+    const doc = await alejeRef.get();
+
+    let votes = {};
+    if (doc.exists) {
+      votes = doc.data().votes || {};
+    }
+
+    // Toggle: si el usuario ya votó este mismo nivel, cancelar voto
+    const isUnvote = votes[userId] === level;
+
+    if (isUnvote) {
+      // Usar FieldValue.delete() para eliminar la clave del mapa en Firestore
+      // (delete local no basta con merge:true, Firestore no borra claves ausentes)
+      await alejeRef.set({
+        schoolId: schoolId,
+        routeId: routeId,
+        votes: { [userId]: firebase.firestore.FieldValue.delete() },
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      delete votes[userId];
+    } else {
+      votes[userId] = level;
+      await alejeRef.set({
+        schoolId: schoolId,
+        routeId: routeId,
+        votes: votes,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+
+    // Calcular nueva media (o null si no quedan votos)
+    const values = Object.values(votes);
+    const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null;
+
+    // Actualizar barra visualmente sin recargar popup
+    const bar = document.querySelector('.ml-route-aleje-bar');
+    if (bar) {
+      // Actualizar segmento activo (ninguno si se canceló)
+      bar.querySelectorAll('.ml-route-aleje-segment').forEach(seg => {
+        const segLevel = parseInt(seg.getAttribute('data-level'));
+        seg.classList.toggle('ml-route-aleje-active', !isUnvote && segLevel === level);
+      });
+
+      // Actualizar o eliminar marcador
+      let marker = bar.querySelector('.ml-route-aleje-marker');
+      if (avg !== null) {
+        const pct = ((avg - 1) / 4) * 100;
+        if (marker) {
+          marker.style.left = pct + '%';
+        } else {
+          marker = document.createElement('div');
+          marker.className = 'ml-route-aleje-marker';
+          marker.style.left = pct + '%';
+          marker.innerHTML = '<div class="ml-route-aleje-line"></div>';
+          bar.appendChild(marker);
+        }
+      } else if (marker) {
+        marker.remove();
+      }
+    }
+
+    // Mostrar "(vota)" solo cuando el usuario no tiene voto activo
+    const label = document.querySelector('.ml-route-aleje-label');
+    if (label) {
+      label.innerHTML = isUnvote
+        ? 'Aleje <span class="ml-route-aleje-hint">(vota)</span>'
+        : 'Aleje';
+    }
+
+    if (typeof showToast === 'function') showToast(isUnvote ? 'Voto de aleje cancelado' : 'Aleje actualizado');
+
+  } catch (e) {
+    console.error('[Aleje] Error votando:', e);
+    if (typeof showToast === 'function') showToast('Error al votar aleje');
+  }
+}
+
+/**
+ * Obtiene los datos de votación de aleje para una ruta desde Firestore.
+ * @param {string} schoolId - ID de la escuela
+ * @param {number} routeId - ID numérico de la ruta
+ * @returns {Promise<{avg: number|null, userVote: number|null}>}
+ */
+async function getAlejeVotes(schoolId, routeId) {
+  try {
+    if (typeof firebase === 'undefined' || !firebase.firestore) {
+      return { avg: null, userVote: null };
+    }
+
+    const db = firebase.firestore();
+    const docId = `${schoolId}_${routeId}`;
+    const doc = await db.collection('aleje_votes').doc(docId).get();
+
+    if (!doc.exists) return { avg: null, userVote: null };
+
+    const votes = doc.data().votes || {};
+    const values = Object.values(votes);
+
+    if (values.length === 0) return { avg: null, userVote: null };
+
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+
+    let userVote = null;
+    if (typeof auth !== 'undefined' && auth.currentUser) {
+      userVote = votes[auth.currentUser.uid] || null;
+    }
+
+    return { avg, userVote };
+  } catch (e) {
+    console.error('[Aleje] Error obteniendo votos:', e);
+    return { avg: null, userVote: null };
+  }
+}
+
+/**
+ * Genera el HTML del sistema de estrellas para votar el estado de la vía.
+ * 5 estrellas clicables. El usuario puede votar, cambiar o cancelar su voto.
+ * Se muestra la media de todas las votaciones.
+ * @param {number} routeId - ID numérico de la ruta (from GeoJSON properties.id)
+ * @param {string} schoolId - ID de la escuela
+ * @param {number|null} avgVote - Media actual de votaciones (1-5), null si no hay votos
+ * @param {number|null} userVote - Voto del usuario actual (1-5), null si no ha votado
+ * @returns {string} HTML string
+ */
+function generateEstadoStarsHTML(routeId, schoolId, avgVote, userVote) {
+  let starsHTML = '';
+  for (let i = 1; i <= 5; i++) {
+    const filledClass = (userVote !== null && i <= userVote) ? 'ml-estado-star-filled' : '';
+    const avgClass = (userVote === null && avgVote !== null && i <= Math.round(avgVote)) ? 'ml-estado-star-avg' : '';
+    starsHTML += `<span class="ml-estado-star ${filledClass} ${avgClass}" onclick="mlVoteEstado(${routeId}, '${schoolId}', ${i})" data-star="${i}" data-avg="${avgVote !== null ? avgVote : 0}" onmouseenter="mlEstadoHover(${i})" onmouseleave="mlEstadoHover(0)">&#9733;</span>`;
+  }
+
+  let avgHTML = '';
+  if (avgVote !== null && avgVote > 0) {
+    avgHTML = `<span class="ml-estado-avg">${avgVote.toFixed(1)}</span>`;
+  }
+
+  return `
+    <div class="ml-route-estado">
+      <span class="ml-route-estado-label">Estado de la v&iacute;a ${userVote === null ? '<span class="ml-route-estado-hint">(vota)</span>' : ''}</span>
+      <div class="ml-estado-stars-row">
+        <div class="ml-estado-stars">${starsHTML}</div>
+        ${avgHTML}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Efecto hover en estrellas de estado: rellena dorado las estrellas 1..level.
+ * Al salir (level=0), restaura el estado real del voto del usuario.
+ * @param {number} level - Estrella sobre la que se hace hover (0 = salir)
+ */
+function mlEstadoHover(level) {
+  const stars = document.querySelectorAll('.ml-estado-star');
+  stars.forEach(star => {
+    const starLevel = parseInt(star.getAttribute('data-star'));
+    if (level > 0) {
+      // Estrellas dentro del rango hover: dorado sólido (ocultar avg atenuado)
+      if (starLevel <= level) {
+        star.classList.add('ml-estado-hovering');
+        star.classList.add('ml-estado-star-hover');
+      } else {
+        // Estrellas fuera del rango hover: mantener estado base (avg atenuado si aplica)
+        star.classList.remove('ml-estado-hovering');
+        star.classList.remove('ml-estado-star-hover');
+      }
+    } else {
+      // Al salir, restaurar estado: mostrar avg de nuevo si no hay voto propio
+      star.classList.remove('ml-estado-star-hover');
+      star.classList.remove('ml-estado-hovering');
+    }
+  });
+}
+
+/**
+ * Vota el estado de una ruta. Guarda en Firestore y actualiza las estrellas visualmente.
+ * Si el usuario vota el mismo nivel que ya tenía, se cancela el voto.
+ * @param {number} routeId - ID numérico de la ruta
+ * @param {string} schoolId - ID de la escuela
+ * @param {number} level - Nivel votado (1-5)
+ */
+async function mlVoteEstado(routeId, schoolId, level) {
+  try {
+    if (typeof auth === 'undefined' || !auth.currentUser) {
+      if (typeof showToast === 'function') showToast('Inicia sesión para votar el estado');
+      return;
+    }
+
+    const userId = auth.currentUser.uid;
+    const docId = `${schoolId}_${routeId}`;
+
+    const db = firebase.firestore();
+    const estadoRef = db.collection('estado_votes').doc(docId);
+    const doc = await estadoRef.get();
+
+    let votes = {};
+    if (doc.exists) {
+      votes = doc.data().votes || {};
+    }
+
+    // Toggle: si el usuario ya votó este mismo nivel, cancelar voto
+    const isUnvote = votes[userId] === level;
+
+    if (isUnvote) {
+      await estadoRef.set({
+        schoolId: schoolId,
+        routeId: routeId,
+        votes: { [userId]: firebase.firestore.FieldValue.delete() },
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      delete votes[userId];
+    } else {
+      votes[userId] = level;
+      await estadoRef.set({
+        schoolId: schoolId,
+        routeId: routeId,
+        votes: votes,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+
+    // Calcular nueva media
+    const values = Object.values(votes);
+    const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null;
+    const newUserVote = isUnvote ? null : level;
+
+    // Actualizar estrellas visualmente
+    const starsContainer = document.querySelector('.ml-estado-stars');
+    if (starsContainer) {
+      const roundedAvg = avg !== null ? Math.round(avg) : 0;
+      starsContainer.querySelectorAll('.ml-estado-star').forEach(star => {
+        const starLevel = parseInt(star.getAttribute('data-star'));
+        star.setAttribute('data-avg', avg !== null ? avg : 0);
+        star.classList.toggle('ml-estado-star-filled', newUserVote !== null && starLevel <= newUserVote);
+        // Si el usuario quita su voto, mostrar la media atenuada
+        star.classList.toggle('ml-estado-star-avg', newUserVote === null && starLevel <= roundedAvg);
+      });
+    }
+
+    // Actualizar media
+    const avgEl = document.querySelector('.ml-estado-avg');
+    if (avg !== null) {
+      if (avgEl) {
+        avgEl.textContent = avg.toFixed(1);
+      } else {
+        const row = document.querySelector('.ml-estado-stars-row');
+        if (row) {
+          const span = document.createElement('span');
+          span.className = 'ml-estado-avg';
+          span.textContent = avg.toFixed(1);
+          row.appendChild(span);
+        }
+      }
+    } else if (avgEl) {
+      avgEl.remove();
+    }
+
+    // Actualizar label "(vota)"
+    const label = document.querySelector('.ml-route-estado-label');
+    if (label) {
+      label.innerHTML = isUnvote
+        ? 'Estado de la v&iacute;a <span class="ml-route-estado-hint">(vota)</span>'
+        : 'Estado de la v&iacute;a';
+    }
+
+    if (typeof showToast === 'function') showToast(isUnvote ? 'Voto de estado cancelado' : 'Estado actualizado');
+
+  } catch (e) {
+    console.error('[Estado] Error votando:', e);
+    if (typeof showToast === 'function') showToast('Error al votar estado');
+  }
+}
+
+/**
+ * Obtiene los datos de votación de estado para una ruta desde Firestore.
+ * @param {string} schoolId - ID de la escuela
+ * @param {number} routeId - ID numérico de la ruta
+ * @returns {Promise<{avg: number|null, userVote: number|null}>}
+ */
+async function getEstadoVotes(schoolId, routeId) {
+  try {
+    if (typeof firebase === 'undefined' || !firebase.firestore) {
+      return { avg: null, userVote: null };
+    }
+
+    const db = firebase.firestore();
+    const docId = `${schoolId}_${routeId}`;
+    const doc = await db.collection('estado_votes').doc(docId).get();
+
+    if (!doc.exists) return { avg: null, userVote: null };
+
+    const votes = doc.data().votes || {};
+    const values = Object.values(votes);
+
+    if (values.length === 0) return { avg: null, userVote: null };
+
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+
+    let userVote = null;
+    if (typeof auth !== 'undefined' && auth.currentUser) {
+      userVote = votes[auth.currentUser.uid] || null;
+    }
+
+    return { avg, userVote };
+  } catch (e) {
+    console.error('[Estado] Error obteniendo votos:', e);
+    return { avg: null, userVote: null };
+  }
+}
+
+/**
+ * Abre modal para que el usuario contribuya datos faltantes de una vía
+ */
+function mlContributeField(routeId, schoolId, field) {
+  const routeName = mlCurrentRouteName || 'Sin nombre';
+
+  // Cerrar popup
+  if (mlRoutePopup) mlRoutePopup.remove();
+
+  // Si hay una función de contribución disponible en user-features, usarla
+  if (typeof openContributeModal === 'function') {
+    openContributeModal(schoolId, routeName, field);
+    return;
+  }
+
+  // Generar solo el campo correspondiente al tipo de sugerencia
+  let fieldHTML = '';
+  if (field === 'tipo') {
+    fieldHTML = `
+      <label style="display:block; margin-bottom:8px; font-size:14px; color:#374151;">Tipo de escalada</label>
+      <select class="ml-contribute-select" id="ml-contribute-tipo">
+        <option value="">Selecciona...</option>
+        <option value="Placa">Placa</option>
+        <option value="Fisura">Fisura</option>
+        <option value="Diedro">Diedro</option>
+        <option value="Desplome">Desplome</option>
+        <option value="Bavaresa">Bavaresa</option>
+        <option value="Chimenea">Chimenea</option>
+      </select>`;
+  } else if (field === 'express') {
+    fieldHTML = `
+      <label style="display:block; margin-bottom:8px; font-size:14px; color:#374151;">N&uacute;mero de express</label>
+      <input type="number" class="ml-contribute-input" id="ml-contribute-exp" placeholder="Ej: 8" min="0" max="50">`;
+  } else if (field === 'metros') {
+    fieldHTML = `
+      <label style="display:block; margin-bottom:8px; font-size:14px; color:#374151;">Metros de la v&iacute;a</label>
+      <input type="number" class="ml-contribute-input" id="ml-contribute-long" placeholder="Ej: 25" min="0" max="500">`;
+  } else {
+    // Fallback: mostrar todos los campos si no se especifica campo
+    fieldHTML = `
+      <label style="display:block; margin-bottom:8px; font-size:14px; color:#374151;">Tipo de escalada</label>
+      <select class="ml-contribute-select" id="ml-contribute-tipo">
+        <option value="">Selecciona...</option>
+        <option value="Placa">Placa</option>
+        <option value="Fisura">Fisura</option>
+        <option value="Diedro">Diedro</option>
+        <option value="Desplome">Desplome</option>
+        <option value="Bavaresa">Bavaresa</option>
+        <option value="Chimenea">Chimenea</option>
+      </select>
+      <label style="display:block; margin-top:12px; margin-bottom:8px; font-size:14px; color:#374151;">N&uacute;mero de express</label>
+      <input type="number" class="ml-contribute-input" id="ml-contribute-exp" placeholder="Ej: 8" min="0" max="50">
+      <label style="display:block; margin-top:12px; margin-bottom:8px; font-size:14px; color:#374151;">Metros de la v&iacute;a</label>
+      <input type="number" class="ml-contribute-input" id="ml-contribute-long" placeholder="Ej: 25" min="0" max="500">`;
+  }
+
+  // Fallback: Mostrar modal básico de contribución
+  const overlay = document.createElement('div');
+  overlay.className = 'ml-contribute-modal-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.innerHTML = `
+    <div class="ml-contribute-modal">
+      <h3>Contribuir datos</h3>
+      <p>Ayuda a completar la información de <strong>${routeName}</strong></p>
+      ${fieldHTML}
+      <div class="ml-contribute-actions">
+        <button class="ml-contribute-btn ml-contribute-btn-cancel" onclick="this.closest('.ml-contribute-modal-overlay').remove()">Cancelar</button>
+        <button class="ml-contribute-btn ml-contribute-btn-submit" onclick="mlSubmitContribution(${routeId}, '${schoolId}')">Enviar</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+}
+
+/**
+ * Envía la contribución de datos de vía a Firestore
+ */
+async function mlSubmitContribution(routeId, schoolId) {
+  const routeName = mlCurrentRouteName || 'Sin nombre';
+  const tipo = document.getElementById('ml-contribute-tipo')?.value;
+  const exp = document.getElementById('ml-contribute-exp')?.value;
+  const long = document.getElementById('ml-contribute-long')?.value;
+
+  if (!tipo && !exp && !long) {
+    if (typeof showToast === 'function') showToast('Rellena al menos un campo', 'info');
+    return;
+  }
+
+  if (typeof db === 'undefined' || typeof currentUser === 'undefined' || !currentUser) {
+    if (typeof showToast === 'function') showToast('Inicia sesión para contribuir', 'info');
+    return;
+  }
+
+  const contribution = {
+    routeId: routeId,
+    routeName: routeName,
+    schoolId: schoolId,
+    userId: currentUser.uid,
+    userEmail: currentUser.email,
+    status: 'pending',
+    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+    data: {}
+  };
+  if (tipo) contribution.data.descripcion = tipo;
+  if (exp) contribution.data.exp1 = parseInt(exp);
+  if (long) contribution.data.long1 = parseInt(long);
+
+  try {
+    await db.collection('routeSuggestions').add(contribution);
+
+    // Mostrar éxito
+    const modal = document.querySelector('.ml-contribute-modal');
+    if (modal) {
+      modal.innerHTML = `
+        <div class="ml-contribute-success">
+          <div class="ml-contribute-success-icon">&#10004;&#65039;</div>
+          <h3>Gracias</h3>
+          <p>Tu contribuci&oacute;n ser&aacute; revisada por un administrador.</p>
+        </div>
+      `;
+      setTimeout(() => {
+        document.querySelector('.ml-contribute-modal-overlay')?.remove();
+      }, 2000);
+    }
+  } catch (error) {
+    console.error('Error enviando contribución:', error);
+    if (typeof showToast === 'function') showToast('Error al enviar', 'error');
+  }
+}
+window.mlContributeField = mlContributeField;
+window.mlSubmitContribution = mlSubmitContribution;
+
 // Funciones para los botones del popup - conectadas con user-features.js
-function mlRegisterAscent(encodedName) {
+function mlRegisterAscent(routeId, encodedName) {
   const name = decodeURIComponent(encodedName);
-  console.log('Registrar ascenso:', name);
+  console.log('Registrar ascenso:', name, 'routeId:', routeId);
 
   // Cerrar popup
   if (mlRoutePopup) mlRoutePopup.remove();
@@ -1829,7 +2767,7 @@ function mlRegisterAscent(encodedName) {
     const schoolName = MAPLIBRE_SCHOOLS[schoolId]?.name || 'Escuela';
     const grade = mlCurrentRouteGrade || '?';
     const sector = mlCurrentRouteSector || '';
-    openAscentModal(schoolId, schoolName, name, grade, sector);
+    openAscentModal(schoolId, schoolName, routeId, name, grade, sector);
   } else {
     showToast('Función de registro no disponible', 'info');
   }
@@ -1847,41 +2785,39 @@ function mlToggleFavorite(encodedName) {
   }
 }
 
-function mlToggleBookmark(encodedName) {
+function mlToggleBookmark(routeId, encodedName) {
   const name = decodeURIComponent(encodedName);
-  console.log('Toggle bookmark:', name);
+  console.log('Toggle bookmark:', name, 'routeId:', routeId);
 
   if (typeof addToProjects === 'function') {
     const schoolId = mlCurrentSchool || 'valeria';
-    addToProjects(schoolId, name);
+    addToProjects(schoolId, routeId, name);
   } else if (typeof addToFavorites === 'function') {
     const schoolId = mlCurrentSchool || 'valeria';
-    addToFavorites(schoolId, name);
+    addToFavorites(schoolId, routeId, name);
   } else {
     showToast('Guardado en proyectos', 'success');
   }
 }
 
-function mlOpenComments(encodedName) {
+function mlOpenComments(routeId, encodedName) {
   const name = decodeURIComponent(encodedName);
-  console.log('Abrir comentarios:', name);
+  console.log('Abrir comentarios:', name, 'routeId:', routeId);
 
   // Cerrar popup
   if (mlRoutePopup) mlRoutePopup.remove();
 
-  // Intentar abrir el modal de detalles que tiene comentarios
-  if (typeof openRouteInfoWindow === 'function') {
-    openRouteInfoWindow(name, mlCurrentSchool);
-  } else if (typeof showRouteDetails === 'function') {
-    showRouteDetails(name, mlCurrentSchool);
+  // Abrir modal de comentarios directamente
+  if (typeof openCommentsModal === 'function') {
+    openCommentsModal(mlCurrentSchool, routeId, name);
   } else {
     showToast('Comentarios no disponibles', 'info');
   }
 }
 
-function mlShareRoute(encodedName) {
+function mlShareRoute(routeId, encodedName) {
   const name = decodeURIComponent(encodedName);
-  console.log('Compartir ruta:', name);
+  console.log('Compartir ruta:', name, 'routeId:', routeId);
 
   // Usar Web Share API si está disponible
   if (navigator.share) {
@@ -1907,17 +2843,17 @@ function mlShareRoute(encodedName) {
 /**
  * Abre el visor del sector con la vía resaltada
  */
-function mlViewRouteInSector(schoolId, encodedSector, encodedName) {
+function mlViewRouteInSector(schoolId, encodedSector, routeId) {
+  routeId = Number(routeId);
   const sectorName = decodeURIComponent(encodedSector);
-  const routeName = decodeURIComponent(encodedName);
-  console.log('Ver vía en sector:', routeName, 'en', sectorName);
+  console.log('Ver vía en sector:', routeId, 'en', sectorName);
 
   // Cerrar popup
   if (mlRoutePopup) mlRoutePopup.remove();
 
   // Abrir el visor del sector con la vía resaltada
   if (typeof openSectorImageViewerWithHighlight === 'function') {
-    openSectorImageViewerWithHighlight(schoolId, sectorName, routeName);
+    openSectorImageViewerWithHighlight(schoolId, sectorName, routeId);
   } else {
     // Fallback: abrir visor sin highlight
     if (typeof openSectorImageViewer === 'function') {
@@ -1928,9 +2864,235 @@ function mlViewRouteInSector(schoolId, encodedSector, encodedName) {
   }
 }
 
+// ============================================
+// HIGHLIGHT DE VÍA EN EL MAPA (desde visor de sector)
+// ============================================
+
+let mlHighlightTimer = null;
+
+/**
+ * Encuentra la coordenada de una vía por su routeId.
+ * Busca primero en el source de vector tiles y luego en el GeoJSON.
+ */
+async function mlFindRouteCoords(routeId) {
+  // 1. Intentar querySourceFeatures (vector tiles cargados)
+  if (mlMap && mlMap.getSource('vias-source')) {
+    try {
+      let features = mlMap.querySourceFeatures('vias-source', { sourceLayer: 'vias' });
+      if (!features.length) {
+        features = mlMap.querySourceFeatures('vias-source');
+      }
+      for (const f of features) {
+        if (f.properties && Number(f.properties.id) === Number(routeId)) {
+          if (f.geometry.type === 'Point') return f.geometry.coordinates;
+          if (f.geometry.type === 'MultiPoint') return f.geometry.coordinates[0];
+        }
+      }
+    } catch (e) { /* tiles may not be loaded */ }
+
+    // 1b. Intentar source._data (GeoJSON mode)
+    try {
+      const source = mlMap.getSource('vias-source');
+      if (source && source._data && source._data.features) {
+        for (const f of source._data.features) {
+          if (f.properties && Number(f.properties.id) === Number(routeId)) {
+            if (f.geometry.type === 'Point') return f.geometry.coordinates;
+            if (f.geometry.type === 'MultiPoint') return f.geometry.coordinates[0];
+          }
+        }
+      }
+    } catch (e) { /* no _data */ }
+  }
+
+  // 2. Fallback: fetch GeoJSON directamente
+  const schoolId = mlCurrentSchool || 'valeria';
+  const school = typeof MAPLIBRE_SCHOOLS !== 'undefined' ? MAPLIBRE_SCHOOLS[schoolId] : null;
+  if (school && school.geojson && school.geojson.vias) {
+    try {
+      const resp = await fetch(school.geojson.vias + '?v=' + Date.now());
+      if (resp.ok) {
+        const geojson = await resp.json();
+        for (const f of (geojson.features || [])) {
+          if (f.properties && Number(f.properties.id) === Number(routeId)) {
+            if (f.geometry.type === 'Point') return f.geometry.coordinates;
+            if (f.geometry.type === 'MultiPoint') return f.geometry.coordinates[0];
+          }
+        }
+      }
+    } catch (e) { /* fetch failed */ }
+  }
+
+  return null;
+}
+
+/**
+ * Navega al mapa, centra en la vía y la resalta visualmente.
+ * Llamada desde el visor de sector (svNavigateToRouteOnMap).
+ * Compatible con Web y App Nativa (Capacitor WebView).
+ */
+async function mlHighlightRouteOnMap(routeId) {
+  if (!mlMap) return;
+
+  const coords = await mlFindRouteCoords(routeId);
+  if (!coords) {
+    if (typeof showToast === 'function') showToast('No se encontró la vía en el mapa', 'info');
+    return;
+  }
+
+  const mobile = typeof isMobileDevice === 'function' && isMobileDevice();
+  const targetZoom = Math.max(mlMap.getZoom(), 18);
+
+  // Volar a la ubicación de la vía (parámetros ajustados para móvil)
+  mlMap.flyTo({
+    center: coords,
+    zoom: targetZoom,
+    speed: mobile ? 1.6 : 1.2,
+    curve: 1,
+    padding: { top: mobile ? 60 : 100, bottom: 0, left: 0, right: 0 }
+  });
+
+  // Aplicar highlight tras la animación de vuelo
+  mlMap.once('moveend', () => {
+    mlApplyRouteHighlight(coords, routeId);
+  });
+}
+
+// ID del requestAnimationFrame activo para la animación de pulso
+let mlPulseAnimId = null;
+
+/**
+ * Aplica un highlight visual temporal (anillo pulsante) en la posición de la vía.
+ * Usa requestAnimationFrame para rendimiento fluido en WebView móvil.
+ */
+function mlApplyRouteHighlight(coords, routeId) {
+  // Limpiar highlight anterior
+  mlClearRouteHighlight();
+
+  const mobile = typeof isMobileDevice === 'function' && isMobileDevice();
+  const highlightSourceId = 'vias-highlight-source';
+  const highlightLayerId = 'vias-highlight-layer';
+  const highlightPulseLayerId = 'vias-highlight-pulse-layer';
+
+  // Crear source con la vía destacada
+  mlMap.addSource(highlightSourceId, {
+    type: 'geojson',
+    data: {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: coords },
+        properties: { id: routeId }
+      }]
+    }
+  });
+
+  // Radios base ajustados a plataforma
+  const baseRadius = mobile ? 16 : 20;
+  const maxRadius = mobile ? 28 : 35;
+  const innerRadius = mobile ? 10 : 12;
+
+  // Capa de anillo exterior (pulso)
+  mlMap.addLayer({
+    id: highlightPulseLayerId,
+    type: 'circle',
+    source: highlightSourceId,
+    paint: {
+      'circle-radius': baseRadius,
+      'circle-color': 'transparent',
+      'circle-stroke-color': '#f59e0b',
+      'circle-stroke-width': mobile ? 2.5 : 3,
+      'circle-stroke-opacity': 0.8
+    }
+  });
+
+  // Capa de punto interior (resaltado sólido)
+  mlMap.addLayer({
+    id: highlightLayerId,
+    type: 'circle',
+    source: highlightSourceId,
+    paint: {
+      'circle-radius': innerRadius,
+      'circle-color': '#f59e0b',
+      'circle-opacity': 0.35,
+      'circle-stroke-color': '#f59e0b',
+      'circle-stroke-width': 2.5,
+      'circle-stroke-opacity': 1
+    }
+  });
+
+  // Animación de pulso con requestAnimationFrame (más fluido que setInterval)
+  const startTime = performance.now();
+  const cycleDuration = 1200; // ms por ciclo completo
+
+  function animatePulse(now) {
+    if (!mlMap || !mlMap.getLayer(highlightPulseLayerId)) return;
+
+    const elapsed = (now - startTime) % cycleDuration;
+    const progress = elapsed / cycleDuration;
+
+    // Curva sinusoidal suave para el radio
+    const t = Math.sin(progress * Math.PI);
+    const currentRadius = baseRadius + (maxRadius - baseRadius) * t;
+    const currentOpacity = 0.8 - 0.5 * t;
+
+    try {
+      mlMap.setPaintProperty(highlightPulseLayerId, 'circle-radius', currentRadius);
+      mlMap.setPaintProperty(highlightPulseLayerId, 'circle-stroke-opacity', currentOpacity);
+    } catch (e) {
+      return; // layer removed
+    }
+
+    mlPulseAnimId = requestAnimationFrame(animatePulse);
+  }
+
+  mlPulseAnimId = requestAnimationFrame(animatePulse);
+
+  // Auto-eliminar el highlight después de 5 segundos
+  mlHighlightTimer = setTimeout(() => {
+    mlClearRouteHighlight();
+  }, 5000);
+
+  // En móvil: eliminar también al tocar el mapa
+  // En web: eliminar al hacer clic
+  const dismissEvent = mobile ? 'touchstart' : 'click';
+  mlMap.once(dismissEvent, () => {
+    mlClearRouteHighlight();
+  });
+}
+
+/**
+ * Elimina las capas y source del highlight de vía.
+ */
+function mlClearRouteHighlight() {
+  if (mlHighlightTimer) {
+    clearTimeout(mlHighlightTimer);
+    mlHighlightTimer = null;
+  }
+
+  if (mlPulseAnimId) {
+    cancelAnimationFrame(mlPulseAnimId);
+    mlPulseAnimId = null;
+  }
+
+  const layers = ['vias-highlight-layer', 'vias-highlight-pulse-layer'];
+  const source = 'vias-highlight-source';
+
+  layers.forEach(id => {
+    if (mlMap && mlMap.getLayer(id)) {
+      try { mlMap.removeLayer(id); } catch (e) {}
+    }
+  });
+
+  if (mlMap && mlMap.getSource(source)) {
+    try { mlMap.removeSource(source); } catch (e) {}
+  }
+}
+
 // Variables para almacenar datos de la vía actual
 let mlCurrentRouteGrade = null;
 let mlCurrentRouteSector = null;
+let mlCurrentRouteId = null;
+let mlCurrentRouteName = null;
 
 /**
  * Abre detalles de ruta (conecta con sistema existente)
@@ -2042,7 +3204,7 @@ function countRoutesByGradeForSector(sectorName) {
       const targetSector = sectorName.toLowerCase().trim();
 
       if (routeSector === targetSector) {
-        const grade = props.grado1 || 'Sin grado';
+        const grade = props.grado1 || '?';
         gradeCounts[grade] = (gradeCounts[grade] || 0) + 1;
       }
     });
@@ -2088,30 +3250,39 @@ function renderGradeChart(containerId, gradeCounts) {
   }
 
   const maxCount = Math.max(...Object.values(gradeCounts));
-  const barWidth = Math.min(30, Math.floor(280 / grades.length) - 4);
+  const containerWidth = container.clientWidth || 280;
+  const availableWidth = containerWidth - 16;
+  const numGrades = grades.length;
+  const gap = numGrades > 15 ? 1 : numGrades > 10 ? 2 : 3;
+  const barWidth = Math.max(8, Math.min(28, Math.floor((availableWidth - gap * (numGrades - 1)) / numGrades)));
+  const labelFontSize = numGrades > 15 ? 7 : numGrades > 10 ? 8 : 9;
 
   let html = `
-    <div style="text-align: center; font-weight: 600; color: #374151; margin-bottom: 20px; padding-bottom: 8px;">
+    <div style="text-align: center; font-weight: 600; color: #374151; margin-bottom: 12px; padding-bottom: 6px;">
       Vías por Grado <span style="font-weight: 400; color: #6b7280;">(${total} total)</span>
     </div>
-    <div style="display: flex; align-items: flex-end; justify-content: center; height: 100px; gap: 3px;">
+    <div style="display: flex; align-items: flex-end; justify-content: center; height: 100px; gap: ${gap}px; width: 100%; box-sizing: border-box;">
   `;
 
   grades.forEach(grade => {
     const count = gradeCounts[grade];
-    const height = Math.max(10, (count / maxCount) * 80);
+    const height = Math.max(8, (count / maxCount) * 80);
     const gradeColor = getGradeColor(grade);
 
     html += `
-      <div style="display: flex; flex-direction: column; align-items: center;">
-        <span style="font-size: 10px; color: #374151; font-weight: 600;">${count}</span>
-        <div style="width: ${barWidth}px; height: ${height}px; background: ${gradeColor}; border-radius: 3px 3px 0 0;"></div>
-        <span style="font-size: 9px; color: #6b7280; margin-top: 4px; transform: rotate(-45deg); white-space: nowrap;">${grade}</span>
+      <div style="display: flex; flex-direction: column; align-items: center; flex: 0 0 ${barWidth}px; min-width: 0;">
+        <span style="font-size: ${Math.min(10, labelFontSize + 1)}px; color: #374151; font-weight: 600; line-height: 1.2;">${count}</span>
+        <div style="width: 100%; height: ${height}px; background: ${gradeColor}; border-radius: 3px 3px 0 0;"></div>
+        <div style="position: relative; width: ${barWidth}px; height: 12px; margin-top: 2px;">
+          <span style="position: absolute; left: 50%; top: 0; font-size: ${labelFontSize}px; color: #6b7280; white-space: nowrap; transform: translateX(-50%) rotate(-45deg); transform-origin: top center;">${grade}</span>
+        </div>
       </div>
     `;
   });
 
   html += '</div>';
+  // Espacio extra para las etiquetas rotadas
+  html += `<div style="height: ${numGrades > 10 ? 20 : 16}px;"></div>`;
   container.innerHTML = html;
 }
 
@@ -2437,6 +3608,7 @@ function loadSchoolMarkers() {
           ['==', ['get', 'nombre'], 'Hoz del Río Gritos'], 'school-icon-green',
           ['==', ['get', 'nombre'], 'Mora'], 'school-icon-green',
           ['==', ['get', 'nombre'], 'Toledo'], 'school-icon-green',
+          ['==', ['get', 'nombre'], 'Cuenca'], 'school-icon-green',
           'school-icon-orange'
         ],
         // Tamaño que escala con el zoom
@@ -4228,15 +5400,13 @@ async function isRoutePopupAdmin() {
 /**
  * Abre el editor de dibujo desde el popup de vía
  */
-function mlOpenDrawingEditor(encodedName) {
-  const routeName = decodeURIComponent(encodedName);
-
+function mlOpenDrawingEditor(routeId) {
   // Cerrar popup
   if (mlRoutePopup) mlRoutePopup.remove();
 
   // Llamar a función de route-drawing.js
   if (typeof openDrawingEditorForRoute === 'function') {
-    openDrawingEditorForRoute(routeName);
+    openDrawingEditorForRoute(routeId);
   } else {
     console.error('[RoutePopup] openDrawingEditorForRoute no está disponible');
   }
@@ -4416,8 +5586,8 @@ function setupUserViasInteraction() {
 async function showUserRoutePopup(props, coords) {
   const grade = props.grado1 || '?';
   const gradeColor = getGradeColor(grade);
+  const routeId = Number(props.id);
   const routeName = props.nombre || 'Sin nombre';
-  const encodedName = encodeURIComponent(routeName);
   const sectorName = props.sector || '';
   const encodedSector = encodeURIComponent(sectorName);
   const schoolId = mlCurrentSchool || 'valeria';
@@ -4425,12 +5595,31 @@ async function showUserRoutePopup(props, coords) {
   // Verificar si la vía tiene dibujo en la imagen del sector (para mostrar botón "Ver vía")
   let hasDrawing = false;
   if (sectorName && typeof hasRouteDrawing === 'function') {
-    hasDrawing = await hasRouteDrawing(schoolId, sectorName, routeName);
+    hasDrawing = await hasRouteDrawing(schoolId, sectorName, routeId);
   }
+
+  // Verificar si el usuario ha completado esta vía
+  const hasAscent = (typeof hasUserAscent === 'function') && hasUserAscent(schoolId, routeId);
+  const ascentInfo = hasAscent && (typeof getUserAscentInfo === 'function') ? getUserAscentInfo(schoolId, routeId) : null;
 
   // Guardar datos de la vía actual para las funciones de los botones
   mlCurrentRouteGrade = grade;
   mlCurrentRouteSector = sectorName;
+  mlCurrentRouteId = routeId;
+  mlCurrentRouteName = routeName;
+
+  // Obtener número de comentarios
+  let commentCount = 0;
+  try {
+    if (typeof db !== 'undefined') {
+      const routeId2 = `${schoolId}_${routeId}`;
+      const commentsSnap = await db.collection('comments').where('routeId', '==', routeId2).get();
+      commentCount = commentsSnap.size;
+    }
+  } catch (e) {
+    console.warn('Error fetching comment count:', e);
+  }
+  const commentBadge = commentCount > 0 ? `<span class="ml-comment-count">${commentCount}</span>` : '';
 
   // Iconos PNG para info (tamaño 32x32)
   const iconClimber = `<img src="icons/placa.png" alt="Tipo" width="32" height="32">`;
@@ -4443,50 +5632,93 @@ async function showUserRoutePopup(props, coords) {
   const iconComment = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
   const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 
+  // Check de ascenso para el header
+  const ascentCheckHTML = hasAscent ? `
+    <span class="ml-route-ascent-check">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </span>
+  ` : '';
+
+  // Detectar campos vacíos para sugerir contribuir
+  const hasDescripcion = props.descripcion && props.descripcion.trim();
+  const hasExp = props.exp1;
+  const hasLong = props.long1;
+
+  // Obtener votaciones de aleje desde Firestore
+  const alejeData = await getAlejeVotes(schoolId, routeId);
+  const alejeHTML = generateAlejeBarHTML(routeId, schoolId, alejeData.avg, alejeData.userVote);
+
+  // Obtener votaciones de estado de la vía desde Firestore
+  const estadoData = await getEstadoVotes(schoolId, routeId);
+  const estadoHTML = generateEstadoStarsHTML(routeId, schoolId, estadoData.avg, estadoData.userVote);
+
   const html = `
     <div class="ml-route-popup-new">
-      <!-- Header: Nombre + Grado + Badge Usuario -->
+      <!-- Header: Check + Nombre + Grado + Badge Usuario -->
       <div class="ml-route-header">
+        ${ascentCheckHTML}
         <span class="ml-route-name">${routeName}</span>
         <span class="ml-route-grade" style="background-color: ${gradeColor}">${grade}</span>
       </div>
 
-      <!-- Info items con iconos -->
+      <!-- Info items con iconos + sugerencias independientes por campo -->
       <div class="ml-route-info">
-        ${props.descripcion ? `
+        ${hasDescripcion ? `
           <div class="ml-route-item">
             <span class="ml-route-icon">${iconClimber}</span>
             <span class="ml-route-text">${props.descripcion}</span>
           </div>
-        ` : ''}
+        ` : `
+          <div class="ml-route-item ml-route-item-missing" onclick="mlContributeField(${routeId}, '${schoolId}', 'tipo')">
+            <span class="ml-route-icon">${iconClimber}</span>
+            <span class="ml-route-text ml-route-contribute">&iquest;Qu&eacute; tipo de escalada es?</span>
+          </div>
+        `}
 
-        ${props.exp1 ? `
+        ${hasExp ? `
           <div class="ml-route-item">
             <span class="ml-route-icon">${iconExpress}</span>
             <span class="ml-route-text">${props.exp1} express</span>
           </div>
-        ` : ''}
+        ` : `
+          <div class="ml-route-item ml-route-item-missing" onclick="mlContributeField(${routeId}, '${schoolId}', 'express')">
+            <span class="ml-route-icon">${iconExpress}</span>
+            <span class="ml-route-text ml-route-contribute">&iquest;Cu&aacute;ntos express tiene?</span>
+          </div>
+        `}
 
-        ${props.long1 ? `
+        ${hasLong ? `
           <div class="ml-route-item">
             <span class="ml-route-icon">${iconRope}</span>
             <span class="ml-route-text">${props.long1} mts</span>
           </div>
-        ` : ''}
+        ` : `
+          <div class="ml-route-item ml-route-item-missing" onclick="mlContributeField(${routeId}, '${schoolId}', 'metros')">
+            <span class="ml-route-icon">${iconRope}</span>
+            <span class="ml-route-text ml-route-contribute">&iquest;Cu&aacute;ntos metros mide?</span>
+          </div>
+        `}
       </div>
+
+      <!-- Indicador de Aleje -->
+      ${alejeHTML}
+
+      <!-- Estado de la Vía (estrellas) -->
+      ${estadoHTML}
 
       <!-- Botonera -->
       <div class="ml-route-actions">
-        <button class="ml-route-action-btn" onclick="mlRegisterAscent('${encodedName}')" title="Registrar ascenso">
+        <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">
           ${iconCheck}
         </button>
-        <button class="ml-route-action-btn" onclick="mlToggleBookmark('${encodedName}')" title="Guardar">
+        <button class="ml-route-action-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
           ${iconBookmark}
         </button>
-        <button class="ml-route-action-btn" onclick="mlOpenComments('${encodedName}')" title="Comentarios">
+        <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">
           ${iconComment}
+          ${commentBadge}
         </button>
-        <button class="ml-route-action-btn" onclick="mlShareRoute('${encodedName}')" title="Compartir">
+        <button class="ml-route-action-btn" onclick="mlShareRoute(${routeId}, '${encodeURIComponent(routeName)}')" title="Compartir">
           ${iconShare}
         </button>
       </div>
@@ -4494,7 +5726,7 @@ async function showUserRoutePopup(props, coords) {
       <!-- Botón Ver vía (solo si tiene dibujo en la imagen) -->
       ${hasDrawing ? `
         <div class="ml-route-view-section">
-          <button class="ml-route-view-btn" onclick="mlViewRouteInSector('${schoolId}', '${encodedSector}', '${encodedName}')">
+          <button class="ml-route-view-btn" onclick="mlViewRouteInSector('${schoolId}', '${encodedSector}', ${routeId})">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
               <circle cx="12" cy="12" r="3"/>
@@ -4526,7 +5758,443 @@ async function showUserRoutePopup(props, coords) {
     .addTo(mlMap);
 }
 
+// ============================================
+// FILTRO DE GRADOS (RANGE SLIDER) Y LEYENDA
+// ============================================
+
+// Lista ordenada de todos los grados (de menor a mayor dificultad)
+const ALL_GRADES_ORDERED = [
+  '3a','3b','3c',
+  '4a','4b','4c',
+  '5a','5a+','5b','5b+','5c','5c+',
+  '6a','6a+','6b','6b+',
+  '6c','6c+',
+  '7a','7a+','7b','7b+','7c','7c+',
+  '8a','8a+','8b','8b+','8c','8c+',
+  '9a','9a+','9b','9b+','9c','9c+'
+];
+
+// Inicializar rango completo
+mlGradeRangeMax = ALL_GRADES_ORDERED.length - 1;
+
+/**
+ * Comprueba si el rango actual cubre todos los grados (sin filtro activo)
+ */
+function isFullGradeRange() {
+  return mlGradeRangeMin === 0 && mlGradeRangeMax === ALL_GRADES_ORDERED.length - 1;
+}
+
+/**
+ * Añade el botón de filtro/leyenda en la esquina superior derecha del mapa
+ */
+function addGradeFilterButton() {
+  if (document.getElementById('btn-grade-filter')) return;
+
+  const container = document.getElementById('map');
+  if (!container) return;
+
+  // Botón principal
+  const btn = document.createElement('button');
+  btn.id = 'btn-grade-filter';
+  btn.className = 'map-control-btn';
+  btn.title = 'Filtrar por grado';
+  btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>`;
+  btn.style.cssText = `
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    background: white;
+    border: none;
+    border-radius: 10px;
+    color: #333;
+    cursor: pointer;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    transition: background 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  `;
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleGradeFilterPanel();
+  });
+
+  container.appendChild(btn);
+
+  // Panel desplegable
+  const panel = document.createElement('div');
+  panel.id = 'grade-filter-panel';
+  panel.className = 'grade-filter-panel';
+  panel.innerHTML = buildGradeFilterPanelHTML();
+  container.appendChild(panel);
+
+  // Inicializar sliders después de insertar en el DOM
+  initRangeSliders();
+
+  // Cerrar panel al hacer clic fuera
+  document.addEventListener('click', (e) => {
+    const panelEl = document.getElementById('grade-filter-panel');
+    const btnEl = document.getElementById('btn-grade-filter');
+    if (panelEl && btnEl && !panelEl.contains(e.target) && !btnEl.contains(e.target)) {
+      closeGradeFilterPanel();
+    }
+  });
+}
+
+/**
+ * Genera el HTML del panel de filtro por grado (range slider)
+ */
+function buildGradeFilterPanelHTML() {
+  const maxIdx = ALL_GRADES_ORDERED.length - 1;
+
+  return `
+    <div class="gfp-header">
+      <span class="gfp-title">Filtrar por grado</span>
+      <button class="gfp-reset-btn" onclick="resetGradeFilter()" title="Mostrar todos">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        Todos
+      </button>
+    </div>
+
+    <div class="gfp-range-labels">
+      <span class="gfp-range-label" id="gfp-label-min">${ALL_GRADES_ORDERED[0]}</span>
+      <span class="gfp-range-separator">—</span>
+      <span class="gfp-range-label" id="gfp-label-max">${ALL_GRADES_ORDERED[maxIdx]}</span>
+    </div>
+
+    <div class="gfp-range-container" id="gfp-range-container">
+      <div class="gfp-range-track" id="gfp-range-track"></div>
+      <div class="gfp-range-selected" id="gfp-range-selected"></div>
+      <div class="gfp-range-thumb gfp-thumb-min" id="gfp-thumb-min" role="slider" aria-label="Grado mínimo" tabindex="0"></div>
+      <div class="gfp-range-thumb gfp-thumb-max" id="gfp-thumb-max" role="slider" aria-label="Grado máximo" tabindex="0"></div>
+    </div>
+
+    <div class="gfp-range-ticks" id="gfp-range-ticks"></div>
+
+    <div class="gfp-divider"></div>
+    <button class="gfp-legend-btn" onclick="openGradeLegendModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      Leyenda de colores
+    </button>
+  `;
+}
+
+/**
+ * Inicializa los event listeners para los thumbs del range slider
+ */
+function initRangeSliders() {
+  const container = document.getElementById('gfp-range-container');
+  const thumbMin = document.getElementById('gfp-thumb-min');
+  const thumbMax = document.getElementById('gfp-thumb-max');
+  if (!container || !thumbMin || !thumbMax) return;
+
+  // Generar ticks de referencia
+  buildRangeTicks();
+
+  // Posicionar thumbs según estado actual
+  updateSliderPositions();
+
+  // --- Drag para thumb min ---
+  setupThumbDrag(thumbMin, 'min');
+  setupThumbDrag(thumbMax, 'max');
+}
+
+/**
+ * Genera las marcas de referencia debajo del slider
+ */
+function buildRangeTicks() {
+  const ticksEl = document.getElementById('gfp-range-ticks');
+  if (!ticksEl) return;
+
+  // Mostrar solo grados principales (sin +) para no saturar
+  const tickGrades = ['3a','4a','5a','5c','6a','6b','6c','7a','7b','7c','8a','8c','9a'];
+  const maxIdx = ALL_GRADES_ORDERED.length - 1;
+
+  let html = '';
+  tickGrades.forEach(grade => {
+    const idx = ALL_GRADES_ORDERED.indexOf(grade);
+    if (idx === -1) return;
+    const pct = (idx / maxIdx) * 100;
+    html += `<span class="gfp-tick" style="left:${pct}%">${grade}</span>`;
+  });
+
+  ticksEl.innerHTML = html;
+}
+
+/**
+ * Configura el drag (mouse + touch) para un thumb
+ */
+function setupThumbDrag(thumbEl, which) {
+  let dragging = false;
+
+  const onStart = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragging = true;
+    thumbEl.classList.add('active');
+    document.body.style.userSelect = 'none';
+  };
+
+  const onMove = (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    const container = document.getElementById('gfp-range-container');
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    let pct = (clientX - rect.left) / rect.width;
+    pct = Math.max(0, Math.min(1, pct));
+
+    const maxIdx = ALL_GRADES_ORDERED.length - 1;
+    let idx = Math.round(pct * maxIdx);
+
+    if (which === 'min') {
+      idx = Math.min(idx, mlGradeRangeMax);
+      mlGradeRangeMin = idx;
+    } else {
+      idx = Math.max(idx, mlGradeRangeMin);
+      mlGradeRangeMax = idx;
+    }
+
+    updateSliderPositions();
+    updateRangeLabels();
+    applyGradeFilter();
+    updateFilterButtonBadge();
+  };
+
+  const onEnd = () => {
+    if (!dragging) return;
+    dragging = false;
+    thumbEl.classList.remove('active');
+    document.body.style.userSelect = '';
+  };
+
+  // Mouse events
+  thumbEl.addEventListener('mousedown', onStart);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onEnd);
+
+  // Touch events
+  thumbEl.addEventListener('touchstart', onStart, { passive: false });
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('touchend', onEnd);
+}
+
+/**
+ * Actualiza las posiciones visuales de los thumbs y la barra seleccionada
+ */
+function updateSliderPositions() {
+  const thumbMin = document.getElementById('gfp-thumb-min');
+  const thumbMax = document.getElementById('gfp-thumb-max');
+  const selected = document.getElementById('gfp-range-selected');
+  if (!thumbMin || !thumbMax || !selected) return;
+
+  const maxIdx = ALL_GRADES_ORDERED.length - 1;
+  const pctMin = (mlGradeRangeMin / maxIdx) * 100;
+  const pctMax = (mlGradeRangeMax / maxIdx) * 100;
+
+  thumbMin.style.left = pctMin + '%';
+  thumbMax.style.left = pctMax + '%';
+  selected.style.left = pctMin + '%';
+  selected.style.width = (pctMax - pctMin) + '%';
+
+  // Gradiente de color en la barra seleccionada
+  const colorMin = MAPLIBRE_GRADE_COLORS[ALL_GRADES_ORDERED[mlGradeRangeMin]] || '#888';
+  const colorMax = MAPLIBRE_GRADE_COLORS[ALL_GRADES_ORDERED[mlGradeRangeMax]] || '#888';
+  selected.style.background = `linear-gradient(to right, ${colorMin}, ${colorMax})`;
+}
+
+/**
+ * Actualiza las etiquetas min/max
+ */
+function updateRangeLabels() {
+  const labelMin = document.getElementById('gfp-label-min');
+  const labelMax = document.getElementById('gfp-label-max');
+  if (!labelMin || !labelMax) return;
+
+  const gradeMin = ALL_GRADES_ORDERED[mlGradeRangeMin];
+  const gradeMax = ALL_GRADES_ORDERED[mlGradeRangeMax];
+
+  labelMin.textContent = gradeMin;
+  labelMax.textContent = gradeMax;
+
+  // Color de las etiquetas según el grado
+  labelMin.style.background = MAPLIBRE_GRADE_COLORS[gradeMin] || '#888';
+  labelMax.style.background = MAPLIBRE_GRADE_COLORS[gradeMax] || '#888';
+
+  // Texto claro u oscuro según luminosidad del fondo
+  labelMin.style.color = isLightColor(MAPLIBRE_GRADE_COLORS[gradeMin]) ? '#1f2937' : '#fff';
+  labelMax.style.color = isLightColor(MAPLIBRE_GRADE_COLORS[gradeMax]) ? '#1f2937' : '#fff';
+}
+
+/**
+ * Determina si un color hex es claro (para decidir texto oscuro o blanco)
+ */
+function isLightColor(hex) {
+  if (!hex) return true;
+  hex = hex.replace('#', '').substring(0, 6);
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  // Luminancia relativa
+  return (r * 0.299 + g * 0.587 + b * 0.114) > 160;
+}
+
+/**
+ * Abre/cierra el panel de filtro
+ */
+function toggleGradeFilterPanel() {
+  const panel = document.getElementById('grade-filter-panel');
+  const btn = document.getElementById('btn-grade-filter');
+  if (!panel) return;
+
+  mlFilterPanelOpen = !mlFilterPanelOpen;
+
+  if (mlFilterPanelOpen) {
+    panel.classList.add('open');
+    btn.classList.add('active');
+    // Asegurar posiciones correctas al abrir
+    updateSliderPositions();
+    updateRangeLabels();
+  } else {
+    panel.classList.remove('open');
+    btn.classList.remove('active');
+  }
+}
+
+function closeGradeFilterPanel() {
+  const panel = document.getElementById('grade-filter-panel');
+  const btn = document.getElementById('btn-grade-filter');
+  if (!panel) return;
+
+  mlFilterPanelOpen = false;
+  panel.classList.remove('open');
+  if (btn) btn.classList.remove('active');
+}
+
+/**
+ * Reset: mostrar todos los grados (rango completo)
+ */
+function resetGradeFilter() {
+  mlGradeRangeMin = 0;
+  mlGradeRangeMax = ALL_GRADES_ORDERED.length - 1;
+
+  updateSliderPositions();
+  updateRangeLabels();
+  applyGradeFilter();
+  updateFilterButtonBadge();
+}
+
+/**
+ * Aplica el filtro de grados a la capa vias-layer del mapa
+ */
+function applyGradeFilter() {
+  if (!mlMap) return;
+  if (!mlMap.getLayer('vias-layer')) return;
+
+  if (isFullGradeRange()) {
+    // Sin filtro: mostrar todo
+    mlMap.setFilter('vias-layer', null);
+  } else {
+    // Obtener grados del rango seleccionado
+    const selectedGrades = ALL_GRADES_ORDERED.slice(mlGradeRangeMin, mlGradeRangeMax + 1);
+    const filterExpr = ['in', ['get', 'grado1'], ['literal', selectedGrades]];
+    mlMap.setFilter('vias-layer', filterExpr);
+  }
+}
+
+/**
+ * Actualiza el indicador visual del botón de filtro
+ */
+function updateFilterButtonBadge() {
+  const btn = document.getElementById('btn-grade-filter');
+  if (!btn) return;
+
+  if (!isFullGradeRange()) {
+    btn.classList.add('has-filter');
+  } else {
+    btn.classList.remove('has-filter');
+  }
+}
+
+/**
+ * Abre la modal de leyenda completa de colores y grados
+ */
+function openGradeLegendModal() {
+  closeGradeFilterPanel();
+
+  // Si ya existe, eliminar
+  const existing = document.getElementById('grade-legend-modal');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'grade-legend-modal';
+  overlay.className = 'grade-legend-overlay';
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  let legendHTML = `
+    <div class="grade-legend-content">
+      <div class="grade-legend-header">
+        <h3>Leyenda de grados</h3>
+        <button class="grade-legend-close" onclick="document.getElementById('grade-legend-modal').remove()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="grade-legend-body">
+  `;
+
+  const legendGroups = [
+    { title: 'Principiante', icon: '3-4', grades: ['3a','3b','3c','4a','4b','4c'] },
+    { title: 'Fácil', icon: '5', grades: ['5a','5a+','5b','5b+','5c','5c+'] },
+    { title: 'Medio', icon: '6a-6b', grades: ['6a','6a+','6b','6b+'] },
+    { title: 'Medio-Alto', icon: '6c-7a', grades: ['6c','6c+','7a','7a+'] },
+    { title: 'Difícil', icon: '7b-7c', grades: ['7b','7b+','7c','7c+'] },
+    { title: 'Muy difícil', icon: '8', grades: ['8a','8a+','8b','8b+','8c','8c+'] },
+    { title: 'Élite', icon: '9', grades: ['9a','9a+','9b','9b+','9c','9c+'] }
+  ];
+
+  legendGroups.forEach(group => {
+    legendHTML += `<div class="grade-legend-group">
+      <div class="grade-legend-group-title">${group.title} (${group.icon})</div>
+      <div class="grade-legend-items">`;
+
+    group.grades.forEach(grade => {
+      const color = MAPLIBRE_GRADE_COLORS[grade] || '#888';
+      legendHTML += `
+        <div class="grade-legend-item">
+          <span class="grade-legend-dot" style="background:${color}"></span>
+          <span class="grade-legend-label">${grade}</span>
+        </div>
+      `;
+    });
+
+    legendHTML += `</div></div>`;
+  });
+
+  legendHTML += `
+      </div>
+    </div>
+  `;
+
+  overlay.innerHTML = legendHTML;
+  document.body.appendChild(overlay);
+}
+
+// Exponer funciones para uso desde HTML onclick
+window.resetGradeFilter = resetGradeFilter;
+window.openGradeLegendModal = openGradeLegendModal;
+
 // Exponer función para uso externo
 window.loadApprovedRoutesFromFirestore = loadApprovedRoutesFromFirestore;
+window.updateAscentTicksLayer = updateAscentTicksLayer;
 
 console.log('MapLibre Map JS cargado');

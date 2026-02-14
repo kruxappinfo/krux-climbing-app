@@ -41,15 +41,25 @@ async function isPhotoAdmin() {
 /**
  * Get all photos for a route
  * @param {string} schoolId - School identifier
- * @param {string} routeName - Route name
+ * @param {number} routeId - Route ID from GeoJSON properties.id
+ * @param {string} [routeName] - Route name (fallback for old docs without routeId)
  * @returns {Promise<Array>} - Array of photo objects {id, url, uploadedBy, ...}
  */
-async function getRoutePhotos(schoolId, routeName) {
+async function getRoutePhotos(schoolId, routeId, routeName) {
     try {
-        const snapshot = await db.collection('route-photos')
+        // Primary query: by routeId
+        let snapshot = await db.collection('route-photos')
             .where('schoolId', '==', schoolId)
-            .where('routeName', '==', routeName)
-            .get({ source: 'server' }); // Force server fetch to avoid stale cache
+            .where('routeId', '==', routeId)
+            .get({ source: 'server' });
+
+        // Fallback: old docs without routeId field, query by routeName
+        if (snapshot.empty && routeName) {
+            snapshot = await db.collection('route-photos')
+                .where('schoolId', '==', schoolId)
+                .where('routeName', '==', routeName)
+                .get({ source: 'server' });
+        }
 
         if (snapshot.empty) {
             return [];
@@ -79,11 +89,12 @@ async function getRoutePhotos(schoolId, routeName) {
 /**
  * Upload a photo for a route
  * @param {string} schoolId - School identifier
- * @param {string} routeName - Route name
+ * @param {number} routeId - Route ID from GeoJSON properties.id
+ * @param {string} routeName - Route name (for display/compat)
  * @param {File} file - Image file to upload
  * @returns {Promise<string>} - URL of uploaded photo
  */
-async function uploadRoutePhoto(schoolId, routeName, file) {
+async function uploadRoutePhoto(schoolId, routeId, routeName, file) {
     if (!currentUser) {
         throw new Error('User must be logged in to upload photos');
     }
@@ -124,12 +135,13 @@ async function uploadRoutePhoto(schoolId, routeName, file) {
         const photoUrl = await uploadTask.ref.getDownloadURL();
 
         // Save metadata to Firestore with UNIQUE ID
-        const docId = `${schoolId}_${sanitizedRouteName}_${timestamp}`;
+        const docId = `${schoolId}_${routeId}_${timestamp}`;
         await db.collection('route-photos').doc(docId).set({
             photoUrl: photoUrl,
             uploadedBy: currentUser.uid,
             uploadedByName: currentUser.displayName || 'Anonymous',
             uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            routeId: routeId,
             routeName: routeName,
             schoolId: schoolId,
             filename: filename
@@ -152,11 +164,12 @@ async function uploadRoutePhoto(schoolId, routeName, file) {
 /**
  * Get photo URL for a route (Legacy - returns first found)
  * @param {string} schoolId - School identifier
- * @param {string} routeName - Route name
+ * @param {number} routeId - Route ID from GeoJSON properties.id
+ * @param {string} [routeName] - Route name (fallback for old docs)
  * @returns {Promise<string|null>} - Photo URL or null if not found
  */
-async function getRoutePhotoURL(schoolId, routeName) {
-    const photos = await getRoutePhotos(schoolId, routeName);
+async function getRoutePhotoURL(schoolId, routeId, routeName) {
+    const photos = await getRoutePhotos(schoolId, routeId, routeName);
     return photos.length > 0 ? photos[0].url : null;
 }
 

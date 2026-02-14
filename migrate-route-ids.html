@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Migrar Route IDs - Climbmaps</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+        h1 { color: #00d2ff; margin-bottom: 10px; }
+        h2 { color: #ff6b6b; margin: 20px 0 10px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        .info { background: #16213e; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #00d2ff; }
+        .warning { background: #2d1b1b; border-left: 4px solid #ff6b6b; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        button { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; margin: 5px; }
+        .btn-dry { background: #0f3460; color: #00d2ff; }
+        .btn-dry:hover { background: #1a4a7a; }
+        .btn-execute { background: #6b0000; color: #ff6b6b; }
+        .btn-execute:hover { background: #8b0000; }
+        .btn-execute:disabled { opacity: 0.5; cursor: not-allowed; }
+        #log { background: #0a0a1a; padding: 15px; border-radius: 8px; font-family: 'Fira Code', monospace; font-size: 13px; max-height: 500px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; }
+        .log-info { color: #00d2ff; }
+        .log-success { color: #00ff88; }
+        .log-warn { color: #ffaa00; }
+        .log-error { color: #ff4444; }
+        .log-section { color: #ff6b6b; font-weight: bold; font-size: 14px; }
+        .stats { display: flex; gap: 15px; flex-wrap: wrap; margin: 15px 0; }
+        .stat { background: #16213e; padding: 10px 20px; border-radius: 8px; text-align: center; }
+        .stat-num { font-size: 24px; font-weight: bold; color: #00d2ff; }
+        .stat-label { font-size: 12px; color: #888; }
+        .progress { width: 100%; height: 6px; background: #16213e; border-radius: 3px; margin: 10px 0; }
+        .progress-bar { height: 100%; background: #00d2ff; border-radius: 3px; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Migrar Route IDs - Climbmaps</h1>
+    <div class="info">
+        Migra los datos existentes en Firestore para usar <code>routeId</code> (properties.id del GeoJSON)
+        en vez de <code>routeName</code> para identificar vias.
+    </div>
+    <div class="warning">
+        <strong>IMPORTANTE:</strong> Ejecuta primero en modo Dry Run para revisar los cambios.
+        Solo ejecuta la migracion real cuando estes seguro.
+    </div>
+
+    <div class="info" id="auth-section">
+        <strong>Autenticacion (necesaria para ejecutar migracion real):</strong><br><br>
+        <button class="btn-dry" onclick="doLogin()" style="padding:10px 20px;">Login con Google</button>
+        <span id="auth-status" style="margin-left:10px; color:#888;"></span>
+    </div>
+
+    <div>
+        <button class="btn-dry" onclick="runMigration(true)">Dry Run (solo mostrar cambios)</button>
+        <button class="btn-execute" id="btn-execute" onclick="runMigration(false)">Ejecutar Migracion Real</button>
+    </div>
+
+    <div class="progress"><div class="progress-bar" id="progress-bar" style="width: 0%"></div></div>
+
+    <div class="stats" id="stats"></div>
+
+    <div id="log"></div>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+<script>
+// Firebase config
+const firebaseConfig = {
+    apiKey: "AIzaSyDpxQsBojIZCiRGMn8fyLUmJIOm_2M_5EU",
+    authDomain: "climbmaps-80cae.firebaseapp.com",
+    projectId: "climbmaps-80cae",
+    storageBucket: "climbmaps-80cae.firebasestorage.app",
+    messagingSenderId: "627029956398",
+    appId: "1:627029956398:web:ac68aa375da7f654480cbf"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+async function doLogin() {
+    const statusEl = document.getElementById('auth-status');
+    try {
+        statusEl.textContent = 'Abriendo popup de Google...';
+        statusEl.style.color = '#888';
+        const provider = new firebase.auth.GoogleAuthProvider();
+        await firebase.auth().signInWithPopup(provider);
+        statusEl.textContent = 'Autenticado como: ' + firebase.auth().currentUser.email;
+        statusEl.style.color = '#00ff88';
+    } catch (e) {
+        statusEl.textContent = 'Error: ' + e.message;
+        statusEl.style.color = '#ff4444';
+    }
+}
+
+// GeoJSON paths per school (matching MAPLIBRE_SCHOOLS)
+const SCHOOL_GEOJSON = {
+    valeria: 'Cartografia/Valeria/Valeria_Vias.geojson',
+    sanmartin: 'Cartografia/San Martin de ValdeIglesias/SM_Vias.geojson',
+    mora: 'Cartografia/Mora/Mora_Vias.geojson',
+    aranjuez: 'Cartografia/Aranjuez/Aranjuez_vias.geojson',
+    cuenca: 'Cartografia/Cuenca/Cuenca_Vias.geojson',
+    toledo: 'Cartografia/Toledo/Toledo_vias.geojson'
+};
+
+const logEl = document.getElementById('log');
+const statsEl = document.getElementById('stats');
+const progressBar = document.getElementById('progress-bar');
+
+let migrationStats = {
+    drawings: { found: 0, migrated: 0, skipped: 0, ambiguous: 0 },
+    ascents: { found: 0, migrated: 0, skipped: 0, ambiguous: 0 },
+    comments: { found: 0, migrated: 0, skipped: 0, ambiguous: 0 },
+    alejeVotes: { found: 0, migrated: 0, skipped: 0, ambiguous: 0 },
+    estadoVotes: { found: 0, migrated: 0, skipped: 0, ambiguous: 0 },
+    routePhotos: { found: 0, migrated: 0, skipped: 0, ambiguous: 0 }
+};
+
+function log(msg, cls = 'log-info') {
+    const line = document.createElement('div');
+    line.className = cls;
+    line.textContent = msg;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setProgress(pct) {
+    progressBar.style.width = pct + '%';
+}
+
+function updateStats() {
+    statsEl.innerHTML = Object.entries(migrationStats).map(([key, s]) => `
+        <div class="stat">
+            <div class="stat-num">${s.migrated}/${s.found}</div>
+            <div class="stat-label">${key} (${s.skipped} skip, ${s.ambiguous} ambig)</div>
+        </div>
+    `).join('');
+}
+
+function normalizeId(text) {
+    return text.toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
+
+function normalizeSectorName(name) {
+    return name.toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/[áàä]/g, 'a')
+        .replace(/[éèë]/g, 'e')
+        .replace(/[íìï]/g, 'i')
+        .replace(/[óòö]/g, 'o')
+        .replace(/[úùü]/g, 'u')
+        .replace(/ñ/g, 'n')
+        .replace(/[^a-z0-9_]/g, '');
+}
+
+// Build lookup tables from GeoJSON
+async function buildLookupTables() {
+    log('=== Cargando GeoJSONs ===', 'log-section');
+
+    // Lookup: schoolId + nombre + sector -> routeId
+    // Also: schoolId + nombre -> [routeIds] (for cases without sector)
+    const byNameAndSector = {};  // key: "schoolId|nombre|sector" -> routeId
+    const byNameOnly = {};       // key: "schoolId|nombre" -> [{ routeId, sector }]
+    const byId = {};             // key: "schoolId|routeId" -> { nombre, sector }
+
+    for (const [schoolId, path] of Object.entries(SCHOOL_GEOJSON)) {
+        try {
+            const resp = await fetch(path);
+            if (!resp.ok) {
+                log(`  Error cargando ${path}: ${resp.status}`, 'log-error');
+                continue;
+            }
+            const geojson = await resp.json();
+            const features = geojson.features || [];
+            log(`  ${schoolId}: ${features.length} vias cargadas`, 'log-success');
+
+            for (const f of features) {
+                const routeId = f.properties.id;
+                const nombre = f.properties.nombre;
+                const sector = f.properties.sector || '';
+
+                if (routeId == null) continue;
+
+                // By name + sector (most specific)
+                const key1 = `${schoolId}|${nombre}|${sector}`;
+                if (byNameAndSector[key1]) {
+                    log(`  WARN: Duplicado nombre+sector: ${key1} (ids: ${byNameAndSector[key1]}, ${routeId})`, 'log-warn');
+                }
+                byNameAndSector[key1] = routeId;
+
+                // By name only (may have duplicates)
+                const key2 = `${schoolId}|${nombre}`;
+                if (!byNameOnly[key2]) byNameOnly[key2] = [];
+                byNameOnly[key2].push({ routeId, sector });
+
+                // By id
+                byId[`${schoolId}|${routeId}`] = { nombre, sector };
+            }
+        } catch (e) {
+            log(`  Error procesando ${schoolId}: ${e.message}`, 'log-error');
+        }
+    }
+
+    return { byNameAndSector, byNameOnly, byId };
+}
+
+// Resolve routeId from name (and optionally sector)
+function resolveRouteId(lookup, schoolId, nombre, sector) {
+    // 1. Try exact match with sector
+    if (sector) {
+        const key1 = `${schoolId}|${nombre}|${sector}`;
+        if (lookup.byNameAndSector[key1] != null) {
+            return { routeId: lookup.byNameAndSector[key1], ambiguous: false };
+        }
+    }
+
+    // 2. Try by name only
+    const key2 = `${schoolId}|${nombre}`;
+    const matches = lookup.byNameOnly[key2];
+    if (!matches || matches.length === 0) {
+        return { routeId: null, ambiguous: false };
+    }
+    if (matches.length === 1) {
+        return { routeId: matches[0].routeId, ambiguous: false };
+    }
+
+    // Multiple matches - ambiguous
+    return { routeId: matches[0].routeId, ambiguous: true, count: matches.length };
+}
+
+// ============================
+// MIGRATION FUNCTIONS
+// ============================
+
+async function migrateDrawings(lookup, dryRun) {
+    log('\n=== Migrando sector_route_drawings ===', 'log-section');
+    const snap = await db.collection('sector_route_drawings').get();
+    migrationStats.drawings.found = 0;
+
+    for (const doc of snap.docs) {
+        const data = doc.data();
+        const drawings = data.drawings || [];
+        if (drawings.length === 0) continue;
+
+        // Extract schoolId from docId (format: schoolId_sectorName)
+        const docId = doc.id;
+        const underscoreIdx = docId.indexOf('_');
+        const schoolId = underscoreIdx > 0 ? docId.substring(0, underscoreIdx) : docId;
+
+        let modified = false;
+        const updatedDrawings = drawings.map(d => {
+            migrationStats.drawings.found++;
+
+            // Already has routeId
+            if (d.routeId != null) {
+                migrationStats.drawings.skipped++;
+                return d;
+            }
+
+            const routeName = d.routeName;
+            const sectorName = d.sectorName || '';
+            const { routeId, ambiguous, count } = resolveRouteId(lookup, schoolId, routeName, sectorName);
+
+            if (routeId == null) {
+                log(`  SKIP drawing: ${schoolId}/${sectorName}/${routeName} - no match en GeoJSON`, 'log-warn');
+                migrationStats.drawings.skipped++;
+                return d;
+            }
+
+            if (ambiguous) {
+                log(`  AMBIG drawing: ${schoolId}/${routeName} tiene ${count} matches, usando primero: ${routeId}`, 'log-warn');
+                migrationStats.drawings.ambiguous++;
+            }
+
+            modified = true;
+            migrationStats.drawings.migrated++;
+            log(`  Drawing: ${routeName} -> routeId: ${routeId}`, 'log-success');
+            return { ...d, routeId };
+        });
+
+        if (modified && !dryRun) {
+            await db.collection('sector_route_drawings').doc(docId).update({ drawings: updatedDrawings });
+        }
+    }
+    updateStats();
+}
+
+async function migrateAscents(lookup, dryRun) {
+    log('\n=== Migrando ascents ===', 'log-section');
+    const snap = await db.collection('ascents').get();
+
+    for (const doc of snap.docs) {
+        const data = doc.data();
+        migrationStats.ascents.found++;
+
+        // Already has routeId
+        if (data.routeId != null) {
+            migrationStats.ascents.skipped++;
+            continue;
+        }
+
+        const routeName = data.routeName;
+        const schoolId = data.schoolId;
+        const sector = data.sector || '';
+
+        if (!routeName || !schoolId) {
+            migrationStats.ascents.skipped++;
+            continue;
+        }
+
+        const { routeId, ambiguous, count } = resolveRouteId(lookup, schoolId, routeName, sector);
+
+        if (routeId == null) {
+            log(`  SKIP ascent: ${schoolId}/${routeName} - no match`, 'log-warn');
+            migrationStats.ascents.skipped++;
+            continue;
+        }
+
+        if (ambiguous) {
+            log(`  AMBIG ascent: ${schoolId}/${routeName} tiene ${count} matches, usando: ${routeId}`, 'log-warn');
+            migrationStats.ascents.ambiguous++;
+        }
+
+        migrationStats.ascents.migrated++;
+        if (!dryRun) {
+            await db.collection('ascents').doc(doc.id).update({ routeId });
+        }
+        log(`  Ascent ${doc.id}: ${routeName} -> routeId: ${routeId}`, 'log-success');
+    }
+    updateStats();
+}
+
+async function migrateComments(lookup, dryRun) {
+    log('\n=== Migrando comments ===', 'log-section');
+    const snap = await db.collection('comments').get();
+
+    for (const doc of snap.docs) {
+        const data = doc.data();
+        migrationStats.comments.found++;
+
+        // Already has routeIdNumeric
+        if (data.routeIdNumeric != null) {
+            migrationStats.comments.skipped++;
+            continue;
+        }
+
+        // Current routeId format: "schoolId_normalizedName"
+        const currentRouteId = data.routeId || '';
+        const underscoreIdx = currentRouteId.indexOf('_');
+        if (underscoreIdx < 0) {
+            migrationStats.comments.skipped++;
+            continue;
+        }
+
+        const schoolId = currentRouteId.substring(0, underscoreIdx);
+        const normalizedName = currentRouteId.substring(underscoreIdx + 1);
+
+        // Try to find the route by matching normalizedName against all routes in that school
+        let foundRouteId = null;
+        let isAmbiguous = false;
+
+        const schoolKey = `${schoolId}|`;
+        for (const [key, matches] of Object.entries(lookup.byNameOnly)) {
+            if (!key.startsWith(schoolKey)) continue;
+            const nombre = key.substring(schoolKey.length);
+            if (normalizeId(nombre) === normalizedName) {
+                if (matches.length === 1) {
+                    foundRouteId = matches[0].routeId;
+                } else {
+                    foundRouteId = matches[0].routeId;
+                    isAmbiguous = true;
+                }
+                break;
+            }
+        }
+
+        if (foundRouteId == null) {
+            log(`  SKIP comment ${doc.id}: ${currentRouteId} - no match`, 'log-warn');
+            migrationStats.comments.skipped++;
+            continue;
+        }
+
+        if (isAmbiguous) {
+            log(`  AMBIG comment: ${currentRouteId} -> routeId: ${foundRouteId} (ambiguous)`, 'log-warn');
+            migrationStats.comments.ambiguous++;
+        }
+
+        // Store the new numeric routeId and the new-format string routeId
+        const newRouteIdStr = `${schoolId}_${foundRouteId}`;
+        migrationStats.comments.migrated++;
+        if (!dryRun) {
+            await db.collection('comments').doc(doc.id).update({
+                routeIdNumeric: foundRouteId,
+                routeIdOld: currentRouteId,
+                routeId: newRouteIdStr
+            });
+        }
+        log(`  Comment ${doc.id}: ${currentRouteId} -> ${newRouteIdStr}`, 'log-success');
+    }
+    updateStats();
+}
+
+async function migrateVotes(collectionName, statsKey, lookup, dryRun) {
+    log(`\n=== Migrando ${collectionName} ===`, 'log-section');
+    const snap = await db.collection(collectionName).get();
+
+    for (const doc of snap.docs) {
+        const data = doc.data();
+        migrationStats[statsKey].found++;
+
+        // docId format: schoolId_routeName
+        const docId = doc.id;
+        const underscoreIdx = docId.indexOf('_');
+        if (underscoreIdx < 0) {
+            migrationStats[statsKey].skipped++;
+            continue;
+        }
+
+        const schoolId = docId.substring(0, underscoreIdx);
+        const routeName = docId.substring(underscoreIdx + 1);
+
+        // Check if this already has routeId field or if docId already uses numeric ID
+        if (data.routeId != null) {
+            migrationStats[statsKey].skipped++;
+            continue;
+        }
+
+        // Check if routeName is already a numeric ID (in case docId is schoolId_numericId)
+        const numericCheck = parseFloat(routeName);
+        if (!isNaN(numericCheck) && lookup.byId[`${schoolId}|${numericCheck}`]) {
+            migrationStats[statsKey].skipped++;
+            continue;
+        }
+
+        // Resolve
+        const { routeId, ambiguous, count } = resolveRouteId(lookup, schoolId, routeName, '');
+
+        if (routeId == null) {
+            log(`  SKIP ${collectionName} ${docId}: no match for "${routeName}"`, 'log-warn');
+            migrationStats[statsKey].skipped++;
+            continue;
+        }
+
+        if (ambiguous) {
+            log(`  AMBIG ${collectionName}: ${docId} -> ${count} matches for "${routeName}"`, 'log-warn');
+            migrationStats[statsKey].ambiguous++;
+        }
+
+        // Create new doc with routeId-based key, copy votes
+        const newDocId = `${schoolId}_${routeId}`;
+        if (newDocId === docId) {
+            migrationStats[statsKey].skipped++;
+            continue;
+        }
+
+        migrationStats[statsKey].migrated++;
+        log(`  ${collectionName}: ${docId} -> ${newDocId} (routeId: ${routeId})`, 'log-success');
+
+        if (!dryRun) {
+            // Check if new doc already exists (might have votes already)
+            const existingDoc = await db.collection(collectionName).doc(newDocId).get();
+            if (existingDoc.exists) {
+                // Merge votes
+                const existingVotes = existingDoc.data().votes || {};
+                const currentVotes = data.votes || {};
+                const mergedVotes = { ...currentVotes, ...existingVotes }; // existing takes precedence
+                await db.collection(collectionName).doc(newDocId).set({
+                    votes: mergedVotes,
+                    routeId: routeId,
+                    routeName: routeName,
+                    migratedFrom: docId
+                }, { merge: true });
+            } else {
+                await db.collection(collectionName).doc(newDocId).set({
+                    ...data,
+                    routeId: routeId,
+                    routeName: routeName,
+                    migratedFrom: docId
+                });
+            }
+            // Keep old doc as backup (don't delete)
+        }
+    }
+    updateStats();
+}
+
+async function migrateRoutePhotos(lookup, dryRun) {
+    log('\n=== Migrando route-photos ===', 'log-section');
+    const snap = await db.collection('route-photos').get();
+
+    for (const doc of snap.docs) {
+        const data = doc.data();
+        migrationStats.routePhotos.found++;
+
+        // Already has routeId
+        if (data.routeId != null) {
+            migrationStats.routePhotos.skipped++;
+            continue;
+        }
+
+        const routeName = data.routeName;
+        const schoolId = data.schoolId;
+
+        if (!routeName || !schoolId) {
+            migrationStats.routePhotos.skipped++;
+            continue;
+        }
+
+        const { routeId, ambiguous, count } = resolveRouteId(lookup, schoolId, routeName, '');
+
+        if (routeId == null) {
+            log(`  SKIP photo ${doc.id}: ${schoolId}/${routeName} - no match`, 'log-warn');
+            migrationStats.routePhotos.skipped++;
+            continue;
+        }
+
+        if (ambiguous) {
+            log(`  AMBIG photo: ${schoolId}/${routeName} -> ${count} matches, usando: ${routeId}`, 'log-warn');
+            migrationStats.routePhotos.ambiguous++;
+        }
+
+        migrationStats.routePhotos.migrated++;
+        if (!dryRun) {
+            await db.collection('route-photos').doc(doc.id).update({ routeId });
+        }
+        log(`  Photo ${doc.id}: ${routeName} -> routeId: ${routeId}`, 'log-success');
+    }
+    updateStats();
+}
+
+// ============================
+// MAIN
+// ============================
+
+async function runMigration(dryRun) {
+    logEl.innerHTML = '';
+    migrationStats = {
+        drawings: { found: 0, migrated: 0, skipped: 0, ambiguous: 0 },
+        ascents: { found: 0, migrated: 0, skipped: 0, ambiguous: 0 },
+        comments: { found: 0, migrated: 0, skipped: 0, ambiguous: 0 },
+        alejeVotes: { found: 0, migrated: 0, skipped: 0, ambiguous: 0 },
+        estadoVotes: { found: 0, migrated: 0, skipped: 0, ambiguous: 0 },
+        routePhotos: { found: 0, migrated: 0, skipped: 0, ambiguous: 0 }
+    };
+    updateStats();
+
+    log(dryRun ? '=== DRY RUN - No se escribira nada ===' : '=== EJECUTANDO MIGRACION REAL ===', 'log-section');
+
+    // Require auth for real execution
+    if (!dryRun) {
+        const user = firebase.auth().currentUser;
+        if (!user) {
+            log('Debes iniciar sesion primero usando el formulario de arriba.', 'log-error');
+            return;
+        }
+        log(`Autenticado como: ${user.email}`, 'log-success');
+    }
+
+    try {
+        setProgress(5);
+
+        // Step 1: Build lookup tables
+        const lookup = await buildLookupTables();
+        setProgress(15);
+
+        // Step 2: Migrate drawings
+        await migrateDrawings(lookup, dryRun);
+        setProgress(30);
+
+        // Step 3: Migrate ascents
+        await migrateAscents(lookup, dryRun);
+        setProgress(45);
+
+        // Step 4: Migrate comments
+        await migrateComments(lookup, dryRun);
+        setProgress(60);
+
+        // Step 5: Migrate aleje votes
+        await migrateVotes('aleje_votes', 'alejeVotes', lookup, dryRun);
+        setProgress(75);
+
+        // Step 6: Migrate estado votes
+        await migrateVotes('estado_votes', 'estadoVotes', lookup, dryRun);
+        setProgress(85);
+
+        // Step 7: Migrate route photos
+        await migrateRoutePhotos(lookup, dryRun);
+        setProgress(95);
+
+        log('\n=== RESUMEN ===', 'log-section');
+        for (const [key, s] of Object.entries(migrationStats)) {
+            log(`  ${key}: ${s.found} encontrados, ${s.migrated} migrados, ${s.skipped} ya tenian routeId, ${s.ambiguous} ambiguos`);
+        }
+
+        setProgress(100);
+        log(dryRun ? '\n=== DRY RUN COMPLETO ===' : '\n=== MIGRACION COMPLETADA ===', 'log-section');
+
+    } catch (e) {
+        log(`\nERROR FATAL: ${e.message}`, 'log-error');
+        console.error(e);
+    }
+}
+</script>
+</body>
+</html>

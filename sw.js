@@ -4,7 +4,7 @@
  * PWA completa con soporte offline
  */
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `krux-cache-${CACHE_VERSION}`;
 const DATA_CACHE_NAME = `krux-data-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
@@ -58,7 +58,7 @@ self.addEventListener('install', (event) => {
             return Promise.allSettled(
               EXTERNAL_RESOURCES.map(url =>
                 fetch(url, { mode: 'cors' }).then(response => {
-                  if (response.ok) {
+                  if (response.ok && response.status !== 206) {
                     return cache.put(url, response);
                   }
                 }).catch(() => {
@@ -187,7 +187,7 @@ async function networkFirstWithOfflineFallback(request) {
   try {
     const networkResponse = await fetch(request);
 
-    if (networkResponse.ok) {
+    if (networkResponse.ok && networkResponse.status !== 206) {
       cache.put(request, networkResponse.clone());
     }
 
@@ -221,7 +221,7 @@ async function networkFirstThenCache(request) {
   try {
     const networkResponse = await fetch(request);
 
-    if (networkResponse.ok) {
+    if (networkResponse.ok && networkResponse.status !== 206) {
       cache.put(request, networkResponse.clone());
     }
 
@@ -244,7 +244,7 @@ async function fetchAndCache(request, cache) {
   try {
     const networkResponse = await fetch(request);
 
-    if (networkResponse.ok) {
+    if (networkResponse.ok && networkResponse.status !== 206) {
       cache.put(request, networkResponse.clone());
     }
 
@@ -272,7 +272,7 @@ self.addEventListener('message', (event) => {
     caches.open(DATA_CACHE_NAME).then((cache) => {
       urls.forEach(url => {
         fetch(url).then(response => {
-          if (response.ok) {
+          if (response.ok && response.status !== 206) {
             cache.put(url, response);
           }
         });
@@ -293,7 +293,7 @@ self.addEventListener('message', (event) => {
     caches.open(DATA_CACHE_NAME).then((cache) => {
       routes.forEach(route => {
         fetch(route).then(response => {
-          if (response.ok) {
+          if (response.ok && response.status !== 206) {
             cache.put(route, response);
             console.log('[SW] Pre-cacheada ruta:', route);
           }
