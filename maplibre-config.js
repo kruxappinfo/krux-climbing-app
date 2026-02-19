@@ -182,33 +182,6 @@ const MAPLIBRE_SCHOOLS = {
       parkings: 15
     }
   },
-  aranjuez: {
-    id: 'aranjuez',
-    name: 'Aranjuez',
-    center: [-3.5295, 40.0402],
-    zoom: 16,
-    bounds: [[-3.535, 40.038], [-3.524, 40.042]],
-    // Vector Tiles (preferido - más rápido)
-    tiles: {
-      vias: 'tiles/aranjuez/vias/{z}/{x}/{y}.pbf',
-      sectores: 'tiles/aranjuez/sectores/{z}/{x}/{y}.pbf',
-      parkings: 'tiles/aranjuez/parkings/{z}/{x}/{y}.pbf'
-    },
-    // GeoJSON fallback
-    geojson: {
-      vias: 'Cartografia/Aranjuez/Aranjuez_vias.geojson',
-      sectores: 'Cartografia/Aranjuez/Aranjuez_Sectores.geojson',
-      parkings: 'Cartografia/Aranjuez/Aranjuez_Parkings.geojson',
-      puntosInteres: 'Cartografia/Aranjuez/Aranjuez_Puntos_Acceso.geojson',
-      rutasAcceso: 'Cartografia/Aranjuez/Aranjuez_Rutas_acceso.geojson'
-    },
-    zoomLevels: {
-      sectores: 12,
-      sectorNames: 16,
-      vias: 17,  // desaparecen antes al hacer zoom out
-      parkings: 15
-    }
-  },
   cuenca: {
     id: 'cuenca',
     name: 'Cuenca',
@@ -333,14 +306,6 @@ const SCHOOL_MARKERS = [
     isOpen: false,
     rockType: 'Caliza'
   },
-  {
-    id: 'aranjuez',
-    nombre: 'Aranjuez',
-    coords: [-3.5295, 40.0402],
-    zoom: 16,
-    isOpen: true,
-    rockType: 'Caliza'
-  },
 ];
 
 // ============================================
@@ -358,6 +323,42 @@ const MAP_DEFAULTS = {
     exaggeration: 1.5  // Exageración del relieve 3D
   }
 };
+
+// ============================================
+// COMUNIDADES AUTÓNOMAS (para reset regional)
+// ============================================
+// bbox: [minLng, minLat, maxLng, maxLat] - bounding box simplificado
+const CCAA_REGIONS = {
+  madrid: {
+    name: 'Comunidad de Madrid',
+    center: [-3.7037061933656643, 40.41693015918368],
+    zoom: 8,
+    bbox: [-4.58, 39.88, -3.05, 41.17]
+  },
+  castillalamancha: {
+    name: 'Castilla-La Mancha',
+    center: [-3.0, 39.85],
+    zoom: 7.5,
+    bbox: [-5.40, 38.40, -1.18, 41.05],
+    resetTo: 'madrid'
+  },
+  castillayleon: {
+    name: 'Castilla y León',
+    center: [-4.73, 41.65],
+    zoom: 7.5,
+    bbox: [-7.03, 40.11, -1.77, 43.24],
+    resetTo: 'madrid'
+  },
+  valencia: {
+    name: 'Comunidad Valenciana',
+    center: [-0.375, 39.47],
+    zoom: 8,
+    bbox: [-1.53, 37.84, 0.70, 40.79]
+  }
+};
+
+// Fallback por defecto
+const CCAA_DEFAULT = 'madrid';
 
 // ============================================
 // ESTILOS DE CAPAS

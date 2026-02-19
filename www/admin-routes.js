@@ -659,7 +659,6 @@ async function loadGeoJSONRoutesForSector(schoolId, sectorName) {
             'valeria': 'Cartografia/Valeria/Valeria_Vias.geojson',
             'sanmartin': 'Cartografia/San Martin de ValdeIglesias/SM_Vias.geojson',
             'mora': 'Cartografia/Mora/Mora_Vias.geojson',
-            'aranjuez': 'Cartografia/Aranjuez/Aranjuez_vias.geojson'
         };
 
         const path = geojsonPaths[schoolId];

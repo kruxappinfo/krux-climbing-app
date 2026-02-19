@@ -42,6 +42,20 @@
   padding: 12px;
 }
 
+/* ===== BOTÓN FILTRO DE GRADO - SAFE AREA ===== */
+.platform-mobile #btn-grade-filter {
+  top: calc(12px + var(--mobile-safe-area-top)) !important;
+}
+
+.platform-mobile .grade-filter-panel {
+  top: calc(60px + var(--mobile-safe-area-top)) !important;
+}
+
+/* ===== BOTÓN VISTA GENERAL - SAFE AREA ===== */
+.platform-mobile .reset-view-btn {
+  top: calc(60px + var(--mobile-safe-area-top)) !important;
+}
+
 /* ===== AJUSTES DEL MAPA ===== */
 .platform-mobile #map {
   height: calc(100vh - var(--mobile-bottom-nav-height) - var(--mobile-safe-area-bottom));

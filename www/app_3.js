@@ -3218,6 +3218,11 @@ function closeAllModals() {
 function switchView(viewId) {
   closeAllModals();
 
+  // Cerrar todos los bottom sheets al cambiar de sección
+  if (typeof hideBottomSheet === 'function') hideBottomSheet();
+  if (typeof hideSectorBottomSheet === 'function') hideSectorBottomSheet();
+  if (typeof hideRouteBottomSheet === 'function') hideRouteBottomSheet();
+
   // Update Views with smooth transitions
   document.querySelectorAll('.view').forEach(view => {
     if (view.id === viewId) {
@@ -11016,6 +11021,239 @@ function renderActivityList(ascents) {
   });
 }
 
+// ========================================
+// ASCENT LOGBOOK
+// ========================================
+
+let logbookAscents = []; // Full list fetched from Firestore
+let logbookFiltered = []; // Currently filtered subset
+
+const STYLE_LABELS = {
+  redpoint: 'Redpoint',
+  onsight: 'A vista',
+  flash: 'Flash',
+  toprope: 'Top Rope',
+  project: 'Intento'
+};
+
+function initLogbook() {
+  // Make climbing stats card clickable
+  const statsCard = document.querySelector('.profile-card-ig');
+  if (statsCard) {
+    statsCard.classList.add('clickable');
+    const header = statsCard.querySelector('.profile-card-header-ig');
+    if (header) {
+      header.classList.add('clickable-header');
+      // Add chevron indicator
+      if (!header.querySelector('.logbook-chevron')) {
+        const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        chevron.setAttribute('class', 'logbook-chevron');
+        chevron.setAttribute('width', '14');
+        chevron.setAttribute('height', '14');
+        chevron.setAttribute('viewBox', '0 0 24 24');
+        chevron.setAttribute('fill', 'none');
+        chevron.setAttribute('stroke', 'currentColor');
+        chevron.setAttribute('stroke-width', '2');
+        chevron.setAttribute('stroke-linecap', 'round');
+        chevron.setAttribute('stroke-linejoin', 'round');
+        const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        polyline.setAttribute('points', '9 18 15 12 9 6');
+        chevron.appendChild(polyline);
+        header.appendChild(chevron);
+      }
+    }
+    statsCard.addEventListener('click', openLogbook);
+  }
+
+  // Close button
+  const closeBtn = document.getElementById('close-logbook-btn');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeLogbook);
+  }
+
+  // Filters
+  const gradeFilter = document.getElementById('logbook-filter-grade');
+  const styleFilter = document.getElementById('logbook-filter-style');
+  if (gradeFilter) gradeFilter.addEventListener('change', applyLogbookFilters);
+  if (styleFilter) styleFilter.addEventListener('change', applyLogbookFilters);
+}
+
+async function openLogbook() {
+  const modal = document.getElementById('ascent-logbook-modal');
+  if (!modal) return;
+
+  modal.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+
+  // Show loading state
+  const list = document.getElementById('logbook-list');
+  if (list) {
+    list.innerHTML = '<div style="display:flex;justify-content:center;padding:40px;"><div class="spinner"></div></div>';
+  }
+
+  try {
+    // Fetch all ascents for the current profile user
+    const userId = getCurrentProfileUserId();
+    if (!userId) {
+      renderLogbookEmpty('No se pudo identificar al usuario');
+      return;
+    }
+
+    const ascents = await getUserAscentsByUserId(userId, 500);
+
+    // Sort by date descending (most recent first)
+    ascents.sort((a, b) => {
+      const dateA = a.date instanceof Date ? a.date : new Date(a.date);
+      const dateB = b.date instanceof Date ? b.date : new Date(b.date);
+      return dateB - dateA;
+    });
+
+    logbookAscents = ascents;
+    logbookFiltered = ascents;
+
+    populateGradeFilter(ascents);
+    applyLogbookFilters();
+
+  } catch (error) {
+    console.error('Error loading logbook:', error);
+    renderLogbookEmpty('Error al cargar las ascensiones');
+  }
+}
+
+function closeLogbook() {
+  const modal = document.getElementById('ascent-logbook-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+}
+
+function getCurrentProfileUserId() {
+  // Check if we're viewing our own profile or someone else's
+  if (typeof currentUser !== 'undefined' && currentUser && currentUser.uid) {
+    return currentUser.uid;
+  }
+  return null;
+}
+
+function populateGradeFilter(ascents) {
+  const gradeSelect = document.getElementById('logbook-filter-grade');
+  if (!gradeSelect) return;
+
+  const grades = [...new Set(ascents.map(a => a.grade).filter(g => g && g.trim() !== ''))];
+  const compareFunc = typeof compareGradesLocal === 'function' ? compareGradesLocal : (a, b) => a.localeCompare(b);
+  grades.sort(compareFunc);
+
+  // Keep selected value if possible
+  const currentVal = gradeSelect.value;
+  gradeSelect.innerHTML = '<option value="">Todos los grados</option>';
+  grades.forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g;
+    opt.textContent = g;
+    gradeSelect.appendChild(opt);
+  });
+  if (currentVal && grades.includes(currentVal)) {
+    gradeSelect.value = currentVal;
+  }
+}
+
+function applyLogbookFilters() {
+  const gradeVal = document.getElementById('logbook-filter-grade')?.value || '';
+  const styleVal = document.getElementById('logbook-filter-style')?.value || '';
+
+  logbookFiltered = logbookAscents.filter(a => {
+    if (gradeVal && a.grade !== gradeVal) return false;
+    if (styleVal && a.style !== styleVal) return false;
+    return true;
+  });
+
+  // Update result count
+  const countEl = document.getElementById('logbook-result-count');
+  if (countEl) {
+    const total = logbookAscents.length;
+    const shown = logbookFiltered.length;
+    countEl.textContent = (gradeVal || styleVal)
+      ? `${shown} de ${total} ascensiones`
+      : `${total} ascensiones`;
+  }
+
+  renderLogbookList(logbookFiltered);
+}
+
+function renderLogbookList(ascents) {
+  const list = document.getElementById('logbook-list');
+  if (!list) return;
+
+  if (!ascents || ascents.length === 0) {
+    const gradeVal = document.getElementById('logbook-filter-grade')?.value || '';
+    const styleVal = document.getElementById('logbook-filter-style')?.value || '';
+    const isFiltered = gradeVal || styleVal;
+
+    renderLogbookEmpty(
+      isFiltered ? 'No hay ascensiones con esos filtros' : null
+    );
+    return;
+  }
+
+  let html = '';
+  ascents.forEach(ascent => {
+    const dateObj = ascent.date instanceof Date ? ascent.date : new Date(ascent.date);
+    const dateStr = dateObj.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    const styleSVG = typeof getAscentStyleSVG === 'function' ? getAscentStyleSVG(ascent.style) : '';
+    const styleLabel = STYLE_LABELS[ascent.style] || ascent.style || '';
+    const styleClass = ascent.style ? `ascent-style-${ascent.style}` : '';
+    const isProject = ascent.style === 'project';
+    const isChained = !isProject && ascent.style && ascent.style !== 'project';
+
+    const checkHtml = isChained ? `
+      <span class="logbook-item-check">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </span>
+    ` : '';
+
+    html += `
+      <div class="logbook-item">
+        <div class="logbook-item-grade ${isProject ? 'grade-project' : ''}">${ascent.grade || '?'}</div>
+        <div class="logbook-item-body">
+          <div class="logbook-item-name">${ascent.routeName || 'Sin nombre'}</div>
+          <div class="logbook-item-location">${ascent.schoolName || ''}${ascent.sector ? ' · ' + ascent.sector : ''}</div>
+        </div>
+        <div class="logbook-item-right">
+          <div class="logbook-item-date">${dateStr}</div>
+          <div class="logbook-item-style ${styleClass}">
+            ${styleSVG}
+            <span>${styleLabel}</span>
+            ${checkHtml}
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  list.innerHTML = html;
+}
+
+function renderLogbookEmpty(message) {
+  const list = document.getElementById('logbook-list');
+  if (!list) return;
+
+  list.innerHTML = `
+    <div class="logbook-empty">
+      <div class="logbook-empty-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m8 3 4 8 5-5 5 15H2L8 3z" />
+        </svg>
+      </div>
+      <div class="logbook-empty-title">${message || 'Sin ascensiones'}</div>
+      <div class="logbook-empty-text">${message ? 'Prueba a cambiar los filtros' : 'Registra tu primera ascensión desde la ficha de una vía'}</div>
+    </div>
+  `;
+}
+
 // Initialize on load
 document.addEventListener('DOMContentLoaded', () => {
   initEditProfile();
@@ -11024,6 +11262,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCreatePost();
   initViewPostModal();
   initActivityView();
+  initLogbook();
 });
 
 // Re-initialize activity when user logs in

@@ -1137,6 +1137,44 @@
     </div>
   </div>
 
+  <!-- Ascent Logbook Modal (full-screen view) -->
+  <div id="ascent-logbook-modal" class="modal hidden">
+    <div class="logbook-container">
+      <div class="logbook-header">
+        <button id="close-logbook-btn" class="logbook-back-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <h3 class="logbook-title">Libro de ascensiones</h3>
+        <div style="width: 20px;"></div>
+      </div>
+
+      <!-- Filters -->
+      <div class="logbook-filters">
+        <div class="logbook-filter-row">
+          <select id="logbook-filter-grade" class="logbook-select">
+            <option value="">Todos los grados</option>
+          </select>
+          <select id="logbook-filter-style" class="logbook-select">
+            <option value="">Todos los estilos</option>
+            <option value="redpoint">Redpoint</option>
+            <option value="onsight">A vista</option>
+            <option value="flash">Flash</option>
+            <option value="toprope">Top Rope</option>
+            <option value="project">Intento</option>
+          </select>
+        </div>
+        <div class="logbook-result-count" id="logbook-result-count"></div>
+      </div>
+
+      <!-- Ascents List -->
+      <div class="logbook-list" id="logbook-list">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+  </div>
+
   <!-- Ascent Logging Modal -->
   <div id="ascent-modal" class="modal hidden">
     <div class="modal-content">
@@ -2129,6 +2167,112 @@
             Visitar escuela
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Sheet para Sectores (solo móvil) -->
+  <div id="sector-bottom-sheet" class="bottom-sheet hidden">
+    <!-- Handle para arrastrar -->
+    <div class="bottom-sheet-handle">
+      <div class="bottom-sheet-handle-bar"></div>
+    </div>
+
+    <!-- Header con título centrado -->
+    <div class="bs-header">
+      <h2 class="bs-title" id="secbs-sector-name">SECTOR</h2>
+    </div>
+
+    <!-- Contenido del Sector Bottom Sheet -->
+    <div class="bottom-sheet-content">
+      <!-- Fila de restricción -->
+      <div class="secbs-info-row" id="secbs-restriction-row">
+        <span class="secbs-info-icon" id="secbs-restriction-icon"></span>
+        <div class="secbs-info-text">
+          <span id="secbs-restriction-status"></span>
+          <span class="secbs-restriction-dates" id="secbs-restriction-dates"></span>
+        </div>
+      </div>
+
+      <!-- Fila de exposición -->
+      <div class="secbs-info-row" id="secbs-exposure-row">
+        <span class="secbs-info-icon" id="secbs-exposure-icon"></span>
+        <span class="secbs-info-text" id="secbs-exposure-text"></span>
+      </div>
+
+      <!-- Estado del sector (estrellas, cargado async) -->
+      <div id="secbs-estado-container"></div>
+
+      <!-- Gráfico de vías por grado -->
+      <div class="secbs-chart-container" id="secbs-grade-chart">
+        <div style="text-align: center; color: #888;">Cargando...</div>
+      </div>
+
+      <!-- Botón Ver Sector -->
+      <div class="secbs-actions">
+        <button class="secbs-view-btn" id="secbs-btn-view">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+          Ver Sector
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Sheet para Vías/Rutas (solo móvil) -->
+  <div id="route-bottom-sheet" class="bottom-sheet hidden">
+    <!-- Handle para arrastrar -->
+    <div class="bottom-sheet-handle">
+      <div class="bottom-sheet-handle-bar"></div>
+    </div>
+
+    <!-- Header: Check + Nombre + Grado -->
+    <div class="rbs-header">
+      <span class="rbs-ascent-check hidden" id="rbs-ascent-check">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </span>
+      <span class="rbs-ascent-style hidden" id="rbs-ascent-style"></span>
+      <span class="rbs-route-name" id="rbs-route-name">Vía</span>
+      <span class="rbs-route-grade" id="rbs-route-grade">?</span>
+    </div>
+
+    <!-- Contenido del Route Bottom Sheet -->
+    <div class="bottom-sheet-content">
+      <!-- Info items (tipo, express, metros) -->
+      <div class="rbs-info" id="rbs-info-items"></div>
+
+      <!-- Aleje (votación) -->
+      <div id="rbs-aleje-container"></div>
+
+      <!-- Estado de la vía (estrellas) -->
+      <div id="rbs-estado-container"></div>
+
+      <!-- Botonera de acciones -->
+      <div class="rbs-actions" id="rbs-actions"></div>
+
+      <!-- Botón Ver vía -->
+      <div class="rbs-view-section hidden" id="rbs-view-section">
+        <button class="rbs-view-btn" id="rbs-btn-view">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          Ver vía
+        </button>
+      </div>
+
+      <!-- Botón de desarrollador (admin) -->
+      <div class="rbs-dev-section hidden" id="rbs-dev-section">
+        <button class="rbs-dev-btn" id="rbs-btn-dev">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+          Vincular con imagen del sector
+        </button>
       </div>
     </div>
   </div>

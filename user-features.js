@@ -158,6 +158,18 @@ function getUserAscentInfo(schoolId, routeId) {
     return userAscentsCache.get(key) || null;
 }
 
+// Get SVG icon for ascent style (inline, stroke-based, 24x24 viewBox)
+function getAscentStyleSVG(style) {
+    const svgs = {
+        redpoint: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>',
+        onsight: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+        flash: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+        toprope: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6"/><path d="M8 8h8"/><path d="M12 8v14"/><circle cx="12" cy="5" r="3"/></svg>',
+        project: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+    };
+    return svgs[style] || '';
+}
+
 // Add ascent to cache (called after successful logAscent)
 function addAscentToCache(schoolId, routeId, ascentData) {
     const key = `${schoolId}:${routeId}`;
@@ -166,6 +178,45 @@ function addAscentToCache(schoolId, routeId, ascentData) {
         style: ascentData.style,
         grade: ascentData.grade
     });
+
+    // Actualizar ticks en el mapa inmediatamente
+    if (typeof updateAscentTicksLayer === 'function') {
+        updateAscentTicksLayer();
+    }
+}
+
+// Remove ascent from cache and update map ticks (called after successful deleteAscent)
+async function removeAscentFromCache(schoolId, routeId) {
+    if (!schoolId || !routeId) return;
+
+    const key = `${schoolId}:${routeId}`;
+
+    // Check if there are other ascents for this same route
+    try {
+        const remaining = await db.collection('ascents')
+            .where('userId', '==', currentUser.uid)
+            .where('schoolId', '==', schoolId)
+            .where('routeId', '==', routeId)
+            .limit(1)
+            .get();
+
+        if (remaining.empty) {
+            // No more ascents for this route - remove from cache
+            userAscentsCache.delete(key);
+        } else {
+            // Still has ascents - update cache with the remaining one
+            const data = remaining.docs[0].data();
+            userAscentsCache.set(key, {
+                date: data.date && data.date.toDate ? data.date.toDate() : new Date(data.date),
+                style: data.style,
+                grade: data.grade
+            });
+        }
+    } catch (error) {
+        // On error, remove from cache to be safe and let next load fix it
+        console.error('Error checking remaining ascents:', error);
+        userAscentsCache.delete(key);
+    }
 
     // Actualizar ticks en el mapa inmediatamente
     if (typeof updateAscentTicksLayer === 'function') {
@@ -440,7 +491,7 @@ async function getUserAscentsByUserId(userId, limit = 100) {
 }
 
 // Delete an ascent
-async function deleteAscent(ascentId) {
+async function deleteAscent(ascentId, schoolId, routeId) {
     if (!currentUser) return false;
 
     try {
@@ -450,6 +501,11 @@ async function deleteAscent(ascentId) {
         await db.collection('users').doc(currentUser.uid).update({
             'stats.totalAscents': firebase.firestore.FieldValue.increment(-1)
         });
+
+        // Update cache and map ticks
+        if (schoolId && routeId) {
+            await removeAscentFromCache(schoolId, routeId);
+        }
 
         showToast('Ascenso eliminado correctamente', 'success');
         return true;
@@ -1343,9 +1399,10 @@ function renderAscentsList(ascents) {
     document.querySelectorAll('.delete-ascent-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
             const ascentId = btn.dataset.id;
+            const ascent = ascents.find(a => a.id === ascentId);
             const confirmed = await showConfirm('¿Seguro que quieres eliminar este ascenso?', 'Eliminar ascenso');
             if (confirmed) {
-                const success = await deleteAscent(ascentId);
+                const success = await deleteAscent(ascentId, ascent?.schoolId, ascent?.routeId || ascent?.routeName);
                 if (success) {
                     showMyRoutes(); // Reload list
                 }
@@ -1451,9 +1508,10 @@ function showRouteDetailsModal(routeAscents) {
     modal.querySelectorAll('.delete-ascent-detail-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
             const ascentId = btn.dataset.id;
+            const ascent = routeAscents.find(a => a.id === ascentId);
             const confirmed = await showConfirm('¿Eliminar este ascenso?', 'Eliminar');
             if (confirmed) {
-                const success = await deleteAscent(ascentId);
+                const success = await deleteAscent(ascentId, ascent?.schoolId, ascent?.routeId || ascent?.routeName);
                 if (success) {
                     modal.remove();
                     showMyRoutes(); // Reload main list

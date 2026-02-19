@@ -359,15 +359,20 @@ function createBaseStyle() {
         minzoom: 0,
         maxzoom: 22
       },
-      // Capa de etiquetas (encima de todo)
+      // Capa de etiquetas (encima de todo) - minzoom 7 para mostrar ciudades antes
       {
         id: 'labels-layer',
         type: 'raster',
         source: 'labels-source',
-        minzoom: 10,
+        minzoom: 7,
         maxzoom: 22,
         paint: {
-          'raster-opacity': 0.9
+          'raster-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            7, 0.6,
+            9, 0.8,
+            10, 0.9
+          ]
         }
       }
     ],
@@ -955,6 +960,9 @@ function onMapLoad() {
     console.warn('Sin API key de MapTiler - Terreno 3D desactivado');
   }
 
+  // Cargar límites autonómicos
+  loadAutonomousBoundaries();
+
   // Cargar icono de parking
   loadParkingIcon();
 
@@ -977,6 +985,114 @@ function onMapLoad() {
 
   // Notificar que el mapa está listo
   window.dispatchEvent(new CustomEvent('maplibre:ready', { detail: { map: mlMap } }));
+}
+
+// ============================================
+// LÍMITES AUTONÓMICOS
+// ============================================
+
+/**
+ * Carga los límites de comunidades autónomas como capa de líneas
+ * GeoJSON simplificado (~89KB, solo península), visible zoom 6-12
+ * Sin interacción, sin fill, solo línea sutil
+ */
+function loadAutonomousBoundaries() {
+  if (!mlMap) return;
+
+  function addBoundaryLayers(geojson) {
+    try {
+      if (mlMap.getSource('ccaa-boundaries-source')) return; // Ya cargado
+
+      mlMap.addSource('ccaa-boundaries-source', {
+        type: 'geojson',
+        data: geojson
+      });
+
+      // Determinar dónde insertar la capa (debajo de labels si existe)
+      const beforeLayer = mlMap.getLayer('labels-layer') ? 'labels-layer' : undefined;
+
+      // Capa de casing (borde exterior oscuro para contraste sobre satélite)
+      mlMap.addLayer({
+        id: 'ccaa-boundaries-casing',
+        type: 'line',
+        source: 'ccaa-boundaries-source',
+        minzoom: 6,
+        maxzoom: 12,
+        paint: {
+          'line-color': '#000000',
+          'line-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            6, 0.25,
+            8, 0.35,
+            10, 0.3,
+            12, 0.15
+          ],
+          'line-width': [
+            'interpolate', ['linear'], ['zoom'],
+            6, 2.5,
+            8, 3.5,
+            10, 4,
+            12, 3
+          ]
+        },
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round'
+        }
+      }, beforeLayer);
+
+      // Capa principal (línea interior clara)
+      mlMap.addLayer({
+        id: 'ccaa-boundaries-layer',
+        type: 'line',
+        source: 'ccaa-boundaries-source',
+        minzoom: 6,
+        maxzoom: 12,
+        paint: {
+          'line-color': '#e0e0e0',
+          'line-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            6, 0.5,
+            8, 0.7,
+            10, 0.6,
+            12, 0.3
+          ],
+          'line-width': [
+            'interpolate', ['linear'], ['zoom'],
+            6, 1,
+            8, 1.5,
+            10, 2,
+            12, 1.5
+          ]
+        },
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round'
+        }
+      }, beforeLayer);
+
+      console.log('[CCAA] Límites autonómicos cargados correctamente');
+    } catch (err) {
+      console.warn('[CCAA] Error añadiendo capas de límites:', err);
+    }
+  }
+
+  fetch('data/spain_ccaa_boundaries.geojson')
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(geojson => {
+      console.log('[CCAA] GeoJSON cargado:', geojson.features.length, 'features');
+      if (mlMap.isStyleLoaded()) {
+        addBoundaryLayers(geojson);
+      } else {
+        mlMap.once('styledata', () => addBoundaryLayers(geojson));
+      }
+    })
+    .catch(err => {
+      console.warn('[CCAA] Error cargando límites autonómicos:', err);
+    });
 }
 
 // ============================================
@@ -1766,7 +1882,31 @@ async function mlLoadPuntosInteres(url) {
       }
     });
 
-    // Interactividad: mostrar tooltip con descripción al hacer click
+    // Interactividad: mostrar popup con descripción al hacer click
+    let mlPoiPopup = null;
+    let mlPoiPopupCoords = null;
+
+    // Auto-cerrar POI popup al alejarse (zoom out o desplazamiento)
+    function checkPoiPopupDistance() {
+      if (!mlPoiPopup || !mlPoiPopupCoords) return;
+      const popupPoint = mlMap.project(mlPoiPopupCoords);
+      const center = mlMap.project(mlMap.getCenter());
+      const dx = popupPoint.x - center.x;
+      const dy = popupPoint.y - center.y;
+      const distPx = Math.sqrt(dx * dx + dy * dy);
+      // Cerrar si el POI queda fuera del viewport visible (margen generoso)
+      const canvas = mlMap.getCanvas();
+      const maxDist = Math.max(canvas.width, canvas.height) * 0.45;
+      if (distPx > maxDist || mlMap.getZoom() < 13.5) {
+        mlPoiPopup.remove();
+        mlPoiPopup = null;
+        mlPoiPopupCoords = null;
+      }
+    }
+
+    mlMap.on('moveend', checkPoiPopupDistance);
+    mlMap.on('zoomend', checkPoiPopupDistance);
+
     mlMap.on('click', layerId, (e) => {
       if (!e.features || e.features.length === 0) return;
       const props = e.features[0].properties;
@@ -1780,16 +1920,47 @@ async function mlLoadPuntosInteres(url) {
         coords[0] += e.lngLat.lng > coords[0] ? 360 : -360;
       }
 
-      new maplibregl.Popup({ offset: 15, className: 'poi-popup' })
+      // Cerrar popup anterior si existe
+      if (mlPoiPopup) {
+        mlPoiPopup.remove();
+        mlPoiPopup = null;
+      }
+
+      const descCapitalized = desc.charAt(0).toUpperCase() + desc.slice(1);
+      const poiLat = coords[1];
+      const poiLng = coords[0];
+      const poiGmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${poiLat},${poiLng}`;
+      const poiBtnId = `poi-directions-${Date.now()}`;
+
+      mlPoiPopup = new maplibregl.Popup({ offset: 18, closeButton: false, className: 'poi-popup' })
         .setLngLat(coords)
         .setHTML(`
-          <div style="text-align:center; padding: 4px 8px;">
-            <div style="font-size: 28px;">${emoji}</div>
-            <div style="font-weight: bold; font-size: 14px; margin-top: 4px;">${desc.charAt(0).toUpperCase() + desc.slice(1)}</div>
-            ${nombre ? `<div style="font-size: 12px; color: #666;">${nombre}</div>` : ''}
+          <div class="poi-popup-content">
+            <div class="poi-popup-icon">${emoji}</div>
+            <div class="poi-popup-info">
+              <div class="poi-popup-type">${descCapitalized}</div>
+              ${nombre ? `<div class="poi-popup-name">${nombre}</div>` : ''}
+            </div>
           </div>
+          <button class="poi-popup-directions-btn" id="${poiBtnId}">
+            🧭 ¿Cómo llegar?
+          </button>
         `)
         .addTo(mlMap);
+
+      // Asignar evento al botón de direcciones
+      setTimeout(() => {
+        const btnDir = document.getElementById(poiBtnId);
+        if (btnDir) btnDir.onclick = () => window.open(poiGmapsUrl, '_blank');
+      }, 50);
+
+      mlPoiPopupCoords = [coords[0], coords[1]];
+
+      // Cerrar al hacer click fuera
+      mlPoiPopup.on('close', () => {
+        mlPoiPopup = null;
+        mlPoiPopupCoords = null;
+      });
     });
 
     // Cursor pointer al hover
@@ -2047,16 +2218,22 @@ function setupViasInteraction() {
       props.descripcion = props.descripcio;
     }
 
-    // Auto-centrar con padding para evitar que el popup quede cortado
-    mlMap.flyTo({
-      center: coords,
-      zoom: mlMap.getZoom(),
-      speed: 0.8,
-      curve: 1,
-      padding: { top: 450, bottom: 0, left: 0, right: 0 }
-    });
-
-    showRoutePopup(props, coords);
+    // En móvil: usar bottom sheet. En desktop: usar popup clásico.
+    if (isMobileDevice()) {
+      // Desplazamiento adaptativo: solo mover si la vía queda tapada por el bottom sheet
+      adaptiveMapPanForBottomSheet(coords);
+      showRouteBottomSheet(props, coords);
+    } else {
+      // Auto-centrar con padding para evitar que el popup quede cortado
+      mlMap.flyTo({
+        center: coords,
+        zoom: mlMap.getZoom(),
+        speed: 0.8,
+        curve: 1,
+        padding: { top: 450, bottom: 0, left: 0, right: 0 }
+      });
+      showRoutePopup(props, coords);
+    }
   });
 
   // Cursor pointer al hover
@@ -2103,22 +2280,9 @@ async function showRoutePopup(props, coords) {
   // Obtener número de comentarios
   let commentCount = 0;
   try {
-    if (typeof db !== 'undefined') {
-      const routeId2 = `${schoolId}_${routeId}`;
-      const commentsSnap = await db.collection('comments').where('routeId', '==', routeId2).get();
-      commentCount = commentsSnap.size;
-    }
-  } catch (e) {
-    console.warn('Error fetching comment count:', e);
-  }
-  const commentBadge = commentCount > 0 ? `<span class="ml-comment-count">${commentCount}</span>` : '';
-
-  // Obtener número de comentarios
-  let commentCount = 0;
-  try {
     if (typeof db !== 'undefined' && typeof normalizeId === 'function') {
-      const routeId = `${schoolId}_${normalizeId(routeName)}`;
-      const commentsSnap = await db.collection('comments').where('routeId', '==', routeId).get();
+      const commentRouteId = `${schoolId}_${normalizeId(routeName)}`;
+      const commentsSnap = await db.collection('comments').where('routeId', '==', commentRouteId).get();
       commentCount = commentsSnap.size;
     }
   } catch (e) {
@@ -2140,11 +2304,13 @@ async function showRoutePopup(props, coords) {
 
   const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 
-  // Check de ascenso para el header
+  // Check de ascenso + icono de estilo para el header
+  const ascentStyleSVG = ascentInfo && ascentInfo.style && (typeof getAscentStyleSVG === 'function') ? getAscentStyleSVG(ascentInfo.style) : '';
   const ascentCheckHTML = hasAscent ? `
     <span class="ml-route-ascent-check">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
     </span>
+    ${ascentStyleSVG ? `<span class="ml-route-ascent-style ascent-style-${ascentInfo.style}">${ascentStyleSVG}</span>` : ''}
   ` : '';
 
   // Detectar campos vacíos para sugerir contribuir (sugerencias independientes por campo)
@@ -2637,13 +2803,136 @@ async function getEstadoVotes(schoolId, routeId) {
 }
 
 /**
+ * Obtiene los IDs de todas las vías de un sector a partir de la fuente GeoJSON del mapa.
+ * @param {string} sectorName - Nombre del sector
+ * @returns {number[]} Array de IDs numéricos de las vías del sector
+ */
+function getRouteIdsForSector(sectorName) {
+  if (!mlMap || !mlMap.getSource('vias-source')) return [];
+
+  const source = mlMap.getSource('vias-source');
+  let routeFeatures = [];
+
+  if (source && source._data && source._data.features) {
+    routeFeatures = source._data.features;
+  } else {
+    routeFeatures = mlMap.querySourceFeatures('vias-source', { sourceLayer: 'vias' });
+  }
+
+  const targetSector = sectorName.toLowerCase().trim();
+  const routeIds = [];
+
+  routeFeatures.forEach(feature => {
+    const props = feature.properties;
+    const routeSector = (props.sector || '').toLowerCase().trim();
+    if (routeSector === targetSector) {
+      const id = Number(props.id);
+      if (!isNaN(id)) routeIds.push(id);
+    }
+  });
+
+  return routeIds;
+}
+
+/**
+ * Calcula el estado medio de un sector a partir de los votos de estado de sus vías.
+ * Solo muestra resultado si al menos el 40% de las vías tienen valoración.
+ * @param {string} schoolId - ID de la escuela
+ * @param {string} sectorName - Nombre del sector
+ * @returns {Promise<{avg: number|null, ratedCount: number, totalCount: number}>}
+ */
+async function getSectorEstadoAverage(schoolId, sectorName) {
+  try {
+    if (typeof firebase === 'undefined' || !firebase.firestore) {
+      return { avg: null, ratedCount: 0, totalCount: 0 };
+    }
+
+    const routeIds = getRouteIdsForSector(sectorName);
+    const totalCount = routeIds.length;
+
+    if (totalCount === 0) return { avg: null, ratedCount: 0, totalCount: 0 };
+
+    const db = firebase.firestore();
+    const BATCH_SIZE = 10; // Firestore 'in' queries limited to 10
+    const allAvgs = [];
+
+    // Batch query estado_votes documents
+    for (let i = 0; i < routeIds.length; i += BATCH_SIZE) {
+      const batch = routeIds.slice(i, i + BATCH_SIZE);
+      const docIds = batch.map(id => `${schoolId}_${id}`);
+
+      // Fetch each doc individually (doc IDs, not field queries)
+      const promises = docIds.map(docId =>
+        db.collection('estado_votes').doc(docId).get()
+      );
+      const docs = await Promise.all(promises);
+
+      docs.forEach(doc => {
+        if (doc.exists) {
+          const votes = doc.data().votes || {};
+          const values = Object.values(votes);
+          if (values.length > 0) {
+            const avg = values.reduce((a, b) => a + b, 0) / values.length;
+            allAvgs.push(avg);
+          }
+        }
+      });
+    }
+
+    const ratedCount = allAvgs.length;
+    const minRequired = Math.ceil(totalCount * 0.4);
+
+    if (ratedCount < minRequired) {
+      return { avg: null, ratedCount, totalCount };
+    }
+
+    const sectorAvg = allAvgs.reduce((a, b) => a + b, 0) / allAvgs.length;
+    return { avg: sectorAvg, ratedCount, totalCount };
+  } catch (e) {
+    console.error('[SectorEstado] Error calculando media del sector:', e);
+    return { avg: null, ratedCount: 0, totalCount: 0 };
+  }
+}
+
+/**
+ * Genera HTML de estrellas de solo lectura para el estado del sector.
+ * @param {number} avgVote - Media del estado (1-5)
+ * @param {number} ratedCount - Número de vías valoradas
+ * @param {number} totalCount - Total de vías en el sector
+ * @returns {string} HTML del indicador
+ */
+function generateSectorEstadoHTML(avgVote, ratedCount, totalCount) {
+  let starsHTML = '';
+  const roundedAvg = Math.round(avgVote);
+
+  for (let i = 1; i <= 5; i++) {
+    const filledClass = i <= roundedAvg ? 'ml-sector-estado-star-filled' : '';
+    starsHTML += `<span class="ml-sector-estado-star ${filledClass}">&#9733;</span>`;
+  }
+
+  return `
+    <div class="ml-sector-estado">
+      <div class="ml-sector-estado-header">
+        <span class="ml-sector-estado-label">Estado del Sector</span>
+        <span class="ml-sector-estado-count">${ratedCount}/${totalCount} v&iacute;as valoradas</span>
+      </div>
+      <div class="ml-sector-estado-row">
+        <div class="ml-sector-estado-stars">${starsHTML}</div>
+        <span class="ml-sector-estado-avg">${avgVote.toFixed(1)}</span>
+      </div>
+    </div>
+  `;
+}
+
+/**
  * Abre modal para que el usuario contribuya datos faltantes de una vía
  */
 function mlContributeField(routeId, schoolId, field) {
   const routeName = mlCurrentRouteName || 'Sin nombre';
 
-  // Cerrar popup
+  // Cerrar popup / bottom sheet
   if (mlRoutePopup) mlRoutePopup.remove();
+  hideRouteBottomSheet();
 
   // Si hay una función de contribución disponible en user-features, usarla
   if (typeof openContributeModal === 'function') {
@@ -3308,8 +3597,9 @@ function renderGradeChart(containerId, gradeCounts) {
  * Muestra popup de sector
  */
 function showSectorPopup(props, coords) {
-  // Cerrar popup de ruta si está abierto
+  // Cerrar popup/bottom sheet de ruta si está abierto
   if (mlRoutePopup) mlRoutePopup.remove();
+  hideRouteBottomSheet();
 
   const sectorName = props.nombre || 'Sector sin nombre';
   const restr = (props.restr || '').toUpperCase();
@@ -3334,14 +3624,15 @@ function showSectorPopup(props, coords) {
   const exposureIcon = getExposureIcon(exposicion);
   const exposureText = exposicion ? exposicion.replace(/_/g, ' ') : 'No especificada';
 
-  // Generar ID único para el contenedor del gráfico
+  // Generar IDs únicos para contenedores dinámicos
   const chartId = `sector-chart-${Date.now()}`;
+  const estadoId = `sector-estado-${Date.now()}`;
 
   const html = `
     <div class="ml-sector-popup">
       <!-- Header: Nombre del sector -->
       <div class="ml-sector-header">${sectorName}</div>
-      
+
       <!-- Fila de restricción -->
       <div class="ml-sector-row">
         <span class="ml-sector-icon">${restrictionIcon}</span>
@@ -3350,13 +3641,16 @@ function showSectorPopup(props, coords) {
           <span style="color: #6b7280; font-size: 12px; margin-left: 6px;">${restrictionDates}</span>
         </div>
       </div>
-      
+
       <!-- Fila de exposición -->
       <div class="ml-sector-row">
         <span class="ml-sector-icon">${exposureIcon}</span>
         <span class="ml-sector-text" style="color: #f59e0b; font-weight: 500;">${exposureText}</span>
       </div>
-      
+
+      <!-- Estado del Sector (se carga asincrónicamente) -->
+      <div id="${estadoId}"></div>
+
       <!-- Gráfico de vías por grado -->
       <div class="ml-sector-chart" id="${chartId}">
         <div style="text-align: center; color: #888;">Cargando...</div>
@@ -3394,6 +3688,16 @@ function showSectorPopup(props, coords) {
     const gradeCounts = countRoutesByGradeForSector(sectorName);
     renderGradeChart(chartId, gradeCounts);
   }, 100);
+
+  // Cargar estado del sector asincrónicamente
+  const schoolId = mlCurrentSchool || 'valeria';
+  getSectorEstadoAverage(schoolId, sectorName).then(result => {
+    const container = document.getElementById(estadoId);
+    if (!container) return;
+    if (result.avg !== null) {
+      container.innerHTML = generateSectorEstadoHTML(result.avg, result.ratedCount, result.totalCount);
+    }
+  });
 }
 
 /**
@@ -3419,16 +3723,23 @@ function setupSectoresInteraction() {
     const props = feature.properties;
     const coords = e.lngLat;
 
-    // Auto-centrar con padding para evitar que el popup quede cortado
-    mlMap.flyTo({
-      center: coords,
-      zoom: mlMap.getZoom(),
-      speed: 0.8,
-      curve: 1,
-      padding: { top: 450, bottom: 0, left: 0, right: 0 }
-    });
-
-    showSectorPopup(props, [coords.lng, coords.lat]);
+    if (isMobileDevice()) {
+      // En móvil, usar bottom sheet
+      if (mlSectorPopup) mlSectorPopup.remove();
+      // Desplazamiento adaptativo: solo mover si el sector queda tapado por el bottom sheet
+      adaptiveMapPanForBottomSheet(coords);
+      showSectorBottomSheet(props, [coords.lng, coords.lat]);
+    } else {
+      // En desktop, usar popup tradicional de MapLibre
+      mlMap.flyTo({
+        center: coords,
+        zoom: mlMap.getZoom(),
+        speed: 0.8,
+        curve: 1,
+        padding: { top: 450, bottom: 0, left: 0, right: 0 }
+      });
+      showSectorPopup(props, [coords.lng, coords.lat]);
+    }
   });
 }
 
@@ -3503,9 +3814,10 @@ function setupParkingsInteraction() {
  * Muestra popup de parking
  */
 function showParkingPopup(props, coords) {
-  // Cerrar otros popups
+  // Cerrar otros popups / bottom sheets
   if (mlRoutePopup) mlRoutePopup.remove();
   if (mlSectorPopup) mlSectorPopup.remove();
+  hideRouteBottomSheet();
 
   const nombre = props.nombre || props.Nombre || 'Parking';
   const descripcion = props.descripcion || props.Descripcion || '';
@@ -4419,61 +4731,91 @@ function initMap() {
 }
 
 /**
- * Configura el botón de centrar mapa (Spain Reset)
+ * Determina la comunidad autónoma actual según el centro del mapa.
+ * Compara contra bounding boxes de CCAA_REGIONS.
+ * Devuelve el objeto de la comunidad (con center, zoom, name).
+ * Fallback: Madrid.
  */
-function setupResetViewButton() {
-  const resetBtn = document.getElementById('resetViewBtn');
-  if (!resetBtn) {
-    console.warn('Botón resetViewBtn no encontrado');
-    return;
+function getCurrentCCAA() {
+  if (!mlMap) return CCAA_REGIONS[CCAA_DEFAULT];
+
+  const { lng, lat } = mlMap.getCenter();
+
+  for (const key of Object.keys(CCAA_REGIONS)) {
+    const region = CCAA_REGIONS[key];
+    const [minLng, minLat, maxLng, maxLat] = region.bbox;
+    if (lng >= minLng && lng <= maxLng && lat >= minLat && lat <= maxLat) {
+      // Si la región tiene resetTo, redirigir al reset a esa otra región
+      return region.resetTo ? CCAA_REGIONS[region.resetTo] : region;
+    }
   }
 
-  // Función para actualizar visibilidad
+  return CCAA_REGIONS[CCAA_DEFAULT];
+}
+
+/**
+ * Crea y configura el botón "Volver a vista regional"
+ * Se posiciona debajo del botón de filtro en la esquina superior derecha
+ */
+function setupResetViewButton() {
+  if (document.getElementById('resetViewBtn')) return;
+
+  const container = document.getElementById('map');
+  if (!container) return;
+
+  // Crear botón dinámicamente (mismo patrón que addGradeFilterButton)
+  const btn = document.createElement('button');
+  btn.id = 'resetViewBtn';
+  btn.className = 'map-control-btn reset-view-btn';
+  btn.title = 'Volver a vista general';
+  btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`;
+
+  container.appendChild(btn);
+
+  // Función para actualizar visibilidad según zoom
   const updateVisibility = () => {
     if (!mlMap) return;
-    const currentZoom = mlMap.getZoom();
-    // Aparece solo cuando estamos "a la altura de una escuela" (zoom > 13.5)
-    // El reset nos lleva a zoom 13, así que ahí desaparecerá
-    if (currentZoom > 13.5) {
-      resetBtn.style.display = 'flex'; // o 'block', dependiendo de tu CSS, flex es común para centrar iconos
-    } else {
-      resetBtn.style.display = 'none';
-    }
+    // Visible cuando el zoom es mayor que el de la comunidad actual + margen
+    const ccaa = getCurrentCCAA();
+    btn.style.display = mlMap.getZoom() > ccaa.zoom + 1 ? 'flex' : 'none';
   };
 
-  // Listener para el click
-  resetBtn.addEventListener('click', () => {
-    if (!mlMap) {
-      console.warn('Mapa no está inicializado');
-      return;
-    }
+  // Click: volver a vista regional de la comunidad autónoma actual
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!mlMap) return;
 
-    // Centrar mapa en la vista general
-    mlMap.flyTo({
-      center: MAP_DEFAULTS.center,
-      zoom: MAP_DEFAULTS.zoom,
-      duration: 1500
-    });
+    // 1. Detectar comunidad autónoma según posición actual del mapa
+    const ccaa = getCurrentCCAA();
 
-    // Cerrar popups abiertos
+    // 2. Cerrar panel de filtro si está abierto
+    closeGradeFilterPanel();
+
+    // 3. Cerrar todos los popups
     if (mlRoutePopup) mlRoutePopup.remove();
     if (mlSectorPopup) mlSectorPopup.remove();
     if (mlParkingPopup) mlParkingPopup.remove();
     if (mlSchoolPopup) mlSchoolPopup.remove();
+
+    // 4. Cerrar bottom sheet
+    hideRouteBottomSheet();
+
+    // 5. Resetear escuela activa
+    mlCurrentSchool = null;
+
+    // 6. Volar a vista regional de la comunidad autónoma
+    mlMap.flyTo({
+      center: ccaa.center,
+      zoom: ccaa.zoom,
+      pitch: 0,
+      bearing: 0,
+      duration: 1200
+    });
   });
 
-  // Listeners para cambios de zoom
-  if (mlMap) {
-    mlMap.on('zoom', updateVisibility);
-    // Ejecutar una vez al inicio para establecer estado inicial
-    updateVisibility();
-  } else {
-    // Si el mapa aún no está listo, esperar al evento maplibre:ready o similar,
-    // pero como esta función se llama desde onMapLoad, mlMap ya debería existir.
-    console.warn('setupResetViewButton llamado sin mlMap listo');
-  }
-
-  console.log('Botón de centrar mapa (Spain Reset) activado con control de visibilidad');
+  // Listener de zoom para mostrar/ocultar
+  mlMap.on('zoom', updateVisibility);
+  updateVisibility();
 }
 
 /**
@@ -4519,9 +4861,115 @@ let bsCurrentY = 0;
 let bsIsDragging = false;
 let bsGradeData = null; // Cache de datos de grados
 
+// === Sector Bottom Sheet state ===
+let secBsCurrentSector = null;   // { name, props, coords }
+let secBsCurrentState = 'hidden';
+let secBsDragStartY = 0;
+let secBsCurrentY = 0;
+let secBsIsDragging = false;
+
+// === Route Bottom Sheet state ===
+let rbsCurrentState = 'hidden';
+let rbsDragStartY = 0;
+let rbsCurrentY = 0;
+let rbsIsDragging = false;
+
 // Constantes de snap points (porcentaje de pantalla)
 const BS_SUMMARY_PERCENT = 0.35; // 35% de la pantalla
 const BS_EXPANDED_PERCENT = 0.90; // 90% de la pantalla
+
+/**
+ * Desplazamiento adaptativo del mapa al abrir un bottom sheet.
+ *
+ * Comportamiento:
+ * - Solo mueve el mapa si el punto queda tapado por el bottom sheet.
+ * - Si el punto ya está en zona visible, no hace nada.
+ * - Nunca desplaza el punto fuera del viewport (protección superior).
+ * - Recalcula todo dinámicamente en cada invocación (sin caché ni estado).
+ *
+ * CSS del bottom sheet expandido: translateY(3%), max-height: 95vh
+ * → El borde superior del sheet está a ~5% desde arriba del viewport.
+ * → La zona visible libre queda entre y=0 y y≈5% del viewport.
+ *
+ * Estrategia: posicionar el punto en el centro del tercio superior
+ * visible (por encima del bottom sheet), con protección de bordes.
+ *
+ * @param {Object} coords - {lng, lat} o [lng, lat]
+ */
+function adaptiveMapPanForBottomSheet(coords) {
+  if (!mlMap) return;
+
+  // --- Recalcular todo dinámicamente ---
+  const vh = window.innerHeight;
+  const vw = window.innerWidth;
+
+  // El bottom sheet expandido: translateY(3%) con max-height 95vh
+  // El borde superior del sheet queda a aproximadamente 3% del viewport desde arriba.
+  // Pero el sheet tiene un handle (~30px) que es semi-transparente.
+  // Zona libre real para ver el mapa: desde y=0 hasta y = (tope del sheet)
+  const sheetTopY = Math.round(vh * 0.08); // ~8% del viewport = zona segura visible
+  // Usamos 8% (no 3%) para dar margen al handle y asegurar visibilidad clara
+
+  const marginTop = 20;  // No acercar demasiado al borde superior
+  const marginSide = 15;
+
+  // Posición ideal: centrar el punto en la zona visible (entre marginTop y sheetTopY)
+  const idealY = Math.round((marginTop + sheetTopY) / 2);
+
+  // --- Proyectar coordenadas a pantalla ---
+  const lngLat = Array.isArray(coords)
+    ? { lng: coords[0], lat: coords[1] }
+    : coords;
+  const pointScreen = mlMap.project([lngLat.lng, lngLat.lat]);
+
+  // --- Verificar si el punto ya está en zona segura ---
+  const isInSafeZoneY = pointScreen.y >= marginTop && pointScreen.y <= sheetTopY;
+  const isInSafeZoneX = pointScreen.x >= marginSide && pointScreen.x <= vw - marginSide;
+
+  if (isInSafeZoneY && isInSafeZoneX) {
+    // Punto ya visible por encima del bottom sheet — no mover
+    return;
+  }
+
+  // --- Calcular desplazamiento vertical ---
+  let deltaY = 0;
+
+  if (pointScreen.y > sheetTopY) {
+    // Punto tapado por el bottom sheet — subir hasta posición ideal
+    deltaY = pointScreen.y - idealY;
+  } else if (pointScreen.y < marginTop) {
+    // Punto por encima del viewport visible — bajar hasta posición ideal
+    deltaY = pointScreen.y - idealY; // Será negativo → panBy moverá mapa hacia abajo
+  }
+
+  // --- Protección contra sobre-desplazamiento ---
+  // Verificar que tras el pan, el punto no salga por arriba
+  const resultY = pointScreen.y - deltaY;
+  if (resultY < marginTop) {
+    deltaY = pointScreen.y - marginTop;
+  } else if (resultY > sheetTopY) {
+    deltaY = pointScreen.y - sheetTopY;
+  }
+
+  // --- Desplazamiento horizontal (protección lateral) ---
+  let deltaX = 0;
+  if (pointScreen.x < marginSide) {
+    deltaX = pointScreen.x - marginSide;
+  } else if (pointScreen.x > vw - marginSide) {
+    deltaX = pointScreen.x - (vw - marginSide);
+  }
+
+  // --- Umbral mínimo: no mover si el delta es despreciable ---
+  if (Math.abs(deltaY) < 5 && Math.abs(deltaX) < 5) {
+    return;
+  }
+
+  // --- Aplicar desplazamiento mínimo necesario ---
+  mlMap.panBy([deltaX, deltaY], {
+    duration: 400,
+    easing: function(t) { return t * (2 - t); } // ease-out cuadrático
+  });
+}
 
 /**
  * Detecta si estamos en dispositivo móvil
@@ -4635,6 +5083,611 @@ function initBottomSheet() {
   console.log('Bottom Sheet inicializado');
 }
 
+// ============================================
+// SECTOR BOTTOM SHEET
+// ============================================
+
+/**
+ * Inicializa el Sector Bottom Sheet
+ */
+function initSectorBottomSheet() {
+  const sheet = document.getElementById('sector-bottom-sheet');
+  const overlay = document.getElementById('bottom-sheet-overlay');
+  const handle = sheet?.querySelector('.bottom-sheet-handle');
+
+  if (!sheet || !overlay || !handle) {
+    console.warn('Sector Bottom Sheet elementos no encontrados');
+    return;
+  }
+
+  // Touch listeners en el handle
+  handle.addEventListener('touchstart', secBsHandleTouchStart, { passive: true });
+  handle.addEventListener('touchmove', secBsHandleTouchMove, { passive: false });
+  handle.addEventListener('touchend', secBsHandleTouchEnd, { passive: true });
+
+  // Touch listeners en el header (también arrastrable)
+  const header = sheet.querySelector('.bs-header');
+  if (header) {
+    header.addEventListener('touchstart', secBsHandleTouchStart, { passive: true });
+    header.addEventListener('touchmove', secBsHandleTouchMove, { passive: false });
+    header.addEventListener('touchend', secBsHandleTouchEnd, { passive: true });
+  }
+
+  // Mouse events para testing en desktop
+  handle.addEventListener('mousedown', secBsHandleMouseDown);
+  document.addEventListener('mousemove', secBsHandleMouseMove);
+  document.addEventListener('mouseup', secBsHandleMouseUp);
+
+  // Click en "Ver Sector"
+  const btnView = document.getElementById('secbs-btn-view');
+  if (btnView) {
+    btnView.addEventListener('click', () => {
+      if (secBsCurrentSector) {
+        const schoolId = mlCurrentSchool || 'valeria';
+        const sectorName = secBsCurrentSector.name;
+        hideSectorBottomSheet();
+        openSectorImageViewer(schoolId, sectorName);
+      }
+    });
+  }
+
+  // Click en overlay cierra el sector bottom sheet
+  overlay.addEventListener('click', () => {
+    if (secBsCurrentState !== 'hidden') {
+      hideSectorBottomSheet();
+    }
+  });
+
+  console.log('Sector Bottom Sheet inicializado');
+}
+
+/**
+ * Muestra el Sector Bottom Sheet con datos del sector
+ */
+function showSectorBottomSheet(props, coords) {
+  if (!isMobileDevice()) return false;
+
+  const sheet = document.getElementById('sector-bottom-sheet');
+  const overlay = document.getElementById('bottom-sheet-overlay');
+  if (!sheet || !overlay) return false;
+
+  // Cerrar otros bottom sheets si están abiertos
+  hideBottomSheet();
+  hideRouteBottomSheet();
+  // Cerrar popups de MapLibre
+  if (mlSectorPopup) mlSectorPopup.remove();
+  if (mlRoutePopup) mlRoutePopup.remove();
+
+  const sectorName = props.nombre || 'Sector sin nombre';
+  const restr = (props.restr || '').toUpperCase();
+  const hasRestriction = restr === 'SI' || restr === 'SÍ';
+  const fechaInicio = props.Fecha_inicio;
+  const fechaFin = props.Fecha_fin;
+  const exposicion = props.exposicion || '';
+  const isRestricted = hasRestriction && isCurrentlyRestricted(fechaInicio, fechaFin);
+
+  // Guardar estado actual del sector
+  secBsCurrentSector = { name: sectorName, props: props, coords: coords };
+
+  // --- Título ---
+  const titleEl = document.getElementById('secbs-sector-name');
+  if (titleEl) titleEl.textContent = sectorName.toUpperCase();
+
+  // --- Fila de restricción ---
+  const restrictionIconEl = document.getElementById('secbs-restriction-icon');
+  if (restrictionIconEl) {
+    restrictionIconEl.innerHTML = isRestricted
+      ? '<img src="icons/prohibido.png" alt="Prohibido" width="36" height="36">'
+      : '<img src="icons/permitido.png" alt="Permitido" width="36" height="36">';
+  }
+
+  const restrictionStatusEl = document.getElementById('secbs-restriction-status');
+  if (restrictionStatusEl) {
+    restrictionStatusEl.textContent = isRestricted ? 'Prohibido' : 'Permitido';
+    restrictionStatusEl.style.color = isRestricted ? '#dc2626' : '#16a34a';
+    restrictionStatusEl.style.fontWeight = '600';
+  }
+
+  const restrictionDatesEl = document.getElementById('secbs-restriction-dates');
+  if (restrictionDatesEl) {
+    restrictionDatesEl.textContent = hasRestriction
+      ? `(Restricción: ${fechaInicio} - ${fechaFin})`
+      : '';
+  }
+
+  // --- Fila de exposición ---
+  const exposureIconEl = document.getElementById('secbs-exposure-icon');
+  if (exposureIconEl) {
+    exposureIconEl.innerHTML = getExposureIcon(exposicion);
+  }
+
+  const exposureTextEl = document.getElementById('secbs-exposure-text');
+  if (exposureTextEl) {
+    exposureTextEl.textContent = exposicion ? exposicion.replace(/_/g, ' ') : 'No especificada';
+    exposureTextEl.style.color = '#f59e0b';
+    exposureTextEl.style.fontWeight = '500';
+  }
+
+  // --- Reset contenedores async ---
+  const estadoContainer = document.getElementById('secbs-estado-container');
+  if (estadoContainer) estadoContainer.innerHTML = '';
+
+  const chartContainer = document.getElementById('secbs-grade-chart');
+  if (chartContainer) {
+    chartContainer.innerHTML = '<div style="text-align: center; color: #888;">Cargando...</div>';
+  }
+
+  // --- Mostrar sheet ---
+  sheet.classList.remove('hidden');
+  overlay.classList.remove('hidden');
+
+  requestAnimationFrame(() => {
+    sheet.classList.add('snap-expanded');
+    overlay.classList.add('visible');
+  });
+
+  secBsCurrentState = 'expanded';
+
+  // --- Cargar datos async ---
+  // Gráfico de grados
+  setTimeout(() => {
+    const gradeCounts = countRoutesByGradeForSector(sectorName);
+    renderGradeChart('secbs-grade-chart', gradeCounts);
+  }, 150);
+
+  // Estado del sector
+  const schoolId = mlCurrentSchool || 'valeria';
+  getSectorEstadoAverage(schoolId, sectorName).then(result => {
+    const container = document.getElementById('secbs-estado-container');
+    if (!container) return;
+    if (result.avg !== null) {
+      container.innerHTML = generateSectorEstadoHTML(result.avg, result.ratedCount, result.totalCount);
+    }
+  });
+
+  return true;
+}
+
+/**
+ * Oculta el Sector Bottom Sheet
+ */
+function hideSectorBottomSheet() {
+  const sheet = document.getElementById('sector-bottom-sheet');
+  const overlay = document.getElementById('bottom-sheet-overlay');
+  if (!sheet || !overlay) return;
+  if (secBsCurrentState === 'hidden') return;
+
+  sheet.classList.remove('snap-expanded');
+  overlay.classList.remove('visible');
+
+  setTimeout(() => {
+    sheet.classList.add('hidden');
+    overlay.classList.add('hidden');
+  }, 400);
+
+  // Resetear padding del mapa al cerrar el bottom sheet
+  if (mlMap) {
+    mlMap.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 300 });
+  }
+
+  secBsCurrentState = 'hidden';
+  secBsCurrentSector = null;
+}
+
+// ============================================
+// SECTOR BOTTOM SHEET - GESTOS TÁCTILES
+// ============================================
+
+function secBsHandleTouchStart(e) {
+  secBsIsDragging = true;
+  secBsDragStartY = e.touches[0].clientY;
+  secBsCurrentY = secBsDragStartY;
+  const sheet = document.getElementById('sector-bottom-sheet');
+  if (sheet) sheet.style.transition = 'none';
+}
+
+function secBsHandleTouchMove(e) {
+  if (!secBsIsDragging) return;
+  e.preventDefault();
+  secBsCurrentY = e.touches[0].clientY;
+  const deltaY = secBsCurrentY - secBsDragStartY;
+  const sheet = document.getElementById('sector-bottom-sheet');
+  if (!sheet) return;
+  const windowHeight = window.innerHeight;
+  const currentPercent = 100 - (BS_EXPANDED_PERCENT * 100);
+  const deltaPercent = (deltaY / windowHeight) * 100;
+  const newPercent = Math.max(10, Math.min(100, currentPercent + deltaPercent));
+  sheet.style.transform = `translateY(${newPercent}%)`;
+}
+
+function secBsHandleTouchEnd() {
+  if (!secBsIsDragging) return;
+  secBsIsDragging = false;
+  const sheet = document.getElementById('sector-bottom-sheet');
+  if (!sheet) return;
+  sheet.style.transition = '';
+  sheet.style.transform = '';
+  const deltaY = secBsCurrentY - secBsDragStartY;
+  if (deltaY > 40) {
+    hideSectorBottomSheet();
+  }
+}
+
+function secBsHandleMouseDown(e) {
+  secBsIsDragging = true;
+  secBsDragStartY = e.clientY;
+  secBsCurrentY = secBsDragStartY;
+  const sheet = document.getElementById('sector-bottom-sheet');
+  if (sheet) sheet.style.transition = 'none';
+  e.preventDefault();
+}
+
+function secBsHandleMouseMove(e) {
+  if (!secBsIsDragging) return;
+  secBsCurrentY = e.clientY;
+  const deltaY = secBsCurrentY - secBsDragStartY;
+  const sheet = document.getElementById('sector-bottom-sheet');
+  if (!sheet) return;
+  const windowHeight = window.innerHeight;
+  const currentPercent = 100 - (BS_EXPANDED_PERCENT * 100);
+  const deltaPercent = (deltaY / windowHeight) * 100;
+  const newPercent = Math.max(10, Math.min(100, currentPercent + deltaPercent));
+  sheet.style.transform = `translateY(${newPercent}%)`;
+}
+
+function secBsHandleMouseUp() {
+  if (!secBsIsDragging) return;
+  secBsIsDragging = false;
+  const sheet = document.getElementById('sector-bottom-sheet');
+  if (!sheet) return;
+  sheet.style.transition = '';
+  sheet.style.transform = '';
+  const deltaY = secBsCurrentY - secBsDragStartY;
+  if (deltaY > 40) {
+    hideSectorBottomSheet();
+  }
+}
+
+// ============================================
+// ROUTE BOTTOM SHEET (Vías - solo móvil)
+// ============================================
+
+/**
+ * Inicializa el Route Bottom Sheet
+ */
+function initRouteBottomSheet() {
+  const sheet = document.getElementById('route-bottom-sheet');
+  const overlay = document.getElementById('bottom-sheet-overlay');
+  const handle = sheet?.querySelector('.bottom-sheet-handle');
+
+  if (!sheet || !overlay || !handle) {
+    console.warn('Route Bottom Sheet elementos no encontrados');
+    return;
+  }
+
+  // Touch listeners en el handle
+  handle.addEventListener('touchstart', rbsHandleTouchStart, { passive: true });
+  handle.addEventListener('touchmove', rbsHandleTouchMove, { passive: false });
+  handle.addEventListener('touchend', rbsHandleTouchEnd, { passive: true });
+
+  // Touch listeners en el header (también arrastrable)
+  const header = sheet.querySelector('.rbs-header');
+  if (header) {
+    header.addEventListener('touchstart', rbsHandleTouchStart, { passive: true });
+    header.addEventListener('touchmove', rbsHandleTouchMove, { passive: false });
+    header.addEventListener('touchend', rbsHandleTouchEnd, { passive: true });
+  }
+
+  // Mouse events para testing en desktop
+  handle.addEventListener('mousedown', rbsHandleMouseDown);
+  document.addEventListener('mousemove', rbsHandleMouseMove);
+  document.addEventListener('mouseup', rbsHandleMouseUp);
+
+  // Click en overlay cierra el route bottom sheet
+  overlay.addEventListener('click', () => {
+    if (rbsCurrentState !== 'hidden') {
+      hideRouteBottomSheet();
+    }
+  });
+
+  console.log('Route Bottom Sheet inicializado');
+}
+
+/**
+ * Muestra el Route Bottom Sheet con datos de la vía (solo móvil)
+ */
+async function showRouteBottomSheet(props, coords) {
+  if (!isMobileDevice()) return false;
+
+  const sheet = document.getElementById('route-bottom-sheet');
+  const overlay = document.getElementById('bottom-sheet-overlay');
+  if (!sheet || !overlay) return false;
+
+  // Cerrar otros bottom sheets y popups
+  hideBottomSheet();
+  hideSectorBottomSheet();
+  if (mlRoutePopup) mlRoutePopup.remove();
+
+  const grade = props.grado1 || '?';
+  const gradeColor = getGradeColor(grade);
+  const routeId = Number(props.id);
+  const routeName = props.nombre || 'Sin nombre';
+  const sectorName = props.sector || '';
+  const encodedSector = encodeURIComponent(sectorName);
+  const schoolId = mlCurrentSchool || 'valeria';
+
+  // Guardar datos de la vía actual para las funciones de los botones
+  mlCurrentRouteGrade = grade;
+  mlCurrentRouteSector = sectorName;
+  mlCurrentRouteId = routeId;
+  mlCurrentRouteName = routeName;
+
+  // --- Header ---
+  const nameEl = document.getElementById('rbs-route-name');
+  if (nameEl) nameEl.textContent = routeName;
+
+  const gradeEl = document.getElementById('rbs-route-grade');
+  if (gradeEl) {
+    gradeEl.textContent = grade;
+    gradeEl.style.backgroundColor = gradeColor;
+  }
+
+  // Check de ascenso + icono de estilo
+  const hasAscent = (typeof hasUserAscent === 'function') && hasUserAscent(schoolId, routeId);
+  const checkEl = document.getElementById('rbs-ascent-check');
+  if (checkEl) {
+    checkEl.classList.toggle('hidden', !hasAscent);
+  }
+  const styleEl = document.getElementById('rbs-ascent-style');
+  if (styleEl) {
+    if (hasAscent && typeof getUserAscentInfo === 'function' && typeof getAscentStyleSVG === 'function') {
+      const ascentInfo = getUserAscentInfo(schoolId, routeId);
+      if (ascentInfo && ascentInfo.style) {
+        styleEl.innerHTML = getAscentStyleSVG(ascentInfo.style);
+        styleEl.className = 'rbs-ascent-style ascent-style-' + ascentInfo.style;
+        styleEl.classList.remove('hidden');
+      } else {
+        styleEl.classList.add('hidden');
+      }
+    } else {
+      styleEl.classList.add('hidden');
+    }
+  }
+
+  // --- Info items ---
+  const infoContainer = document.getElementById('rbs-info-items');
+  if (infoContainer) {
+    // Normalizar descripcio → descripcion
+    if (!props.descripcion && props.descripcio) {
+      props.descripcion = props.descripcio;
+    }
+
+    const iconClimber = `<img src="icons/placa.png" alt="Tipo" width="32" height="32">`;
+    const iconExpress = `<img src="icons/mosq.png" alt="Expresos" width="32" height="32">`;
+    const iconRope = `<img src="icons/cuerda.png" alt="Cuerda" width="32" height="32">`;
+
+    const hasDescripcion = props.descripcion && props.descripcion.trim();
+    const hasExp = props.exp1;
+    const hasLong = props.long1;
+
+    let infoHTML = '';
+
+    if (hasDescripcion) {
+      infoHTML += `<div class="ml-route-item"><span class="ml-route-icon">${iconClimber}</span><span class="ml-route-text">${props.descripcion}</span></div>`;
+    } else {
+      infoHTML += `<div class="ml-route-item ml-route-item-missing" onclick="mlContributeField(${routeId}, '${schoolId}', 'tipo')"><span class="ml-route-icon">${iconClimber}</span><span class="ml-route-text ml-route-contribute">&iquest;Qu&eacute; tipo de escalada es?</span></div>`;
+    }
+
+    if (hasExp) {
+      infoHTML += `<div class="ml-route-item"><span class="ml-route-icon">${iconExpress}</span><span class="ml-route-text">${props.exp1} express</span></div>`;
+    } else {
+      infoHTML += `<div class="ml-route-item ml-route-item-missing" onclick="mlContributeField(${routeId}, '${schoolId}', 'express')"><span class="ml-route-icon">${iconExpress}</span><span class="ml-route-text ml-route-contribute">&iquest;Cu&aacute;ntos express tiene?</span></div>`;
+    }
+
+    if (hasLong) {
+      infoHTML += `<div class="ml-route-item"><span class="ml-route-icon">${iconRope}</span><span class="ml-route-text">${props.long1} mts</span></div>`;
+    } else {
+      infoHTML += `<div class="ml-route-item ml-route-item-missing" onclick="mlContributeField(${routeId}, '${schoolId}', 'metros')"><span class="ml-route-icon">${iconRope}</span><span class="ml-route-text ml-route-contribute">&iquest;Cu&aacute;ntos metros mide?</span></div>`;
+    }
+
+    infoContainer.innerHTML = infoHTML;
+  }
+
+  // --- Aleje ---
+  const alejeContainer = document.getElementById('rbs-aleje-container');
+  if (alejeContainer) {
+    alejeContainer.innerHTML = '<div style="text-align:center;color:#888;font-size:13px;">Cargando...</div>';
+    getAlejeVotes(schoolId, routeId).then(alejeData => {
+      alejeContainer.innerHTML = generateAlejeBarHTML(routeId, schoolId, alejeData.avg, alejeData.userVote);
+    }).catch(() => { alejeContainer.innerHTML = ''; });
+  }
+
+  // --- Estado ---
+  const estadoContainer = document.getElementById('rbs-estado-container');
+  if (estadoContainer) {
+    estadoContainer.innerHTML = '<div style="text-align:center;color:#888;font-size:13px;">Cargando...</div>';
+    getEstadoVotes(schoolId, routeId).then(estadoData => {
+      estadoContainer.innerHTML = generateEstadoStarsHTML(routeId, schoolId, estadoData.avg, estadoData.userVote);
+    }).catch(() => { estadoContainer.innerHTML = ''; });
+  }
+
+  // --- Botonera ---
+  const actionsContainer = document.getElementById('rbs-actions');
+  if (actionsContainer) {
+    const iconCheck = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+    const iconBookmark = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+    const iconComment = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
+    const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+
+    // Obtener número de comentarios
+    let commentBadge = '';
+    try {
+      if (typeof db !== 'undefined' && typeof normalizeId === 'function') {
+        const commentRouteId = `${schoolId}_${normalizeId(routeName)}`;
+        const commentsSnap = await db.collection('comments').where('routeId', '==', commentRouteId).get();
+        if (commentsSnap.size > 0) {
+          commentBadge = `<span class="ml-comment-count">${commentsSnap.size}</span>`;
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching comment count:', e);
+    }
+
+    actionsContainer.innerHTML = `
+      <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">${iconCheck}</button>
+      <button class="ml-route-action-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">${iconBookmark}</button>
+      <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">${iconComment}${commentBadge}</button>
+      <button class="ml-route-action-btn" onclick="mlShareRoute(${routeId}, '${encodeURIComponent(routeName)}')" title="Compartir">${iconShare}</button>
+    `;
+  }
+
+  // --- Botón Ver vía ---
+  const viewSection = document.getElementById('rbs-view-section');
+  const btnView = document.getElementById('rbs-btn-view');
+  if (viewSection && btnView) {
+    let hasDrawing = false;
+    if (sectorName && typeof hasRouteDrawing === 'function') {
+      hasDrawing = await hasRouteDrawing(schoolId, sectorName, routeId);
+    }
+    if (hasDrawing) {
+      viewSection.classList.remove('hidden');
+      btnView.onclick = () => {
+        hideRouteBottomSheet();
+        mlViewRouteInSector(schoolId, encodedSector, routeId);
+      };
+    } else {
+      viewSection.classList.add('hidden');
+    }
+  }
+
+  // --- Botón Dev (admin) ---
+  const devSection = document.getElementById('rbs-dev-section');
+  const btnDev = document.getElementById('rbs-btn-dev');
+  if (devSection && btnDev) {
+    const isAdmin = await isRoutePopupAdmin();
+    if (isAdmin) {
+      devSection.classList.remove('hidden');
+      btnDev.onclick = () => {
+        hideRouteBottomSheet();
+        mlOpenDrawingEditor(routeId);
+      };
+    } else {
+      devSection.classList.add('hidden');
+    }
+  }
+
+  // --- Mostrar sheet ---
+  sheet.classList.remove('hidden');
+  overlay.classList.remove('hidden');
+
+  requestAnimationFrame(() => {
+    sheet.classList.add('snap-expanded');
+    overlay.classList.add('visible');
+  });
+
+  rbsCurrentState = 'expanded';
+  return true;
+}
+
+/**
+ * Oculta el Route Bottom Sheet
+ */
+function hideRouteBottomSheet() {
+  const sheet = document.getElementById('route-bottom-sheet');
+  const overlay = document.getElementById('bottom-sheet-overlay');
+  if (!sheet || !overlay) return;
+  if (rbsCurrentState === 'hidden') return;
+
+  sheet.classList.remove('snap-expanded');
+  overlay.classList.remove('visible');
+
+  setTimeout(() => {
+    sheet.classList.add('hidden');
+    overlay.classList.add('hidden');
+  }, 400);
+
+  // Resetear padding del mapa al cerrar el bottom sheet
+  if (mlMap) {
+    mlMap.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 300 });
+  }
+
+  rbsCurrentState = 'hidden';
+}
+
+// ============================================
+// ROUTE BOTTOM SHEET - GESTOS TÁCTILES
+// ============================================
+
+function rbsHandleTouchStart(e) {
+  rbsIsDragging = true;
+  rbsDragStartY = e.touches[0].clientY;
+  rbsCurrentY = rbsDragStartY;
+  const sheet = document.getElementById('route-bottom-sheet');
+  if (sheet) sheet.style.transition = 'none';
+}
+
+function rbsHandleTouchMove(e) {
+  if (!rbsIsDragging) return;
+  e.preventDefault();
+  rbsCurrentY = e.touches[0].clientY;
+  const deltaY = rbsCurrentY - rbsDragStartY;
+  const sheet = document.getElementById('route-bottom-sheet');
+  if (!sheet) return;
+  const windowHeight = window.innerHeight;
+  const currentPercent = 100 - (BS_EXPANDED_PERCENT * 100);
+  const deltaPercent = (deltaY / windowHeight) * 100;
+  const newPercent = Math.max(10, Math.min(100, currentPercent + deltaPercent));
+  sheet.style.transform = `translateY(${newPercent}%)`;
+}
+
+function rbsHandleTouchEnd() {
+  if (!rbsIsDragging) return;
+  rbsIsDragging = false;
+  const sheet = document.getElementById('route-bottom-sheet');
+  if (!sheet) return;
+  sheet.style.transition = '';
+  sheet.style.transform = '';
+  const deltaY = rbsCurrentY - rbsDragStartY;
+  if (deltaY > 40) {
+    hideRouteBottomSheet();
+  }
+}
+
+function rbsHandleMouseDown(e) {
+  rbsIsDragging = true;
+  rbsDragStartY = e.clientY;
+  rbsCurrentY = rbsDragStartY;
+  const sheet = document.getElementById('route-bottom-sheet');
+  if (sheet) sheet.style.transition = 'none';
+  e.preventDefault();
+}
+
+function rbsHandleMouseMove(e) {
+  if (!rbsIsDragging) return;
+  rbsCurrentY = e.clientY;
+  const deltaY = rbsCurrentY - rbsDragStartY;
+  const sheet = document.getElementById('route-bottom-sheet');
+  if (!sheet) return;
+  const windowHeight = window.innerHeight;
+  const currentPercent = 100 - (BS_EXPANDED_PERCENT * 100);
+  const deltaPercent = (deltaY / windowHeight) * 100;
+  const newPercent = Math.max(10, Math.min(100, currentPercent + deltaPercent));
+  sheet.style.transform = `translateY(${newPercent}%)`;
+}
+
+function rbsHandleMouseUp() {
+  if (!rbsIsDragging) return;
+  rbsIsDragging = false;
+  const sheet = document.getElementById('route-bottom-sheet');
+  if (!sheet) return;
+  sheet.style.transition = '';
+  sheet.style.transform = '';
+  const deltaY = rbsCurrentY - rbsDragStartY;
+  if (deltaY > 40) {
+    hideRouteBottomSheet();
+  }
+}
+
 /**
  * Muestra el Bottom Sheet con datos de la escuela
  */
@@ -4644,6 +5697,10 @@ function showBottomSheet(school) {
   if (!isMobileDevice()) {
     return false;
   }
+
+  // Cerrar otros bottom sheets si están abiertos
+  hideSectorBottomSheet();
+  hideRouteBottomSheet();
 
   const bottomSheet = document.getElementById('school-bottom-sheet');
   const overlay = document.getElementById('bottom-sheet-overlay');
@@ -4703,6 +5760,11 @@ function hideBottomSheet() {
     bottomSheet.classList.add('hidden');
     overlay.classList.add('hidden');
   }, 400);
+
+  // Resetear padding del mapa al cerrar el bottom sheet
+  if (mlMap) {
+    mlMap.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 300 });
+  }
 
   bsCurrentState = 'hidden';
   bsCurrentSchool = null;
@@ -5365,7 +6427,9 @@ setupSchoolLayerInteraction = function () {
       // Cerrar popup existente si hay
       if (mlSchoolPopup) mlSchoolPopup.remove();
 
-      // Mostrar Bottom Sheet (sin centrar el mapa)
+      // Desplazamiento adaptativo: solo mover si la escuela queda tapada por el bottom sheet
+      adaptiveMapPanForBottomSheet(school.coords);
+
       showBottomSheet(school);
     } else {
       // En desktop, usar popup tradicional
@@ -5382,11 +6446,17 @@ setupSchoolLayerInteraction = function () {
   });
 };
 
-// Inicializar Bottom Sheet cuando el DOM esté listo
+// Inicializar Bottom Sheets cuando el DOM esté listo
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initBottomSheet);
+  document.addEventListener('DOMContentLoaded', () => {
+    initBottomSheet();
+    initSectorBottomSheet();
+    initRouteBottomSheet();
+  });
 } else {
   initBottomSheet();
+  initSectorBottomSheet();
+  initRouteBottomSheet();
 }
 
 // Exponer funciones del Bottom Sheet
@@ -5394,6 +6464,14 @@ window.showBottomSheet = showBottomSheet;
 window.hideBottomSheet = hideBottomSheet;
 window.expandBottomSheet = expandBottomSheet;
 window.collapseBottomSheet = collapseBottomSheet;
+
+// Exponer funciones del Sector Bottom Sheet
+window.showSectorBottomSheet = showSectorBottomSheet;
+window.hideSectorBottomSheet = hideSectorBottomSheet;
+
+// Exponer funciones del Route Bottom Sheet
+window.showRouteBottomSheet = showRouteBottomSheet;
+window.hideRouteBottomSheet = hideRouteBottomSheet;
 
 // ============================================
 // FUNCIONES AUXILIARES PARA ROUTE DRAWING
@@ -5629,22 +6707,9 @@ async function showUserRoutePopup(props, coords) {
   // Obtener número de comentarios
   let commentCount = 0;
   try {
-    if (typeof db !== 'undefined') {
-      const routeId2 = `${schoolId}_${routeId}`;
-      const commentsSnap = await db.collection('comments').where('routeId', '==', routeId2).get();
-      commentCount = commentsSnap.size;
-    }
-  } catch (e) {
-    console.warn('Error fetching comment count:', e);
-  }
-  const commentBadge = commentCount > 0 ? `<span class="ml-comment-count">${commentCount}</span>` : '';
-
-  // Obtener número de comentarios
-  let commentCount = 0;
-  try {
     if (typeof db !== 'undefined' && typeof normalizeId === 'function') {
-      const routeId = `${schoolId}_${normalizeId(routeName)}`;
-      const commentsSnap = await db.collection('comments').where('routeId', '==', routeId).get();
+      const commentRouteId = `${schoolId}_${normalizeId(routeName)}`;
+      const commentsSnap = await db.collection('comments').where('routeId', '==', commentRouteId).get();
       commentCount = commentsSnap.size;
     }
   } catch (e) {
@@ -5663,11 +6728,13 @@ async function showUserRoutePopup(props, coords) {
   const iconComment = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
   const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 
-  // Check de ascenso para el header
+  // Check de ascenso + icono de estilo para el header
+  const ascentStyleSVG = ascentInfo && ascentInfo.style && (typeof getAscentStyleSVG === 'function') ? getAscentStyleSVG(ascentInfo.style) : '';
   const ascentCheckHTML = hasAscent ? `
     <span class="ml-route-ascent-check">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
     </span>
+    ${ascentStyleSVG ? `<span class="ml-route-ascent-style ascent-style-${ascentInfo.style}">${ascentStyleSVG}</span>` : ''}
   ` : '';
 
   // Detectar campos vacíos para sugerir contribuir
