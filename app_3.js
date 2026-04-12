@@ -11077,28 +11077,6 @@ function initLogbook() {
   if (gradeFilter) gradeFilter.addEventListener('change', applyLogbookFilters);
   if (styleFilter) styleFilter.addEventListener('change', applyLogbookFilters);
 
-  // Delete button delegation
-  const logbookList = document.getElementById('logbook-list');
-  if (logbookList) {
-    logbookList.addEventListener('click', (e) => {
-      const btn = e.target.closest('.logbook-item-delete');
-      if (!btn) return;
-      const { ascentId, schoolId, routeId } = btn.dataset;
-      showConfirmModal('Eliminar ascensión', '¿Seguro que quieres eliminar esta ascensión?', async () => {
-        const ok = await deleteAscent(ascentId, schoolId, routeId);
-        if (ok) {
-          logbookAscents = logbookAscents.filter(a => a.id !== ascentId);
-          logbookFiltered = logbookFiltered.filter(a => a.id !== ascentId);
-          const countEl = document.getElementById('logbook-count');
-          if (countEl) {
-            const total = logbookFiltered.length;
-            countEl.textContent = total === 1 ? '1 ascensión' : `${total} ascensiones`;
-          }
-          renderLogbookList(logbookFiltered);
-        }
-      });
-    });
-  }
 }
 
 function showConfirmModal(title, message, onConfirm) {
@@ -11295,6 +11273,27 @@ function renderLogbookList(ascents) {
   });
 
   list.innerHTML = html;
+
+  // Attach delete listeners directly to each button
+  list.querySelectorAll('.logbook-item-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const { ascentId, schoolId, routeId } = btn.dataset;
+      showConfirmModal('Eliminar ascensión', '¿Seguro que quieres eliminar esta ascensión?', async () => {
+        const ok = await deleteAscent(ascentId, schoolId, routeId);
+        if (ok) {
+          logbookAscents = logbookAscents.filter(a => a.id !== ascentId);
+          logbookFiltered = logbookFiltered.filter(a => a.id !== ascentId);
+          const countEl = document.getElementById('logbook-count');
+          if (countEl) {
+            const total = logbookFiltered.length;
+            countEl.textContent = total === 1 ? '1 ascensión' : `${total} ascensiones`;
+          }
+          renderLogbookList(logbookFiltered);
+        }
+      });
+    });
+  });
 }
 
 function renderLogbookEmpty(message) {
