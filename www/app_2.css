@@ -17762,6 +17762,35 @@ body.pwa-standalone .feed-header {
   stroke: #22c55e;
 }
 
+/* Logbook Delete Button */
+.logbook-item-delete {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-muted, #bbb);
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  padding: 0;
+}
+.logbook-item:hover .logbook-item-delete {
+  opacity: 1;
+}
+.logbook-item-delete:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+.logbook-item-delete svg {
+  width: 15px;
+  height: 15px;
+}
+
 /* Empty State */
 .logbook-empty {
   display: flex;
