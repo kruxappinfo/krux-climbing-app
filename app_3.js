@@ -11284,7 +11284,7 @@ function renderLogbookList(ascents) {
         if (ok) {
           logbookAscents = logbookAscents.filter(a => a.id !== ascentId);
           logbookFiltered = logbookFiltered.filter(a => a.id !== ascentId);
-          const countEl = document.getElementById('logbook-count');
+          const countEl = document.getElementById('logbook-result-count');
           if (countEl) {
             const total = logbookFiltered.length;
             countEl.textContent = total === 1 ? '1 ascensión' : `${total} ascensiones`;
