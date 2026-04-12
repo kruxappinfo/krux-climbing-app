@@ -11160,7 +11160,11 @@ function closeLogbook() {
 }
 
 function getCurrentProfileUserId() {
-  // Check if we're viewing our own profile or someone else's
+  // If viewing another user's profile, return their ID
+  if (currentProfileUserId) {
+    return currentProfileUserId;
+  }
+  // Otherwise return logged-in user's ID
   if (typeof currentUser !== 'undefined' && currentUser && currentUser.uid) {
     return currentUser.uid;
   }
@@ -11261,14 +11265,14 @@ function renderLogbookList(ascents) {
             ${checkHtml}
           </div>
         </div>
-        <button class="logbook-item-delete" data-ascent-id="${ascent.id}" data-school-id="${ascent.schoolId || ''}" data-route-id="${ascent.routeId || ''}" title="Eliminar ascensión">
+        ${!currentProfileUserId ? `<button class="logbook-item-delete" data-ascent-id="${ascent.id}" data-school-id="${ascent.schoolId || ''}" data-route-id="${ascent.routeId || ''}" title="Eliminar ascensión">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
             <path d="M10 11v6M14 11v6"></path>
             <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
           </svg>
-        </button>
+        </button>` : ''}
       </div>
     `;
   });
