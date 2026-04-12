@@ -11080,25 +11080,54 @@ function initLogbook() {
   // Delete button delegation
   const logbookList = document.getElementById('logbook-list');
   if (logbookList) {
-    logbookList.addEventListener('click', async (e) => {
+    logbookList.addEventListener('click', (e) => {
       const btn = e.target.closest('.logbook-item-delete');
       if (!btn) return;
       const { ascentId, schoolId, routeId } = btn.dataset;
-      if (!confirm('¿Seguro que quieres eliminar esta ascensión?')) return;
-      const ok = await deleteAscent(ascentId, schoolId, routeId);
-      if (ok) {
-        logbookAscents = logbookAscents.filter(a => a.id !== ascentId);
-        logbookFiltered = logbookFiltered.filter(a => a.id !== ascentId);
-        // Update count
-        const countEl = document.getElementById('logbook-count');
-        if (countEl) {
-          const total = logbookFiltered.length;
-          countEl.textContent = total === 1 ? '1 ascensión' : `${total} ascensiones`;
+      showConfirmModal('Eliminar ascensión', '¿Seguro que quieres eliminar esta ascensión?', async () => {
+        const ok = await deleteAscent(ascentId, schoolId, routeId);
+        if (ok) {
+          logbookAscents = logbookAscents.filter(a => a.id !== ascentId);
+          logbookFiltered = logbookFiltered.filter(a => a.id !== ascentId);
+          const countEl = document.getElementById('logbook-count');
+          if (countEl) {
+            const total = logbookFiltered.length;
+            countEl.textContent = total === 1 ? '1 ascensión' : `${total} ascensiones`;
+          }
+          renderLogbookList(logbookFiltered);
         }
-        renderLogbookList(logbookFiltered);
-      }
+      });
     });
   }
+}
+
+function showConfirmModal(title, message, onConfirm) {
+  const modal = document.getElementById('confirm-modal');
+  const titleEl = document.getElementById('confirm-title');
+  const msgEl = document.getElementById('confirm-message');
+  const okBtn = document.getElementById('confirm-ok');
+  const cancelBtn = document.getElementById('confirm-cancel');
+  if (!modal || !okBtn || !cancelBtn) return;
+
+  if (titleEl) titleEl.textContent = title;
+  if (msgEl) msgEl.textContent = message;
+  modal.classList.remove('hidden');
+
+  const close = () => modal.classList.add('hidden');
+
+  const handleOk = () => { close(); onConfirm(); cleanup(); };
+  const handleCancel = () => { close(); cleanup(); };
+  const handleBackdrop = (e) => { if (e.target === modal) { close(); cleanup(); } };
+
+  const cleanup = () => {
+    okBtn.removeEventListener('click', handleOk);
+    cancelBtn.removeEventListener('click', handleCancel);
+    modal.removeEventListener('click', handleBackdrop);
+  };
+
+  okBtn.addEventListener('click', handleOk);
+  cancelBtn.addEventListener('click', handleCancel);
+  modal.addEventListener('click', handleBackdrop);
 }
 
 async function openLogbook() {
