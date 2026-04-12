@@ -1892,21 +1892,20 @@ async function loadProfileClimbingStatsForUser(userId, loadId = null) {
     let totalAscents = ascentsSnapshot.size;
     let maxGrade = '-';
     const zones = new Set();
-    let maxGradeValue = -1;
+    const grades = [];
 
     ascentsSnapshot.forEach(doc => {
       const data = doc.data();
       if (data.schoolId) zones.add(data.schoolId);
-
-      const grade = data.grade;
-      if (grade) {
-        const gradeValue = getGradeValue(grade);
-        if (gradeValue > maxGradeValue) {
-          maxGradeValue = gradeValue;
-          maxGrade = grade;
-        }
+      if (data.grade && data.grade.trim() !== '') {
+        grades.push(data.grade);
       }
     });
+
+    if (grades.length > 0) {
+      const compareFunc = typeof compareGradesLocal === 'function' ? compareGradesLocal : (a, b) => a.localeCompare(b);
+      maxGrade = grades.sort(compareFunc).reverse()[0];
+    }
 
     // Final check before DOM update
     if (loadId && profileLoadingState.currentLoadId !== loadId) {
@@ -3523,29 +3522,31 @@ async function initProfile() {
   if (followingStat) followingStat.textContent = realFollowingCount;
 
   // 3. Climbing Stats (Real calculation)
-  const ascents = await getUserAscents(authUser.uid);
+  const ascents = await getUserAscents();
   const projects = getProjects();
 
   const totalAscentsEl = document.getElementById('total-ascents');
-  if (totalAscentsEl) totalAscentsEl.textContent = userStats.totalAscents || ascents.length;
+  if (totalAscentsEl) totalAscentsEl.textContent = ascents.length || userStats.totalAscents || 0;
 
-  // Calculate Max Grade
+  // Calculate Max Grade using compareGradesLocal
   let maxGrade = '-';
   if (ascents.length > 0) {
-    // Simple lexicographical sort might not be enough for grades (6a < 6a+ < 6b),
-    // but for now let's assume standard string comparison or just take the "highest" if we had a value map.
-    // For MVP, let's just show the grade of the most recent hard ascent or similar.
-    // Better: Helper function to compare grades.
-    // For now, let's just pick the last one or "-"
-    // TODO: Implement proper grade comparison
-    maxGrade = ascents[0].grade; // Just showing one for now
+    const grades = ascents
+      .map(a => a.grade)
+      .filter(g => g && g.trim() !== '');
+    if (grades.length > 0) {
+      const compareFunc = typeof compareGradesLocal === 'function' ? compareGradesLocal : (a, b) => a.localeCompare(b);
+      maxGrade = grades.sort(compareFunc).reverse()[0];
+    }
   }
 
   const maxGradeEl = document.getElementById('max-grade');
   if (maxGradeEl) maxGradeEl.textContent = maxGrade;
 
-  // Unique zones
-  const zones = new Set(ascents.map(a => a.schoolName));
+  // Unique zones (filter empty schoolNames)
+  const zones = new Set(
+    ascents.map(a => a.schoolName).filter(z => z && z.trim() !== '')
+  );
   const zonesVisitedEl = document.getElementById('zones-visited');
   if (zonesVisitedEl) zonesVisitedEl.textContent = zones.size;
 
