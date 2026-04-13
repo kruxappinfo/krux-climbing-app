@@ -17624,6 +17624,10 @@ body.pwa-standalone .feed-header {
   gap: 8px;
 }
 
+.logbook-filter-row + .logbook-filter-row {
+  margin-top: 8px;
+}
+
 .logbook-select {
   flex: 1;
   padding: 8px 12px;

@@ -11073,8 +11073,15 @@ function initLogbook() {
   }
 
   // Filters
+  const schoolFilter = document.getElementById('logbook-filter-school');
+  const sectorFilter = document.getElementById('logbook-filter-sector');
   const gradeFilter = document.getElementById('logbook-filter-grade');
   const styleFilter = document.getElementById('logbook-filter-style');
+  if (schoolFilter) schoolFilter.addEventListener('change', () => {
+    populateSectorFilter(logbookAscents);
+    applyLogbookFilters();
+  });
+  if (sectorFilter) sectorFilter.addEventListener('change', applyLogbookFilters);
   if (gradeFilter) gradeFilter.addEventListener('change', applyLogbookFilters);
   if (styleFilter) styleFilter.addEventListener('change', applyLogbookFilters);
 
@@ -11142,6 +11149,8 @@ async function openLogbook() {
     logbookAscents = ascents;
     logbookFiltered = ascents;
 
+    populateSchoolFilter(ascents);
+    populateSectorFilter(ascents);
     populateGradeFilter(ascents);
     applyLogbookFilters();
 
@@ -11171,6 +11180,48 @@ function getCurrentProfileUserId() {
   return null;
 }
 
+function populateSchoolFilter(ascents) {
+  const select = document.getElementById('logbook-filter-school');
+  if (!select) return;
+
+  const schools = [...new Set(ascents.map(a => a.schoolName).filter(s => s && s.trim() !== ''))];
+  schools.sort((a, b) => a.localeCompare(b, 'es'));
+
+  const currentVal = select.value;
+  select.innerHTML = '<option value="">Todas las escuelas</option>';
+  schools.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    select.appendChild(opt);
+  });
+  if (currentVal && schools.includes(currentVal)) {
+    select.value = currentVal;
+  }
+}
+
+function populateSectorFilter(ascents) {
+  const select = document.getElementById('logbook-filter-sector');
+  if (!select) return;
+
+  const schoolVal = document.getElementById('logbook-filter-school')?.value || '';
+  const filtered = schoolVal ? ascents.filter(a => a.schoolName === schoolVal) : ascents;
+  const sectors = [...new Set(filtered.map(a => a.sector).filter(s => s && s.trim() !== ''))];
+  sectors.sort((a, b) => a.localeCompare(b, 'es'));
+
+  const currentVal = select.value;
+  select.innerHTML = '<option value="">Todos los sectores</option>';
+  sectors.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    select.appendChild(opt);
+  });
+  if (currentVal && sectors.includes(currentVal)) {
+    select.value = currentVal;
+  }
+}
+
 function populateGradeFilter(ascents) {
   const gradeSelect = document.getElementById('logbook-filter-grade');
   if (!gradeSelect) return;
@@ -11194,21 +11245,27 @@ function populateGradeFilter(ascents) {
 }
 
 function applyLogbookFilters() {
+  const schoolVal = document.getElementById('logbook-filter-school')?.value || '';
+  const sectorVal = document.getElementById('logbook-filter-sector')?.value || '';
   const gradeVal = document.getElementById('logbook-filter-grade')?.value || '';
   const styleVal = document.getElementById('logbook-filter-style')?.value || '';
 
   logbookFiltered = logbookAscents.filter(a => {
+    if (schoolVal && a.schoolName !== schoolVal) return false;
+    if (sectorVal && a.sector !== sectorVal) return false;
     if (gradeVal && a.grade !== gradeVal) return false;
     if (styleVal && a.style !== styleVal) return false;
     return true;
   });
+
+  const hasFilter = schoolVal || sectorVal || gradeVal || styleVal;
 
   // Update result count
   const countEl = document.getElementById('logbook-result-count');
   if (countEl) {
     const total = logbookAscents.length;
     const shown = logbookFiltered.length;
-    countEl.textContent = (gradeVal || styleVal)
+    countEl.textContent = hasFilter
       ? `${shown} de ${total} ascensiones`
       : `${total} ascensiones`;
   }
@@ -11221,9 +11278,11 @@ function renderLogbookList(ascents) {
   if (!list) return;
 
   if (!ascents || ascents.length === 0) {
+    const schoolVal = document.getElementById('logbook-filter-school')?.value || '';
+    const sectorVal = document.getElementById('logbook-filter-sector')?.value || '';
     const gradeVal = document.getElementById('logbook-filter-grade')?.value || '';
     const styleVal = document.getElementById('logbook-filter-style')?.value || '';
-    const isFiltered = gradeVal || styleVal;
+    const isFiltered = schoolVal || sectorVal || gradeVal || styleVal;
 
     renderLogbookEmpty(
       isFiltered ? 'No hay ascensiones con esos filtros' : null

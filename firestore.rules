@@ -180,8 +180,12 @@ service cloud.firestore {
         request.auth.uid == requestId &&
         request.resource.data.userId == request.auth.uid &&
         request.resource.data.status == 'pending';
-      // Only super admin can update (approve/reject)
-      allow update: if isSuperAdmin();
+      // Super admin can update (approve/reject), OR owner can resubmit (set back to pending)
+      allow update: if isSuperAdmin() ||
+        (isAuthenticated() &&
+         request.auth.uid == requestId &&
+         request.resource.data.userId == request.auth.uid &&
+         request.resource.data.status == 'pending');
       // No deletions allowed
       allow delete: if false;
     }

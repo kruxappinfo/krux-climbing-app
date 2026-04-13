@@ -63,14 +63,27 @@ let svPreviousZoomState = false;      // Trackea si estábamos en zoom (scale > 
 
 /**
  * Verifica si el usuario actual es admin
+ * Espera a que Firebase Auth haya restaurado la sesión (crítico en Capacitor/iOS/Android)
  */
 async function isSectorImageAdmin() {
   try {
+    // Esperar a que auth esté listo (en Capacitor puede tardar en restaurar la sesión)
+    if (typeof waitForAuthReady === 'function') {
+      await waitForAuthReady();
+    }
+
     const user = auth.currentUser;
+    console.log('[SectorImages] Admin check - user:', user ? user.uid : 'NULL', 'isCapacitor:', window.Capacitor !== undefined);
     if (!user) return false;
 
     const adminDoc = await db.collection('admins').doc(user.uid).get();
-    return adminDoc.exists && adminDoc.data().role === 'admin';
+    if (!adminDoc.exists) return false;
+
+    const adminData = adminDoc.data();
+    // Aceptar admin o spotter como roles con permisos de edición
+    const isAdmin = adminData.role === 'admin' || adminData.role === 'spotter';
+    console.log('[SectorImages] Admin check - result:', isAdmin, 'role:', adminData.role, 'uid:', user.uid);
+    return isAdmin;
   } catch (error) {
     console.error('[SectorImages] Error verificando admin:', error);
     return false;

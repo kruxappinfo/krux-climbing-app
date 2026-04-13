@@ -513,7 +513,8 @@ async function checkAndShowAdminMenu() {
         const adminDoc = await db.collection('admins').doc(currentUser.uid).get();
         const adminMenuItem = document.getElementById('admin-users-menu-item');
 
-        if (adminDoc.exists && adminDoc.data().role === 'admin') {
+        const adminData = adminDoc.exists ? adminDoc.data() : null;
+        if (adminDoc.exists) {
             // User is admin - show menu item
             if (adminMenuItem) {
                 adminMenuItem.classList.remove('hidden');

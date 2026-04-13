@@ -50,6 +50,43 @@ if (isCapacitorEnv) {
     })();
 }
 
+// Promesa que se resuelve cuando el estado de auth se ha determinado con un usuario válido,
+// o tras un timeout si no hay sesión activa.
+let _authReadyResolved = false;
+let _authReadyResolve;
+const authReadyPromise = new Promise((resolve) => { _authReadyResolve = resolve; });
+
+const _unsubAuthReady = auth.onAuthStateChanged(function(user) {
+    console.log('Firebase Auth: onAuthStateChanged, user:', user ? user.uid : 'null', 'already resolved:', _authReadyResolved);
+    if (user && !_authReadyResolved) {
+        _authReadyResolved = true;
+        _authReadyResolve(user);
+        _unsubAuthReady(); // Ya no necesitamos más emisiones
+    }
+});
+
+// Timeout de seguridad: si tras 2s no hay usuario, resolver con null
+setTimeout(() => {
+    if (!_authReadyResolved) {
+        console.log('Firebase Auth: Timeout alcanzado sin usuario, resolviendo con null');
+        _authReadyResolved = true;
+        _authReadyResolve(null);
+        _unsubAuthReady();
+    }
+}, 2000);
+
+/**
+ * Espera a que Firebase Auth tenga un usuario autenticado, o timeout de 2s.
+ * @returns {Promise<firebase.User|null>}
+ */
+function waitForAuthReady() {
+    // Si auth.currentUser ya existe, resolver inmediatamente
+    if (auth.currentUser) {
+        return Promise.resolve(auth.currentUser);
+    }
+    return authReadyPromise;
+}
+
 // Google Auth Provider
 googleProvider = new firebase.auth.GoogleAuthProvider();
 

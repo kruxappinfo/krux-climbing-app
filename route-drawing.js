@@ -31,6 +31,17 @@ let rdSectorImages = [];                // Array de imágenes del sector (para n
 let rdCurrentImageIndex = 0;            // Índice de imagen actual en rdSectorImages
 let rdAutoSelectRouteId = null;         // routeId a auto-seleccionar tras abrir editor
 
+// Estado de zoom del editor
+let rdZoomState = {
+  scale: 1, translateX: 0, translateY: 0,
+  isPinching: false, isPanning: false,
+  pinchStartDist: 0, pinchStartScale: 1,
+  pinchCenterX: 0, pinchCenterY: 0,
+  panStartX: 0, panStartY: 0,
+  lastTranslateX: 0, lastTranslateY: 0,
+  minScale: 1, maxScale: 4
+};
+
 // Variables de bifurcación
 let rdBifurcationMode = false;           // Modo selección de punto de bifurcación
 let rdCurrentBranchId = -1;              // Rama activa (-1 = tronco, >0 = rama)
@@ -691,6 +702,9 @@ async function rdSwitchImage(newIndex) {
     if (controls) controls.style.display = 'none';
   }
 
+  // Resetear zoom al cambiar de imagen
+  rdResetZoom();
+
   rdCurrentImageIndex = newIndex;
   const newImage = rdSectorImages[newIndex];
 
@@ -896,7 +910,7 @@ function createDrawingEditorMandatory(imageUrl, pendingRouteName) {
 
       <!-- Canvas Container (ocupa todo el ancho) -->
       <div class="rd-canvas-container rd-canvas-full" id="rd-canvas-container">
-        <canvas id="rd-canvas"></canvas>
+        <div id="rd-canvas-wrapper"><canvas id="rd-canvas"></canvas></div>
       </div>
 
       <!-- Instrucciones flotantes con énfasis -->
@@ -1255,7 +1269,7 @@ function createDrawingEditor(imageUrl) {
 
       <!-- Canvas Container -->
       <div class="rd-canvas-container" id="rd-canvas-container">
-        <canvas id="rd-canvas"></canvas>
+        <div id="rd-canvas-wrapper"><canvas id="rd-canvas"></canvas></div>
       </div>
 
       <!-- Panel lateral de vías (colapsable) -->
@@ -1402,6 +1416,7 @@ function setupCanvas(imageUrl) {
   rdCanvas.addEventListener('touchmove', handleCanvasTouchMove, { passive: false });
   rdCanvas.addEventListener('touchend', handleCanvasTouchEnd);
   rdCanvas.addEventListener('touchcancel', handleCanvasTouchEnd);
+  rdCanvas.addEventListener('wheel', handleCanvasWheel, { passive: false });
 }
 
 /**
@@ -2095,6 +2110,47 @@ function drawNumber(x, y, number, bgColor) {
 // INTERACCIÓN CON CANVAS
 // ============================================
 
+// ── Zoom helpers ──────────────────────────────────────────────────────────────
+
+function getTouchDistance(t1, t2) {
+  const dx = t2.clientX - t1.clientX;
+  const dy = t2.clientY - t1.clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function rdApplyZoomTransform(immediate = false) {
+  const wrapper = document.getElementById('rd-canvas-wrapper');
+  if (!wrapper) return;
+  const { translateX, translateY, scale } = rdZoomState;
+  wrapper.style.transition = immediate ? 'none' : 'transform 0.1s ease-out';
+  wrapper.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+}
+
+function rdConstrainPan() {
+  if (rdZoomState.scale <= 1) {
+    rdZoomState.translateX = 0;
+    rdZoomState.translateY = 0;
+    return;
+  }
+  const container = document.getElementById('rd-canvas-container');
+  if (!container || !rdCanvas) return;
+  const scaledW = (rdCanvas.displayWidth || rdCanvas.clientWidth) * rdZoomState.scale;
+  const scaledH = (rdCanvas.displayHeight || rdCanvas.clientHeight) * rdZoomState.scale;
+  const maxTX = Math.max(0, (scaledW - container.clientWidth) / 2);
+  const maxTY = Math.max(0, (scaledH - container.clientHeight) / 2);
+  rdZoomState.translateX = Math.max(-maxTX, Math.min(maxTX, rdZoomState.translateX));
+  rdZoomState.translateY = Math.max(-maxTY, Math.min(maxTY, rdZoomState.translateY));
+}
+
+function rdResetZoom() {
+  rdZoomState.scale = 1;
+  rdZoomState.translateX = 0;
+  rdZoomState.translateY = 0;
+  rdApplyZoomTransform(false);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Obtiene las coordenadas del canvas desde un evento
  */
@@ -2244,40 +2300,61 @@ function handleCanvasMouseUp(e) {
 
 /**
  * Maneja toque táctil en el canvas
+ * 1 dedo = dibujar/arrastrar punto | 2 dedos = pinch-zoom + pan
  */
 function handleCanvasTouchStart(e) {
+  e.preventDefault();
+
+  // 2 dedos → iniciar pinch-zoom
+  if (e.touches.length === 2) {
+    rdIsDragging = false;
+    rdDraggingPointIndex = -1;
+    rdZoomState.isPinching = true;
+    rdZoomState.isPanning = false;
+    rdZoomState.pinchStartDist = getTouchDistance(e.touches[0], e.touches[1]);
+    rdZoomState.pinchStartScale = rdZoomState.scale;
+    rdZoomState.pinchCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    rdZoomState.pinchCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    return;
+  }
+
+  // Ignorar 1 dedo si estamos en medio de un pinch
+  if (rdZoomState.isPinching) return;
+
   // Modo rápel: colocar o eliminar punto de rápel
   if (rdRapelMode) {
-    e.preventDefault();
     const { x, y } = getCanvasCoordinates(e, true);
     handleRapelClick(x, y);
     return;
   }
 
-  // Modo bifurcación: buscar segmento de línea para crear fork
+  // Modo bifurcación
   if (rdBifurcationMode) {
-    e.preventDefault();
     const { x, y } = getCanvasCoordinates(e, true);
     handleBifurcationClick(x, y);
     return;
   }
 
-  if (!rdDrawingMode || !rdCurrentRoute) return;
+  // Sin vía seleccionada: pan con 1 dedo si hay zoom activo
+  if (!rdDrawingMode || !rdCurrentRoute) {
+    if (rdZoomState.scale > 1) {
+      rdZoomState.isPanning = true;
+      rdZoomState.panStartX = e.touches[0].clientX;
+      rdZoomState.panStartY = e.touches[0].clientY;
+      rdZoomState.lastTranslateX = rdZoomState.translateX;
+      rdZoomState.lastTranslateY = rdZoomState.translateY;
+    }
+    return;
+  }
 
-  e.preventDefault();
   const { x, y } = getCanvasCoordinates(e, true);
-
-  // Verificar si estamos tocando un punto existente para arrastrarlo
   const pointIndex = findNearestPointIndex(x, y);
-
   if (pointIndex !== -1) {
-    // Iniciar arrastre del punto
     rdDraggingPointIndex = pointIndex;
     rdIsDragging = true;
     rdSelectedPointIndex = pointIndex;
     updateInstructions(`Arrastrando punto ${pointIndex + 1}. Suelta para posicionar.`);
   } else {
-    // Añadir nuevo punto
     handleDrawingPoint(x, y);
   }
 }
@@ -2286,15 +2363,62 @@ function handleCanvasTouchStart(e) {
  * Maneja movimiento táctil en el canvas
  */
 function handleCanvasTouchMove(e) {
+  e.preventDefault();
+
+  // 2 dedos → pinch-zoom
+  if (e.touches.length === 2) {
+    if (!rdZoomState.isPinching) {
+      // Segundo dedo llegó mientras el primero ya estaba abajo → transición a pinch
+      rdZoomState.isPinching = true;
+      rdZoomState.isPanning = false;
+      rdIsDragging = false;
+      rdDraggingPointIndex = -1;
+      rdZoomState.pinchStartDist = getTouchDistance(e.touches[0], e.touches[1]);
+      rdZoomState.pinchStartScale = rdZoomState.scale;
+      rdZoomState.pinchCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      rdZoomState.pinchCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      return;
+    }
+
+    const currentDist = getTouchDistance(e.touches[0], e.touches[1]);
+    const rawScale = rdZoomState.pinchStartScale * (currentDist / rdZoomState.pinchStartDist);
+    const newScale = Math.max(rdZoomState.minScale, Math.min(rdZoomState.maxScale, rawScale));
+
+    const currentCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    const currentCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    const container = document.getElementById('rd-canvas-container');
+    const rect = container.getBoundingClientRect();
+    const pivotX = rdZoomState.pinchCenterX - (rect.left + rect.width / 2);
+    const pivotY = rdZoomState.pinchCenterY - (rect.top + rect.height / 2);
+
+    const sf = newScale / rdZoomState.scale;
+    rdZoomState.translateX = rdZoomState.translateX * sf - pivotX * (sf - 1)
+                             + (currentCenterX - rdZoomState.pinchCenterX);
+    rdZoomState.translateY = rdZoomState.translateY * sf - pivotY * (sf - 1)
+                             + (currentCenterY - rdZoomState.pinchCenterY);
+    rdZoomState.pinchCenterX = currentCenterX;
+    rdZoomState.pinchCenterY = currentCenterY;
+    rdZoomState.scale = newScale;
+    rdConstrainPan();
+    rdApplyZoomTransform(true);
+    return;
+  }
+
+  // 1 dedo: pan cuando no hay vía seleccionada y hay zoom activo
+  if (rdZoomState.isPanning) {
+    rdZoomState.translateX = rdZoomState.lastTranslateX + (e.touches[0].clientX - rdZoomState.panStartX);
+    rdZoomState.translateY = rdZoomState.lastTranslateY + (e.touches[0].clientY - rdZoomState.panStartY);
+    rdConstrainPan();
+    rdApplyZoomTransform(true);
+    return;
+  }
+
+  // 1 dedo: arrastrar punto existente
   if (!rdDrawingMode || !rdCurrentRoute) return;
   if (!rdIsDragging || rdDraggingPointIndex === -1) return;
 
-  e.preventDefault();
   const { x, y } = getCanvasCoordinates(e, true);
-
-  // Actualizar posición del punto siendo arrastrado
-  const imageCoords = canvasToImageCoords(x, y);
-  rdDrawingPoints[rdDraggingPointIndex] = imageCoords;
+  rdDrawingPoints[rdDraggingPointIndex] = canvasToImageCoords(x, y);
   redrawCanvas();
 }
 
@@ -2302,6 +2426,18 @@ function handleCanvasTouchMove(e) {
  * Maneja cuando se termina el toque
  */
 function handleCanvasTouchEnd(e) {
+  // Fin de pinch (se levantó un dedo)
+  if (rdZoomState.isPinching && e.touches.length < 2) {
+    rdZoomState.isPinching = false;
+    if (rdZoomState.scale < rdZoomState.minScale) rdResetZoom();
+    return;
+  }
+
+  if (rdZoomState.isPanning) {
+    rdZoomState.isPanning = false;
+    return;
+  }
+
   if (rdIsDragging && rdDraggingPointIndex !== -1) {
     showRDToast(`Punto ${rdDraggingPointIndex + 1} movido`, 'success');
     updateInstructions(`Punto movido. Continúa editando o haz clic en "Terminar".`);
@@ -2310,6 +2446,27 @@ function handleCanvasTouchEnd(e) {
   rdIsDragging = false;
   rdDraggingPointIndex = -1;
   updateDrawingControls();
+}
+
+/**
+ * Zoom con rueda del ratón (web desktop)
+ */
+function handleCanvasWheel(e) {
+  e.preventDefault();
+  const container = document.getElementById('rd-canvas-container');
+  const rect = container.getBoundingClientRect();
+  const mouseX = e.clientX - (rect.left + rect.width / 2);
+  const mouseY = e.clientY - (rect.top + rect.height / 2);
+  const delta = e.deltaY > 0 ? -0.15 : 0.15;
+  const oldScale = rdZoomState.scale;
+  const newScale = Math.max(rdZoomState.minScale, Math.min(rdZoomState.maxScale, oldScale + delta));
+  if (newScale === oldScale) return;
+  const sf = newScale / oldScale;
+  rdZoomState.translateX = rdZoomState.translateX * sf - mouseX * (sf - 1);
+  rdZoomState.translateY = rdZoomState.translateY * sf - mouseY * (sf - 1);
+  rdZoomState.scale = newScale;
+  rdConstrainPan();
+  rdApplyZoomTransform(false);
 }
 
 /**

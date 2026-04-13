@@ -28,11 +28,30 @@ if (isNative) {
 console.log('[Capacitor] Clases de plataforma añadidas al HTML');
 
 // Inicializar Google Auth inmediatamente si estamos en Capacitor
+// Flag global para saber si el plugin terminó de inicializarse
+window.GoogleAuthReady = false;
+window.GoogleAuthInitPromise = null;
+
 if (isNative && window.Capacitor.Plugins && window.Capacitor.Plugins.GoogleAuth) {
   console.log('[Capacitor] Inicializando Google Auth plugin...');
-  // El plugin se inicializa automáticamente, solo verificamos que existe
   window.GoogleAuth = window.Capacitor.Plugins.GoogleAuth;
-  console.log('[Capacitor] Google Auth plugin disponible');
+
+  // OBLIGATORIO: llamar initialize() para crear el GoogleSignInClient nativo
+  window.GoogleAuthInitPromise = window.GoogleAuth.initialize({
+    scopes: ['profile', 'email'],
+    grantOfflineAccess: false
+  }).then(() => {
+    window.GoogleAuthReady = true;
+    console.log('[Capacitor] Google Auth plugin inicializado correctamente');
+  }).catch((err) => {
+    console.error('[Capacitor] Error inicializando Google Auth:', err);
+    console.error('[Capacitor] Error details:', JSON.stringify(err));
+  });
+} else {
+  console.warn('[Capacitor] Google Auth plugin NO encontrado en Capacitor.Plugins');
+  if (isNative) {
+    console.warn('[Capacitor] Plugins disponibles:', Object.keys(window.Capacitor.Plugins || {}));
+  }
 }
 
 /**

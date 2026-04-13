@@ -704,7 +704,7 @@ async function checkIsAdmin() {
     }
 
     const adminDoc = await db.collection('admins').doc(auth.currentUser.uid).get();
-    _cachedIsAdmin = adminDoc.exists && adminDoc.data().role === 'admin';
+    _cachedIsAdmin = adminDoc.exists && (adminDoc.data().role === 'admin' || adminDoc.data().role === 'spotter');
     _cachedAdminCheckTime = now;
     return _cachedIsAdmin;
   } catch (error) {
@@ -6486,7 +6486,7 @@ async function isRoutePopupAdmin() {
     if (!user) return false;
 
     const adminDoc = await db.collection('admins').doc(user.uid).get();
-    return adminDoc.exists && adminDoc.data().role === 'admin';
+    return adminDoc.exists && (adminDoc.data().role === 'admin' || adminDoc.data().role === 'spotter');
   } catch (error) {
     console.error('[RoutePopup] Error verificando admin:', error);
     return false;
