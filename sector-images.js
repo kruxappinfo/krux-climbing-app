@@ -2617,9 +2617,6 @@ function drawSvAnchorIcon(x, y, prevX, prevY, anchorType, color, size, alpha) {
     case 'mosqueton':
       drawSvAnchorMosqueton(0, 0, size, color);
       break;
-    case 'desconocido':
-      drawSvAnchorDesconocido(0, 0, size, color);
-      break;
     case 'rapel':
       drawSvAnchorRapel(0, 0, size, color);
       break;
@@ -2900,36 +2897,6 @@ function drawSvAnchorMosqueton(x, y, size, color) {
 
   svCtx.fillStyle = color;
   svCtx.fillRect(x - 2 * scale, y - 4 * scale, 4 * scale, 6 * scale);
-}
-
-/**
- * Dibuja reunión desconocida (visor de sector)
- */
-function drawSvAnchorDesconocido(x, y, size, color) {
-  const scale = size / 20;
-  const outlineColor = 'white';
-
-  // Círculo de fondo con contorno
-  svCtx.strokeStyle = outlineColor;
-  svCtx.lineWidth = 4;
-  svCtx.beginPath();
-  svCtx.arc(x, y - 8 * scale, 12 * scale, 0, Math.PI * 2);
-  svCtx.stroke();
-
-  svCtx.fillStyle = color;
-  svCtx.beginPath();
-  svCtx.arc(x, y - 8 * scale, 12 * scale, 0, Math.PI * 2);
-  svCtx.fill();
-  svCtx.strokeStyle = 'rgba(0,0,0,0.5)';
-  svCtx.lineWidth = 1;
-  svCtx.stroke();
-
-  // Signo de interrogación
-  svCtx.fillStyle = 'white';
-  svCtx.font = `bold ${16 * scale}px Arial`;
-  svCtx.textAlign = 'center';
-  svCtx.textBaseline = 'middle';
-  svCtx.fillText('?', x, y - 8 * scale);
 }
 
 /**
