@@ -39,6 +39,10 @@ let rdActiveForkPoint = null;            // Punto de bifurcación de la rama sie
 let rdActiveForkSegmentIndex = -1;       // Índice del segmento donde se bifurca
 let rdBifurcatingDrawing = null;         // Drawing que se está bifurcando
 
+// Variables de rápel (puntos independientes)
+let rdRapelMode = false;                 // Modo colocación de puntos de rápel
+let rdRapelPoints = [];                  // Array de puntos de rápel [{x, y, id}, ...]
+
 // Constantes para interacción
 const RD_POINT_HIT_RADIUS = 20;         // Radio en píxeles para detectar clic en un punto
 const RD_SEGMENT_HIT_RADIUS = 20;       // Radio para detectar clic en un segmento de línea
@@ -48,6 +52,7 @@ const RD_COLORS = {
   normal: '#10b981',        // Verde para vías normales
   selected: '#f59e0b',      // Ámbar para vía seleccionada
   highlight: '#ef4444',     // Rojo para highlight
+  rapel: '#a855f7',         // Púrpura para puntos de rápel
   point: '#ffffff',         // Blanco para puntos
   number: '#ffffff'         // Blanco para números
 };
@@ -73,11 +78,6 @@ const RD_ANCHOR_TYPES = {
     id: 'desconocido',
     name: 'Desconocido',
     description: 'Tipo de reunión desconocido'
-  },
-  rapel: {
-    id: 'rapel',
-    name: 'Rápel',
-    description: 'Punto de rápel / descenso'
   },
   sin_terminar: {
     id: 'sin_terminar',
@@ -327,6 +327,7 @@ async function openRouteDrawingEditor(schoolId, sectorName, imageId = null) {
 
   // Cargar dibujos existentes (filtrados por imagen si hay imageId)
   await loadRouteDrawings(schoolId, sectorName, imageId);
+  await loadRapelPoints(schoolId, sectorName, imageId);
 
   // Crear el editor
   createDrawingEditor(imageUrl);
@@ -698,6 +699,7 @@ async function rdSwitchImage(newIndex) {
 
   // Recargar dibujos para la nueva imagen
   await loadRouteDrawings(rdCurrentSector.schoolId, rdCurrentSector.sectorName, newImage.id);
+  await loadRapelPoints(rdCurrentSector.schoolId, rdCurrentSector.sectorName, newImage.id);
 
   // Actualizar lista de vías
   const routeListEl = document.getElementById('rd-route-list');
@@ -776,6 +778,7 @@ async function continueOpeningPendingRouteEditor(schoolId, sectorName, routeName
 
   // Cargar dibujos existentes FILTRADOS por la imagen seleccionada
   await loadRouteDrawings(schoolId, sectorName, selectedImage.id);
+  await loadRapelPoints(schoolId, sectorName, selectedImage.id);
 
   // Crear el editor con modo obligatorio
   createDrawingEditorMandatory(selectedImage.url, routeName);
@@ -1215,6 +1218,16 @@ function createDrawingEditor(imageUrl) {
         </div>
         ` : ''}
         <div class="rd-header-actions">
+          <button class="rd-btn-icon rd-btn-rapel" id="rd-btn-rapel" onclick="rdToggleRapelMode()" title="Colocar puntos de rápel">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="5" r="3"/>
+              <circle cx="12" cy="5" r="1.2" fill="currentColor"/>
+              <polyline points="10,8 8,14 10,20" stroke-linecap="round" stroke-linejoin="round"/>
+              <polyline points="14,8 16,14 14,20" stroke-linecap="round" stroke-linejoin="round"/>
+              <polyline points="6.5,18 8,20 9.5,18" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <polyline points="14.5,18 16,20 17.5,18" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
           <button class="rd-btn-icon rd-btn-routes-toggle" onclick="rdToggleRouteList()" title="Lista de vías">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="8" y1="6" x2="21" y2="6"/>
@@ -1488,6 +1501,9 @@ function redrawCanvas() {
     drawRoutePointOnly(drawing, isSelected);
   });
 
+  // PASO 3: Dibujar puntos de rápel encima de todo
+  drawRapelPoints();
+
   // Dibujar línea temporal si estamos dibujando
   if (rdDrawingMode && rdDrawingPoints.length > 0) {
     drawTemporaryLine();
@@ -1648,9 +1664,6 @@ function drawAnchorIcon(x, y, prevX, prevY, anchorType, color) {
       break;
     case 'desconocido':
       drawAnchorDesconocido(0, 0, iconSize, color);
-      break;
-    case 'rapel':
-      drawAnchorRapel(0, 0, iconSize, color);
       break;
   }
 
@@ -1962,111 +1975,6 @@ function drawAnchorDesconocido(x, y, size, color) {
 }
 
 /**
- * Dibuja icono de rápel (editor)
- * Anillo superior con dos cuerdas descendentes en zigzag
- */
-function drawAnchorRapel(x, y, size, color) {
-  const scale = size / 20;
-  const outlineColor = 'white';
-
-  // Anillo de rápel (arriba)
-  rdCtx.strokeStyle = outlineColor;
-  rdCtx.lineWidth = 4;
-  rdCtx.beginPath();
-  rdCtx.arc(x, y - 14 * scale, 7 * scale, 0, Math.PI * 2);
-  rdCtx.stroke();
-
-  rdCtx.fillStyle = color;
-  rdCtx.beginPath();
-  rdCtx.arc(x, y - 14 * scale, 7 * scale, 0, Math.PI * 2);
-  rdCtx.fill();
-  rdCtx.strokeStyle = 'rgba(0,0,0,0.5)';
-  rdCtx.lineWidth = 1;
-  rdCtx.stroke();
-
-  // Agujero del anillo
-  rdCtx.fillStyle = 'white';
-  rdCtx.beginPath();
-  rdCtx.arc(x, y - 14 * scale, 3 * scale, 0, Math.PI * 2);
-  rdCtx.fill();
-
-  // Cuerda izquierda descendente (zigzag)
-  rdCtx.strokeStyle = outlineColor;
-  rdCtx.lineWidth = 4 * scale;
-  rdCtx.lineCap = 'round';
-  rdCtx.lineJoin = 'round';
-  rdCtx.beginPath();
-  rdCtx.moveTo(x - 3 * scale, y - 7 * scale);
-  rdCtx.lineTo(x - 7 * scale, y - 1 * scale);
-  rdCtx.lineTo(x - 3 * scale, y + 5 * scale);
-  rdCtx.lineTo(x - 7 * scale, y + 11 * scale);
-  rdCtx.stroke();
-
-  rdCtx.strokeStyle = color;
-  rdCtx.lineWidth = 2 * scale;
-  rdCtx.beginPath();
-  rdCtx.moveTo(x - 3 * scale, y - 7 * scale);
-  rdCtx.lineTo(x - 7 * scale, y - 1 * scale);
-  rdCtx.lineTo(x - 3 * scale, y + 5 * scale);
-  rdCtx.lineTo(x - 7 * scale, y + 11 * scale);
-  rdCtx.stroke();
-
-  // Cuerda derecha descendente (zigzag)
-  rdCtx.strokeStyle = outlineColor;
-  rdCtx.lineWidth = 4 * scale;
-  rdCtx.beginPath();
-  rdCtx.moveTo(x + 3 * scale, y - 7 * scale);
-  rdCtx.lineTo(x + 7 * scale, y - 1 * scale);
-  rdCtx.lineTo(x + 3 * scale, y + 5 * scale);
-  rdCtx.lineTo(x + 7 * scale, y + 11 * scale);
-  rdCtx.stroke();
-
-  rdCtx.strokeStyle = color;
-  rdCtx.lineWidth = 2 * scale;
-  rdCtx.beginPath();
-  rdCtx.moveTo(x + 3 * scale, y - 7 * scale);
-  rdCtx.lineTo(x + 7 * scale, y - 1 * scale);
-  rdCtx.lineTo(x + 3 * scale, y + 5 * scale);
-  rdCtx.lineTo(x + 7 * scale, y + 11 * scale);
-  rdCtx.stroke();
-
-  // Puntas de flecha hacia abajo en cada cuerda
-  // Flecha izquierda
-  rdCtx.strokeStyle = outlineColor;
-  rdCtx.lineWidth = 3 * scale;
-  rdCtx.beginPath();
-  rdCtx.moveTo(x - 10 * scale, y + 8 * scale);
-  rdCtx.lineTo(x - 7 * scale, y + 11 * scale);
-  rdCtx.lineTo(x - 4 * scale, y + 8 * scale);
-  rdCtx.stroke();
-
-  rdCtx.strokeStyle = color;
-  rdCtx.lineWidth = 1.5 * scale;
-  rdCtx.beginPath();
-  rdCtx.moveTo(x - 10 * scale, y + 8 * scale);
-  rdCtx.lineTo(x - 7 * scale, y + 11 * scale);
-  rdCtx.lineTo(x - 4 * scale, y + 8 * scale);
-  rdCtx.stroke();
-
-  // Flecha derecha
-  rdCtx.strokeStyle = outlineColor;
-  rdCtx.lineWidth = 3 * scale;
-  rdCtx.beginPath();
-  rdCtx.moveTo(x + 4 * scale, y + 8 * scale);
-  rdCtx.lineTo(x + 7 * scale, y + 11 * scale);
-  rdCtx.lineTo(x + 10 * scale, y + 8 * scale);
-  rdCtx.stroke();
-
-  rdCtx.strokeStyle = color;
-  rdCtx.lineWidth = 1.5 * scale;
-  rdCtx.beginPath();
-  rdCtx.moveTo(x + 4 * scale, y + 8 * scale);
-  rdCtx.lineTo(x + 7 * scale, y + 11 * scale);
-  rdCtx.lineTo(x + 10 * scale, y + 8 * scale);
-  rdCtx.stroke();
-}
-
-/**
  * Dibuja flecha de vía sin terminar (editor)
  * La flecha apunta en la dirección del último segmento
  */
@@ -2265,6 +2173,13 @@ function findNearestPointIndex(canvasX, canvasY) {
  * Maneja clic del mouse en el canvas
  */
 function handleCanvasMouseDown(e) {
+  // Modo rápel: colocar o eliminar punto de rápel
+  if (rdRapelMode) {
+    const { x, y } = getCanvasCoordinates(e);
+    handleRapelClick(x, y);
+    return;
+  }
+
   // Modo bifurcación: buscar segmento de línea para crear fork
   if (rdBifurcationMode) {
     const { x, y } = getCanvasCoordinates(e);
@@ -2331,6 +2246,14 @@ function handleCanvasMouseUp(e) {
  * Maneja toque táctil en el canvas
  */
 function handleCanvasTouchStart(e) {
+  // Modo rápel: colocar o eliminar punto de rápel
+  if (rdRapelMode) {
+    e.preventDefault();
+    const { x, y } = getCanvasCoordinates(e, true);
+    handleRapelClick(x, y);
+    return;
+  }
+
   // Modo bifurcación: buscar segmento de línea para crear fork
   if (rdBifurcationMode) {
     e.preventDefault();
@@ -2948,23 +2871,6 @@ function getAnchorSVG(type) {
           <text x="30" y="43" font-size="32" font-weight="bold" fill="white" text-anchor="middle">?</text>
         </svg>
       `;
-    case 'rapel':
-      // Punto de rápel: anillo con cuerdas descendentes
-      return `
-        <svg viewBox="0 0 60 80" width="40" height="53">
-          <!-- Anillo de rápel -->
-          <circle cx="30" cy="14" r="10" fill="currentColor"/>
-          <circle cx="30" cy="14" r="4" fill="white"/>
-          <!-- Cuerda izquierda zigzag -->
-          <polyline points="26,24 18,36 26,48 18,60" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-          <!-- Flecha izquierda -->
-          <polyline points="14,54 18,60 22,54" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          <!-- Cuerda derecha zigzag -->
-          <polyline points="34,24 42,36 34,48 42,60" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-          <!-- Flecha derecha -->
-          <polyline points="38,54 42,60 46,54" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      `;
     case 'sin_terminar':
       // Flecha indicando vía sin terminar
       return `
@@ -3289,6 +3195,13 @@ function selectRouteForDrawing(routeId) {
     // Mostrar modal con opciones: Editar / Bifurcar / Cancelar
     showRouteActionModal(route, existingDrawing);
     return;
+  }
+
+  // Desactivar modo rápel si está activo
+  if (rdRapelMode) {
+    rdRapelMode = false;
+    const rapelBtn = document.getElementById('rd-btn-rapel');
+    if (rapelBtn) rapelBtn.classList.remove('rd-btn-rapel-active');
   }
 
   // Activar modo de dibujo
@@ -3661,6 +3574,286 @@ async function deleteRouteDrawing(routeId) {
 }
 
 // ============================================
+// SISTEMA DE PUNTOS DE RÁPEL
+// ============================================
+
+/**
+ * Activa/desactiva el modo rápel
+ */
+function rdToggleRapelMode() {
+  // Si estamos dibujando una vía, no permitir
+  if (rdDrawingMode) {
+    showRDToast('Termina o cancela el dibujo actual antes de colocar rápeles', 'warning');
+    return;
+  }
+  if (rdBifurcationMode) {
+    showRDToast('Termina o cancela la bifurcación antes de colocar rápeles', 'warning');
+    return;
+  }
+
+  rdRapelMode = !rdRapelMode;
+
+  // Actualizar estado visual del botón
+  const btn = document.getElementById('rd-btn-rapel');
+  if (btn) {
+    btn.classList.toggle('rd-btn-rapel-active', rdRapelMode);
+  }
+
+  if (rdRapelMode) {
+    rdCanvas.style.cursor = 'crosshair';
+    updateInstructions('Modo rápel: toca para colocar un punto. Toca uno existente para eliminarlo.');
+  } else {
+    rdCanvas.style.cursor = 'default';
+    updateInstructions('Selecciona una vía de la lista para dibujar su línea en la imagen');
+  }
+}
+
+/**
+ * Maneja un clic en modo rápel
+ */
+function handleRapelClick(canvasX, canvasY) {
+  const imageCoords = canvasToImageCoords(canvasX, canvasY);
+
+  // Comprobar si el clic está cerca de un rápel existente (para eliminar)
+  const hitIndex = findNearestRapelPoint(imageCoords.x, imageCoords.y);
+
+  if (hitIndex !== -1) {
+    // Eliminar el punto
+    rdRapelPoints.splice(hitIndex, 1);
+    showRDToast('Punto de rápel eliminado', 'info');
+  } else {
+    // Añadir nuevo punto
+    rdRapelPoints.push({
+      x: imageCoords.x,
+      y: imageCoords.y,
+      id: Date.now()
+    });
+    showRDToast('Punto de rápel colocado', 'success');
+  }
+
+  // Guardar y redibujar
+  saveRapelPoints();
+  redrawCanvas();
+}
+
+/**
+ * Busca el punto de rápel más cercano al clic
+ */
+function findNearestRapelPoint(imgX, imgY) {
+  const hitRadius = 20; // En coordenadas de imagen
+  let nearestIndex = -1;
+  let nearestDist = Infinity;
+
+  rdRapelPoints.forEach((pt, i) => {
+    const dx = pt.x - imgX;
+    const dy = pt.y - imgY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < hitRadius && dist < nearestDist) {
+      nearestDist = dist;
+      nearestIndex = i;
+    }
+  });
+
+  return nearestIndex;
+}
+
+/**
+ * Dibuja todos los puntos de rápel en el canvas del editor
+ */
+function drawRapelPoints() {
+  if (rdRapelPoints.length === 0) return;
+
+  const displayWidth = rdCanvas.displayWidth || rdCanvas.width;
+  const displayHeight = rdCanvas.displayHeight || rdCanvas.height;
+  const scaleX = displayWidth / rdImage.width;
+  const scaleY = displayHeight / rdImage.height;
+  const color = RD_COLORS.rapel;
+  const size = 14;
+
+  rdRapelPoints.forEach(pt => {
+    const cx = pt.x * scaleX;
+    const cy = pt.y * scaleY;
+    rdCtx.save();
+    rdCtx.translate(cx, cy);
+    drawRapelIcon(rdCtx, 0, 0, size, color);
+    rdCtx.restore();
+  });
+}
+
+/**
+ * Dibuja un icono de rápel genérico (reutilizable por editor y visor)
+ * @param {CanvasRenderingContext2D} ctx - Contexto del canvas
+ */
+function drawRapelIcon(ctx, x, y, size, color) {
+  const scale = size / 20;
+  const outlineColor = 'white';
+
+  // Anillo de rápel (arriba)
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(x, y - 14 * scale, 7 * scale, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y - 14 * scale, 7 * scale, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Agujero del anillo
+  ctx.fillStyle = 'white';
+  ctx.beginPath();
+  ctx.arc(x, y - 14 * scale, 3 * scale, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Cuerda izquierda descendente (zigzag)
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 4 * scale;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x - 3 * scale, y - 7 * scale);
+  ctx.lineTo(x - 7 * scale, y - 1 * scale);
+  ctx.lineTo(x - 3 * scale, y + 5 * scale);
+  ctx.lineTo(x - 7 * scale, y + 11 * scale);
+  ctx.stroke();
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x - 3 * scale, y - 7 * scale);
+  ctx.lineTo(x - 7 * scale, y - 1 * scale);
+  ctx.lineTo(x - 3 * scale, y + 5 * scale);
+  ctx.lineTo(x - 7 * scale, y + 11 * scale);
+  ctx.stroke();
+
+  // Cuerda derecha descendente (zigzag)
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 4 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x + 3 * scale, y - 7 * scale);
+  ctx.lineTo(x + 7 * scale, y - 1 * scale);
+  ctx.lineTo(x + 3 * scale, y + 5 * scale);
+  ctx.lineTo(x + 7 * scale, y + 11 * scale);
+  ctx.stroke();
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x + 3 * scale, y - 7 * scale);
+  ctx.lineTo(x + 7 * scale, y - 1 * scale);
+  ctx.lineTo(x + 3 * scale, y + 5 * scale);
+  ctx.lineTo(x + 7 * scale, y + 11 * scale);
+  ctx.stroke();
+
+  // Puntas de flecha
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 3 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x - 10 * scale, y + 8 * scale);
+  ctx.lineTo(x - 7 * scale, y + 11 * scale);
+  ctx.lineTo(x - 4 * scale, y + 8 * scale);
+  ctx.stroke();
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x - 10 * scale, y + 8 * scale);
+  ctx.lineTo(x - 7 * scale, y + 11 * scale);
+  ctx.lineTo(x - 4 * scale, y + 8 * scale);
+  ctx.stroke();
+
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 3 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x + 4 * scale, y + 8 * scale);
+  ctx.lineTo(x + 7 * scale, y + 11 * scale);
+  ctx.lineTo(x + 10 * scale, y + 8 * scale);
+  ctx.stroke();
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x + 4 * scale, y + 8 * scale);
+  ctx.lineTo(x + 7 * scale, y + 11 * scale);
+  ctx.lineTo(x + 10 * scale, y + 8 * scale);
+  ctx.stroke();
+}
+
+/**
+ * Guarda los puntos de rápel en Firestore
+ */
+async function saveRapelPoints() {
+  try {
+    const docId = `${rdCurrentSector.schoolId}_${normalizeSectorName(rdCurrentSector.sectorName)}`;
+    const docRef = db.collection('sector_route_drawings').doc(docId);
+
+    // Guardar con imageId si aplica
+    const rapelData = rdRapelPoints.map(pt => ({
+      x: pt.x,
+      y: pt.y,
+      id: pt.id,
+      ...(rdCurrentSector.imageId && { imageId: rdCurrentSector.imageId })
+    }));
+
+    // Obtener documento existente para merge
+    const doc = await docRef.get();
+    let allRapelPoints = [];
+
+    if (doc.exists && doc.data().rapelPoints) {
+      allRapelPoints = doc.data().rapelPoints;
+      // Filtrar los de esta imagen y reemplazar
+      if (rdCurrentSector.imageId) {
+        allRapelPoints = allRapelPoints.filter(p => p.imageId !== rdCurrentSector.imageId);
+      } else {
+        allRapelPoints = allRapelPoints.filter(p => p.imageId);
+      }
+    }
+    allRapelPoints = allRapelPoints.concat(rapelData);
+
+    await docRef.set({
+      rapelPoints: allRapelPoints,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: auth.currentUser?.uid
+    }, { merge: true });
+
+  } catch (error) {
+    console.error('[RouteDrawing] Error guardando puntos de rápel:', error);
+    showRDToast('Error al guardar rápel: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Carga los puntos de rápel de Firestore
+ */
+async function loadRapelPoints(schoolId, sectorName, imageId = null) {
+  rdRapelPoints = [];
+
+  try {
+    const docId = `${schoolId}_${normalizeSectorName(sectorName)}`;
+    const doc = await db.collection('sector_route_drawings').doc(docId).get();
+
+    if (doc.exists && doc.data().rapelPoints) {
+      const allRapelPoints = doc.data().rapelPoints;
+
+      if (imageId) {
+        rdRapelPoints = allRapelPoints.filter(p => {
+          if (p.imageId) return p.imageId === imageId;
+          return imageId === 'legacy_0';
+        });
+      } else {
+        rdRapelPoints = allRapelPoints;
+      }
+    }
+  } catch (error) {
+    console.error('[RouteDrawing] Error cargando puntos de rápel:', error);
+  }
+}
+
+// ============================================
 // FUNCIONES DE UI
 // ============================================
 
@@ -3701,6 +3894,10 @@ function closeRouteDrawingEditor() {
   rdActiveForkPoint = null;
   rdActiveForkSegmentIndex = -1;
   rdBifurcatingDrawing = null;
+
+  // Limpiar estado de rápel
+  rdRapelMode = false;
+  rdRapelPoints = [];
 }
 
 /**
@@ -3984,5 +4181,7 @@ window.rdNextImage = rdNextImage;
 window.showAnchorTypeModal = showAnchorTypeModal;
 window.closeAnchorModal = closeAnchorModal;
 window.selectAnchorType = selectAnchorType;
+window.rdToggleRapelMode = rdToggleRapelMode;
+window.drawRapelIcon = drawRapelIcon;
 
 console.log('[RouteDrawing] Módulo cargado');

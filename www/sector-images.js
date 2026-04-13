@@ -1604,6 +1604,7 @@ let svCanvas = null;
 let svCtx = null;
 let svImage = null;
 let svDrawings = [];
+let svRapelPoints = []; // Puntos de rápel independientes
 let svRoutesList = [];  // Lista de vías del sector para obtener grados
 let svCurrentImageId = null; // ID de la imagen actual (para galería)
 
@@ -1802,6 +1803,17 @@ async function loadViewerRouteDrawingsForImage(schoolId, sectorName, imageId) {
       });
 
       console.log('[SectorViewer] Dibujos cargados para imagen', imageId, ':', svDrawings.length);
+
+      // Cargar puntos de rápel
+      const allRapelPoints = data.rapelPoints || [];
+      if (imageId) {
+        svRapelPoints = allRapelPoints.filter(p => {
+          if (p.imageId) return p.imageId === imageId;
+          return imageId === 'legacy_0';
+        });
+      } else {
+        svRapelPoints = allRapelPoints;
+      }
     } else {
       console.log('[SectorViewer] No hay dibujos guardados para este sector');
     }
@@ -2348,6 +2360,9 @@ function redrawCanvasOverlay() {
     drawOverlayRouteAnchor(highlightedDrawing, imgWidth, imgHeight);
     drawOverlayRoutePoint(highlightedDrawing, imgWidth, imgHeight);
   }
+
+  // PASO 4: Dibujar puntos de rápel encima de todo
+  drawSvRapelPoints(imgWidth, imgHeight);
 }
 
 /**
@@ -2616,9 +2631,6 @@ function drawSvAnchorIcon(x, y, prevX, prevY, anchorType, color, size, alpha) {
       break;
     case 'mosqueton':
       drawSvAnchorMosqueton(0, 0, size, color);
-      break;
-    case 'rapel':
-      drawSvAnchorRapel(0, 0, size, color);
       break;
   }
 
@@ -2900,108 +2912,51 @@ function drawSvAnchorMosqueton(x, y, size, color) {
 }
 
 /**
- * Dibuja icono de rápel (visor de sector)
- * Anillo superior con dos cuerdas descendentes en zigzag
+ * Dibuja todos los puntos de rápel en el visor de sector
+ * Utiliza drawRapelIcon de route-drawing.js si está disponible
  */
-function drawSvAnchorRapel(x, y, size, color) {
-  const scale = size / 20;
-  const outlineColor = 'white';
+function drawSvRapelPoints(canvasWidth, canvasHeight) {
+  if (!svRapelPoints || svRapelPoints.length === 0) return;
 
-  // Anillo de rápel (arriba)
-  svCtx.strokeStyle = outlineColor;
-  svCtx.lineWidth = 4;
-  svCtx.beginPath();
-  svCtx.arc(x, y - 14 * scale, 7 * scale, 0, Math.PI * 2);
-  svCtx.stroke();
+  const scaleX = canvasWidth / svImage.width;
+  const scaleY = canvasHeight / svImage.height;
+  const isZoomed = svZoomState.scale > 1;
+  const scaleFactor = getLineScaleFactor();
+  const color = '#a855f7'; // Púrpura
+  const size = isZoomed ? 10 * scaleFactor : 14 * scaleFactor;
+  const alpha = isZoomed ? 0.6 : 1;
 
-  svCtx.fillStyle = color;
-  svCtx.beginPath();
-  svCtx.arc(x, y - 14 * scale, 7 * scale, 0, Math.PI * 2);
-  svCtx.fill();
-  svCtx.strokeStyle = 'rgba(0,0,0,0.5)';
-  svCtx.lineWidth = 1;
-  svCtx.stroke();
+  svRapelPoints.forEach(pt => {
+    const cx = pt.x * scaleX;
+    const cy = pt.y * scaleY;
 
-  // Agujero del anillo
-  svCtx.fillStyle = 'white';
-  svCtx.beginPath();
-  svCtx.arc(x, y - 14 * scale, 3 * scale, 0, Math.PI * 2);
-  svCtx.fill();
+    svCtx.save();
+    if (alpha < 1) svCtx.globalAlpha = alpha;
+    svCtx.translate(cx, cy);
 
-  // Cuerda izquierda descendente (zigzag)
-  svCtx.strokeStyle = outlineColor;
-  svCtx.lineWidth = 4 * scale;
-  svCtx.lineCap = 'round';
-  svCtx.lineJoin = 'round';
-  svCtx.beginPath();
-  svCtx.moveTo(x - 3 * scale, y - 7 * scale);
-  svCtx.lineTo(x - 7 * scale, y - 1 * scale);
-  svCtx.lineTo(x - 3 * scale, y + 5 * scale);
-  svCtx.lineTo(x - 7 * scale, y + 11 * scale);
-  svCtx.stroke();
+    // Usar drawRapelIcon de route-drawing.js si está disponible
+    if (typeof drawRapelIcon === 'function') {
+      drawRapelIcon(svCtx, 0, 0, size, color);
+    } else {
+      // Fallback simple: círculo con anillo
+      const s = size / 20;
+      svCtx.strokeStyle = 'white';
+      svCtx.lineWidth = 4;
+      svCtx.beginPath();
+      svCtx.arc(0, -14 * s, 7 * s, 0, Math.PI * 2);
+      svCtx.stroke();
+      svCtx.fillStyle = color;
+      svCtx.beginPath();
+      svCtx.arc(0, -14 * s, 7 * s, 0, Math.PI * 2);
+      svCtx.fill();
+      svCtx.fillStyle = 'white';
+      svCtx.beginPath();
+      svCtx.arc(0, -14 * s, 3 * s, 0, Math.PI * 2);
+      svCtx.fill();
+    }
 
-  svCtx.strokeStyle = color;
-  svCtx.lineWidth = 2 * scale;
-  svCtx.beginPath();
-  svCtx.moveTo(x - 3 * scale, y - 7 * scale);
-  svCtx.lineTo(x - 7 * scale, y - 1 * scale);
-  svCtx.lineTo(x - 3 * scale, y + 5 * scale);
-  svCtx.lineTo(x - 7 * scale, y + 11 * scale);
-  svCtx.stroke();
-
-  // Cuerda derecha descendente (zigzag)
-  svCtx.strokeStyle = outlineColor;
-  svCtx.lineWidth = 4 * scale;
-  svCtx.beginPath();
-  svCtx.moveTo(x + 3 * scale, y - 7 * scale);
-  svCtx.lineTo(x + 7 * scale, y - 1 * scale);
-  svCtx.lineTo(x + 3 * scale, y + 5 * scale);
-  svCtx.lineTo(x + 7 * scale, y + 11 * scale);
-  svCtx.stroke();
-
-  svCtx.strokeStyle = color;
-  svCtx.lineWidth = 2 * scale;
-  svCtx.beginPath();
-  svCtx.moveTo(x + 3 * scale, y - 7 * scale);
-  svCtx.lineTo(x + 7 * scale, y - 1 * scale);
-  svCtx.lineTo(x + 3 * scale, y + 5 * scale);
-  svCtx.lineTo(x + 7 * scale, y + 11 * scale);
-  svCtx.stroke();
-
-  // Puntas de flecha hacia abajo en cada cuerda
-  // Flecha izquierda
-  svCtx.strokeStyle = outlineColor;
-  svCtx.lineWidth = 3 * scale;
-  svCtx.beginPath();
-  svCtx.moveTo(x - 10 * scale, y + 8 * scale);
-  svCtx.lineTo(x - 7 * scale, y + 11 * scale);
-  svCtx.lineTo(x - 4 * scale, y + 8 * scale);
-  svCtx.stroke();
-
-  svCtx.strokeStyle = color;
-  svCtx.lineWidth = 1.5 * scale;
-  svCtx.beginPath();
-  svCtx.moveTo(x - 10 * scale, y + 8 * scale);
-  svCtx.lineTo(x - 7 * scale, y + 11 * scale);
-  svCtx.lineTo(x - 4 * scale, y + 8 * scale);
-  svCtx.stroke();
-
-  // Flecha derecha
-  svCtx.strokeStyle = outlineColor;
-  svCtx.lineWidth = 3 * scale;
-  svCtx.beginPath();
-  svCtx.moveTo(x + 4 * scale, y + 8 * scale);
-  svCtx.lineTo(x + 7 * scale, y + 11 * scale);
-  svCtx.lineTo(x + 10 * scale, y + 8 * scale);
-  svCtx.stroke();
-
-  svCtx.strokeStyle = color;
-  svCtx.lineWidth = 1.5 * scale;
-  svCtx.beginPath();
-  svCtx.moveTo(x + 4 * scale, y + 8 * scale);
-  svCtx.lineTo(x + 7 * scale, y + 11 * scale);
-  svCtx.lineTo(x + 10 * scale, y + 8 * scale);
-  svCtx.stroke();
+    svCtx.restore();
+  });
 }
 
 /**
