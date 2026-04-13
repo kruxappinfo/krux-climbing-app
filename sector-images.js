@@ -2617,6 +2617,12 @@ function drawSvAnchorIcon(x, y, prevX, prevY, anchorType, color, size, alpha) {
     case 'mosqueton':
       drawSvAnchorMosqueton(0, 0, size, color);
       break;
+    case 'desconocido':
+      drawSvAnchorDesconocido(0, 0, size, color);
+      break;
+    case 'rapel':
+      drawSvAnchorRapel(0, 0, size, color);
+      break;
   }
 
   svCtx.restore();
@@ -2894,6 +2900,141 @@ function drawSvAnchorMosqueton(x, y, size, color) {
 
   svCtx.fillStyle = color;
   svCtx.fillRect(x - 2 * scale, y - 4 * scale, 4 * scale, 6 * scale);
+}
+
+/**
+ * Dibuja reunión desconocida (visor de sector)
+ */
+function drawSvAnchorDesconocido(x, y, size, color) {
+  const scale = size / 20;
+  const outlineColor = 'white';
+
+  // Círculo de fondo con contorno
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4;
+  svCtx.beginPath();
+  svCtx.arc(x, y - 8 * scale, 12 * scale, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.fillStyle = color;
+  svCtx.beginPath();
+  svCtx.arc(x, y - 8 * scale, 12 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+  svCtx.strokeStyle = 'rgba(0,0,0,0.5)';
+  svCtx.lineWidth = 1;
+  svCtx.stroke();
+
+  // Signo de interrogación
+  svCtx.fillStyle = 'white';
+  svCtx.font = `bold ${16 * scale}px Arial`;
+  svCtx.textAlign = 'center';
+  svCtx.textBaseline = 'middle';
+  svCtx.fillText('?', x, y - 8 * scale);
+}
+
+/**
+ * Dibuja icono de rápel (visor de sector)
+ * Anillo superior con dos cuerdas descendentes en zigzag
+ */
+function drawSvAnchorRapel(x, y, size, color) {
+  const scale = size / 20;
+  const outlineColor = 'white';
+
+  // Anillo de rápel (arriba)
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4;
+  svCtx.beginPath();
+  svCtx.arc(x, y - 14 * scale, 7 * scale, 0, Math.PI * 2);
+  svCtx.stroke();
+
+  svCtx.fillStyle = color;
+  svCtx.beginPath();
+  svCtx.arc(x, y - 14 * scale, 7 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+  svCtx.strokeStyle = 'rgba(0,0,0,0.5)';
+  svCtx.lineWidth = 1;
+  svCtx.stroke();
+
+  // Agujero del anillo
+  svCtx.fillStyle = 'white';
+  svCtx.beginPath();
+  svCtx.arc(x, y - 14 * scale, 3 * scale, 0, Math.PI * 2);
+  svCtx.fill();
+
+  // Cuerda izquierda descendente (zigzag)
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4 * scale;
+  svCtx.lineCap = 'round';
+  svCtx.lineJoin = 'round';
+  svCtx.beginPath();
+  svCtx.moveTo(x - 3 * scale, y - 7 * scale);
+  svCtx.lineTo(x - 7 * scale, y - 1 * scale);
+  svCtx.lineTo(x - 3 * scale, y + 5 * scale);
+  svCtx.lineTo(x - 7 * scale, y + 11 * scale);
+  svCtx.stroke();
+
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 2 * scale;
+  svCtx.beginPath();
+  svCtx.moveTo(x - 3 * scale, y - 7 * scale);
+  svCtx.lineTo(x - 7 * scale, y - 1 * scale);
+  svCtx.lineTo(x - 3 * scale, y + 5 * scale);
+  svCtx.lineTo(x - 7 * scale, y + 11 * scale);
+  svCtx.stroke();
+
+  // Cuerda derecha descendente (zigzag)
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 4 * scale;
+  svCtx.beginPath();
+  svCtx.moveTo(x + 3 * scale, y - 7 * scale);
+  svCtx.lineTo(x + 7 * scale, y - 1 * scale);
+  svCtx.lineTo(x + 3 * scale, y + 5 * scale);
+  svCtx.lineTo(x + 7 * scale, y + 11 * scale);
+  svCtx.stroke();
+
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 2 * scale;
+  svCtx.beginPath();
+  svCtx.moveTo(x + 3 * scale, y - 7 * scale);
+  svCtx.lineTo(x + 7 * scale, y - 1 * scale);
+  svCtx.lineTo(x + 3 * scale, y + 5 * scale);
+  svCtx.lineTo(x + 7 * scale, y + 11 * scale);
+  svCtx.stroke();
+
+  // Puntas de flecha hacia abajo en cada cuerda
+  // Flecha izquierda
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 3 * scale;
+  svCtx.beginPath();
+  svCtx.moveTo(x - 10 * scale, y + 8 * scale);
+  svCtx.lineTo(x - 7 * scale, y + 11 * scale);
+  svCtx.lineTo(x - 4 * scale, y + 8 * scale);
+  svCtx.stroke();
+
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 1.5 * scale;
+  svCtx.beginPath();
+  svCtx.moveTo(x - 10 * scale, y + 8 * scale);
+  svCtx.lineTo(x - 7 * scale, y + 11 * scale);
+  svCtx.lineTo(x - 4 * scale, y + 8 * scale);
+  svCtx.stroke();
+
+  // Flecha derecha
+  svCtx.strokeStyle = outlineColor;
+  svCtx.lineWidth = 3 * scale;
+  svCtx.beginPath();
+  svCtx.moveTo(x + 4 * scale, y + 8 * scale);
+  svCtx.lineTo(x + 7 * scale, y + 11 * scale);
+  svCtx.lineTo(x + 10 * scale, y + 8 * scale);
+  svCtx.stroke();
+
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 1.5 * scale;
+  svCtx.beginPath();
+  svCtx.moveTo(x + 4 * scale, y + 8 * scale);
+  svCtx.lineTo(x + 7 * scale, y + 11 * scale);
+  svCtx.lineTo(x + 10 * scale, y + 8 * scale);
+  svCtx.stroke();
 }
 
 /**

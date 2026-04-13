@@ -74,6 +74,11 @@ const RD_ANCHOR_TYPES = {
     name: 'Desconocido',
     description: 'Tipo de reunión desconocido'
   },
+  rapel: {
+    id: 'rapel',
+    name: 'Rápel',
+    description: 'Punto de rápel / descenso'
+  },
   sin_terminar: {
     id: 'sin_terminar',
     name: 'Sin terminar',
@@ -1644,6 +1649,9 @@ function drawAnchorIcon(x, y, prevX, prevY, anchorType, color) {
     case 'desconocido':
       drawAnchorDesconocido(0, 0, iconSize, color);
       break;
+    case 'rapel':
+      drawAnchorRapel(0, 0, iconSize, color);
+      break;
   }
 
   rdCtx.restore();
@@ -1951,6 +1959,111 @@ function drawAnchorDesconocido(x, y, size, color) {
   rdCtx.textAlign = 'center';
   rdCtx.textBaseline = 'middle';
   rdCtx.fillText('?', x, y - 8 * scale);
+}
+
+/**
+ * Dibuja icono de rápel (editor)
+ * Anillo superior con dos cuerdas descendentes en zigzag
+ */
+function drawAnchorRapel(x, y, size, color) {
+  const scale = size / 20;
+  const outlineColor = 'white';
+
+  // Anillo de rápel (arriba)
+  rdCtx.strokeStyle = outlineColor;
+  rdCtx.lineWidth = 4;
+  rdCtx.beginPath();
+  rdCtx.arc(x, y - 14 * scale, 7 * scale, 0, Math.PI * 2);
+  rdCtx.stroke();
+
+  rdCtx.fillStyle = color;
+  rdCtx.beginPath();
+  rdCtx.arc(x, y - 14 * scale, 7 * scale, 0, Math.PI * 2);
+  rdCtx.fill();
+  rdCtx.strokeStyle = 'rgba(0,0,0,0.5)';
+  rdCtx.lineWidth = 1;
+  rdCtx.stroke();
+
+  // Agujero del anillo
+  rdCtx.fillStyle = 'white';
+  rdCtx.beginPath();
+  rdCtx.arc(x, y - 14 * scale, 3 * scale, 0, Math.PI * 2);
+  rdCtx.fill();
+
+  // Cuerda izquierda descendente (zigzag)
+  rdCtx.strokeStyle = outlineColor;
+  rdCtx.lineWidth = 4 * scale;
+  rdCtx.lineCap = 'round';
+  rdCtx.lineJoin = 'round';
+  rdCtx.beginPath();
+  rdCtx.moveTo(x - 3 * scale, y - 7 * scale);
+  rdCtx.lineTo(x - 7 * scale, y - 1 * scale);
+  rdCtx.lineTo(x - 3 * scale, y + 5 * scale);
+  rdCtx.lineTo(x - 7 * scale, y + 11 * scale);
+  rdCtx.stroke();
+
+  rdCtx.strokeStyle = color;
+  rdCtx.lineWidth = 2 * scale;
+  rdCtx.beginPath();
+  rdCtx.moveTo(x - 3 * scale, y - 7 * scale);
+  rdCtx.lineTo(x - 7 * scale, y - 1 * scale);
+  rdCtx.lineTo(x - 3 * scale, y + 5 * scale);
+  rdCtx.lineTo(x - 7 * scale, y + 11 * scale);
+  rdCtx.stroke();
+
+  // Cuerda derecha descendente (zigzag)
+  rdCtx.strokeStyle = outlineColor;
+  rdCtx.lineWidth = 4 * scale;
+  rdCtx.beginPath();
+  rdCtx.moveTo(x + 3 * scale, y - 7 * scale);
+  rdCtx.lineTo(x + 7 * scale, y - 1 * scale);
+  rdCtx.lineTo(x + 3 * scale, y + 5 * scale);
+  rdCtx.lineTo(x + 7 * scale, y + 11 * scale);
+  rdCtx.stroke();
+
+  rdCtx.strokeStyle = color;
+  rdCtx.lineWidth = 2 * scale;
+  rdCtx.beginPath();
+  rdCtx.moveTo(x + 3 * scale, y - 7 * scale);
+  rdCtx.lineTo(x + 7 * scale, y - 1 * scale);
+  rdCtx.lineTo(x + 3 * scale, y + 5 * scale);
+  rdCtx.lineTo(x + 7 * scale, y + 11 * scale);
+  rdCtx.stroke();
+
+  // Puntas de flecha hacia abajo en cada cuerda
+  // Flecha izquierda
+  rdCtx.strokeStyle = outlineColor;
+  rdCtx.lineWidth = 3 * scale;
+  rdCtx.beginPath();
+  rdCtx.moveTo(x - 10 * scale, y + 8 * scale);
+  rdCtx.lineTo(x - 7 * scale, y + 11 * scale);
+  rdCtx.lineTo(x - 4 * scale, y + 8 * scale);
+  rdCtx.stroke();
+
+  rdCtx.strokeStyle = color;
+  rdCtx.lineWidth = 1.5 * scale;
+  rdCtx.beginPath();
+  rdCtx.moveTo(x - 10 * scale, y + 8 * scale);
+  rdCtx.lineTo(x - 7 * scale, y + 11 * scale);
+  rdCtx.lineTo(x - 4 * scale, y + 8 * scale);
+  rdCtx.stroke();
+
+  // Flecha derecha
+  rdCtx.strokeStyle = outlineColor;
+  rdCtx.lineWidth = 3 * scale;
+  rdCtx.beginPath();
+  rdCtx.moveTo(x + 4 * scale, y + 8 * scale);
+  rdCtx.lineTo(x + 7 * scale, y + 11 * scale);
+  rdCtx.lineTo(x + 10 * scale, y + 8 * scale);
+  rdCtx.stroke();
+
+  rdCtx.strokeStyle = color;
+  rdCtx.lineWidth = 1.5 * scale;
+  rdCtx.beginPath();
+  rdCtx.moveTo(x + 4 * scale, y + 8 * scale);
+  rdCtx.lineTo(x + 7 * scale, y + 11 * scale);
+  rdCtx.lineTo(x + 10 * scale, y + 8 * scale);
+  rdCtx.stroke();
 }
 
 /**
@@ -2833,6 +2946,23 @@ function getAnchorSVG(type) {
           <circle cx="30" cy="35" r="25" fill="currentColor"/>
           <!-- Signo de interrogación -->
           <text x="30" y="43" font-size="32" font-weight="bold" fill="white" text-anchor="middle">?</text>
+        </svg>
+      `;
+    case 'rapel':
+      // Punto de rápel: anillo con cuerdas descendentes
+      return `
+        <svg viewBox="0 0 60 80" width="40" height="53">
+          <!-- Anillo de rápel -->
+          <circle cx="30" cy="14" r="10" fill="currentColor"/>
+          <circle cx="30" cy="14" r="4" fill="white"/>
+          <!-- Cuerda izquierda zigzag -->
+          <polyline points="26,24 18,36 26,48 18,60" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Flecha izquierda -->
+          <polyline points="14,54 18,60 22,54" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Cuerda derecha zigzag -->
+          <polyline points="34,24 42,36 34,48 42,60" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Flecha derecha -->
+          <polyline points="38,54 42,60 46,54" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       `;
     case 'sin_terminar':
