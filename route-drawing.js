@@ -53,6 +53,8 @@ let rdBifurcatingDrawing = null;         // Drawing que se está bifurcando
 // Variables de rápel (puntos independientes)
 let rdRapelMode = false;                 // Modo colocación de puntos de rápel
 let rdRapelPoints = [];                  // Array de puntos de rápel [{x, y, id}, ...]
+let rdRapelDraggingIndex = -1;           // Índice del rápel siendo arrastrado (-1 = ninguno)
+let rdRapelIsDragging = false;           // Si estamos arrastrando un rápel
 
 // Constantes para interacción
 const RD_POINT_HIT_RADIUS = 20;         // Radio en píxeles para detectar clic en un punto
@@ -2229,10 +2231,10 @@ function findNearestPointIndex(canvasX, canvasY) {
  * Maneja clic del mouse en el canvas
  */
 function handleCanvasMouseDown(e) {
-  // Modo rápel: colocar o eliminar punto de rápel
+  // Modo rápel: colocar, arrastrar o eliminar punto de rápel
   if (rdRapelMode) {
     const { x, y } = getCanvasCoordinates(e);
-    handleRapelClick(x, y);
+    handleRapelMouseDown(x, y);
     return;
   }
 
@@ -2267,6 +2269,23 @@ function handleCanvasMouseDown(e) {
  * Maneja movimiento del mouse en el canvas
  */
 function handleCanvasMouseMove(e) {
+  // Arrastre de rápel
+  if (rdRapelMode) {
+    const { x, y } = getCanvasCoordinates(e);
+    if (rdRapelIsDragging && rdRapelDraggingIndex !== -1) {
+      const imageCoords = canvasToImageCoords(x, y);
+      rdRapelPoints[rdRapelDraggingIndex].x = imageCoords.x;
+      rdRapelPoints[rdRapelDraggingIndex].y = imageCoords.y;
+      redrawCanvas();
+    } else {
+      // Cambiar cursor si estamos sobre un rápel
+      const imgCoords = canvasToImageCoords(x, y);
+      const hitIndex = findNearestRapelPoint(imgCoords.x, imgCoords.y);
+      rdCanvas.style.cursor = hitIndex !== -1 ? 'grab' : 'crosshair';
+    }
+    return;
+  }
+
   if (!rdDrawingMode || !rdCurrentRoute) return;
 
   const { x, y } = getCanvasCoordinates(e);
@@ -2287,6 +2306,17 @@ function handleCanvasMouseMove(e) {
  * Maneja cuando se suelta el mouse
  */
 function handleCanvasMouseUp(e) {
+  // Fin de arrastre de rápel
+  if (rdRapelMode && rdRapelIsDragging && rdRapelDraggingIndex !== -1) {
+    showRDToast('Punto de rápel movido', 'success');
+    saveRapelPoints();
+    rdRapelIsDragging = false;
+    rdRapelDraggingIndex = -1;
+    rdCanvas.style.cursor = 'crosshair';
+    redrawCanvas();
+    return;
+  }
+
   if (rdIsDragging && rdDraggingPointIndex !== -1) {
     showRDToast(`Punto ${rdDraggingPointIndex + 1} movido`, 'success');
     updateInstructions(`Punto movido. Continúa editando o haz clic en "Terminar".`);
@@ -2321,10 +2351,10 @@ function handleCanvasTouchStart(e) {
   // Ignorar 1 dedo si estamos en medio de un pinch
   if (rdZoomState.isPinching) return;
 
-  // Modo rápel: colocar o eliminar punto de rápel
+  // Modo rápel: colocar, arrastrar o eliminar punto de rápel
   if (rdRapelMode) {
     const { x, y } = getCanvasCoordinates(e, true);
-    handleRapelClick(x, y);
+    handleRapelMouseDown(x, y);
     return;
   }
 
@@ -2413,6 +2443,16 @@ function handleCanvasTouchMove(e) {
     return;
   }
 
+  // 1 dedo: arrastrar rápel
+  if (rdRapelMode && rdRapelIsDragging && rdRapelDraggingIndex !== -1) {
+    const { x, y } = getCanvasCoordinates(e, true);
+    const imgCoords = canvasToImageCoords(x, y);
+    rdRapelPoints[rdRapelDraggingIndex].x = imgCoords.x;
+    rdRapelPoints[rdRapelDraggingIndex].y = imgCoords.y;
+    redrawCanvas();
+    return;
+  }
+
   // 1 dedo: arrastrar punto existente
   if (!rdDrawingMode || !rdCurrentRoute) return;
   if (!rdIsDragging || rdDraggingPointIndex === -1) return;
@@ -2435,6 +2475,16 @@ function handleCanvasTouchEnd(e) {
 
   if (rdZoomState.isPanning) {
     rdZoomState.isPanning = false;
+    return;
+  }
+
+  // Fin de arrastre de rápel (touch)
+  if (rdRapelMode && rdRapelIsDragging && rdRapelDraggingIndex !== -1) {
+    showRDToast('Punto de rápel movido', 'success');
+    saveRapelPoints();
+    rdRapelIsDragging = false;
+    rdRapelDraggingIndex = -1;
+    redrawCanvas();
     return;
   }
 
@@ -2473,6 +2523,20 @@ function handleCanvasWheel(e) {
  * Maneja doble clic en el canvas para eliminar un punto
  */
 function handleCanvasDoubleClick(e) {
+  // Doble clic en modo rápel: eliminar punto
+  if (rdRapelMode) {
+    const { x, y } = getCanvasCoordinates(e);
+    const imgCoords = canvasToImageCoords(x, y);
+    const hitIndex = findNearestRapelPoint(imgCoords.x, imgCoords.y);
+    if (hitIndex !== -1) {
+      rdRapelPoints.splice(hitIndex, 1);
+      showRDToast('Punto de rápel eliminado', 'info');
+      saveRapelPoints();
+      redrawCanvas();
+    }
+    return;
+  }
+
   if (!rdDrawingMode || !rdCurrentRoute) return;
 
   const { x, y } = getCanvasCoordinates(e);
@@ -3758,7 +3822,7 @@ function rdToggleRapelMode() {
 
   if (rdRapelMode) {
     rdCanvas.style.cursor = 'crosshair';
-    updateInstructions('Modo rápel: toca para colocar un punto. Toca uno existente para eliminarlo.');
+    updateInstructions('Modo rápel: toca para colocar. Arrastra para mover. Doble clic para eliminar.');
   } else {
     rdCanvas.style.cursor = 'default';
     updateInstructions('Selecciona una vía de la lista para dibujar su línea en la imagen');
@@ -3766,18 +3830,20 @@ function rdToggleRapelMode() {
 }
 
 /**
- * Maneja un clic en modo rápel
+ * Maneja mousedown/touchstart en modo rápel
+ * - Sobre un punto existente: inicia arrastre
+ * - En zona vacía: coloca nuevo punto
  */
-function handleRapelClick(canvasX, canvasY) {
+function handleRapelMouseDown(canvasX, canvasY) {
   const imageCoords = canvasToImageCoords(canvasX, canvasY);
-
-  // Comprobar si el clic está cerca de un rápel existente (para eliminar)
   const hitIndex = findNearestRapelPoint(imageCoords.x, imageCoords.y);
 
   if (hitIndex !== -1) {
-    // Eliminar el punto
-    rdRapelPoints.splice(hitIndex, 1);
-    showRDToast('Punto de rápel eliminado', 'info');
+    // Iniciar arrastre del punto existente
+    rdRapelDraggingIndex = hitIndex;
+    rdRapelIsDragging = true;
+    rdCanvas.style.cursor = 'grabbing';
+    updateInstructions('Arrastrando rápel. Suelta para posicionar. Doble clic para eliminar.');
   } else {
     // Añadir nuevo punto
     rdRapelPoints.push({
@@ -3786,11 +3852,9 @@ function handleRapelClick(canvasX, canvasY) {
       id: Date.now()
     });
     showRDToast('Punto de rápel colocado', 'success');
+    saveRapelPoints();
+    redrawCanvas();
   }
-
-  // Guardar y redibujar
-  saveRapelPoints();
-  redrawCanvas();
 }
 
 /**
@@ -3827,12 +3891,23 @@ function drawRapelPoints() {
   const color = RD_COLORS.rapel;
   const size = 14;
 
-  rdRapelPoints.forEach(pt => {
+  rdRapelPoints.forEach((pt, i) => {
     const cx = pt.x * scaleX;
     const cy = pt.y * scaleY;
+    const isDragging = rdRapelIsDragging && rdRapelDraggingIndex === i;
+
     rdCtx.save();
     rdCtx.translate(cx, cy);
-    drawRapelIcon(rdCtx, 0, 0, size, color);
+
+    // Glow cuando se arrastra
+    if (isDragging) {
+      rdCtx.fillStyle = 'rgba(168, 85, 247, 0.3)';
+      rdCtx.beginPath();
+      rdCtx.arc(0, -4 * (size / 20), 18 * (size / 20), 0, Math.PI * 2);
+      rdCtx.fill();
+    }
+
+    drawRapelIcon(rdCtx, 0, 0, isDragging ? size + 2 : size, color);
     rdCtx.restore();
   });
 }
@@ -4055,6 +4130,8 @@ function closeRouteDrawingEditor() {
   // Limpiar estado de rápel
   rdRapelMode = false;
   rdRapelPoints = [];
+  rdRapelDraggingIndex = -1;
+  rdRapelIsDragging = false;
 }
 
 /**
