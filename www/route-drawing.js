@@ -50,14 +50,8 @@ let rdActiveForkPoint = null;            // Punto de bifurcación de la rama sie
 let rdActiveForkSegmentIndex = -1;       // Índice del segmento donde se bifurca
 let rdBifurcatingDrawing = null;         // Drawing que se está bifurcando
 
-// Variables de rápel (puntos independientes)
-let rdRapelMode = false;                 // Modo colocación de puntos de rápel
-let rdRapelPoints = [];                  // Array de puntos de rápel [{x, y, id}, ...]
-let rdRapelDraggingIndex = -1;           // Índice del rápel siendo arrastrado (-1 = ninguno)
-let rdRapelIsDragging = false;           // Si estamos arrastrando un rápel
-
-// Variables de elementos auxiliares (líneas de descenso, grapas, cadenas)
-let rdAuxMode = null;                    // Modo auxiliar activo: 'descent_line', 'grapas', 'cadena', null
+// Variables de elementos auxiliares (líneas de descenso, grapas, cadenas, rápel)
+let rdAuxMode = null;                    // Modo auxiliar activo: 'descent_line', 'grapas', 'cadena', 'rapel', null
 let rdAuxPoints = [];                    // Puntos del elemento auxiliar actual
 let rdAuxElements = [];                  // Elementos auxiliares guardados [{type, points, id, imageId}, ...]
 let rdAuxDraggingIndex = -1;             // Índice del punto aux siendo arrastrado
@@ -65,6 +59,12 @@ let rdAuxIsDragging = false;             // Si estamos arrastrando un punto aux
 
 // Variable de modo borrador
 let rdEraserMode = false;                  // Modo borrador activo (1 clic elimina elementos)
+
+// Variable de modo edición de elementos auxiliares
+let rdEditAuxMode = false;               // Modo edición de elementos guardados
+let rdEditAuxElementIndex = -1;          // Índice del elemento aux siendo editado
+let rdEditAuxPointIndex = -1;            // Índice del punto dentro del elemento
+let rdEditAuxIsDragging = false;         // Si estamos arrastrando un punto en modo edición
 
 // Variables para detección de tap en touch (para menú contextual)
 let rdTouchStartPos = null;              // Posición inicial del touch
@@ -358,7 +358,7 @@ async function openRouteDrawingEditor(schoolId, sectorName, imageId = null) {
 
   // Cargar dibujos existentes (filtrados por imagen si hay imageId)
   await loadRouteDrawings(schoolId, sectorName, imageId);
-  await loadRapelPoints(schoolId, sectorName, imageId);
+  await migrateRapelPoints(schoolId, sectorName, imageId);
   await loadAuxElements(schoolId, sectorName, imageId);
 
   // Crear el editor
@@ -734,7 +734,7 @@ async function rdSwitchImage(newIndex) {
 
   // Recargar dibujos para la nueva imagen
   await loadRouteDrawings(rdCurrentSector.schoolId, rdCurrentSector.sectorName, newImage.id);
-  await loadRapelPoints(rdCurrentSector.schoolId, rdCurrentSector.sectorName, newImage.id);
+  await migrateRapelPoints(rdCurrentSector.schoolId, rdCurrentSector.sectorName, newImage.id);
   await loadAuxElements(rdCurrentSector.schoolId, rdCurrentSector.sectorName, newImage.id);
 
   // Actualizar lista de vías
@@ -814,7 +814,7 @@ async function continueOpeningPendingRouteEditor(schoolId, sectorName, routeName
 
   // Cargar dibujos existentes FILTRADOS por la imagen seleccionada
   await loadRouteDrawings(schoolId, sectorName, selectedImage.id);
-  await loadRapelPoints(schoolId, sectorName, selectedImage.id);
+  await migrateRapelPoints(schoolId, sectorName, selectedImage.id);
   await loadAuxElements(schoolId, sectorName, selectedImage.id);
 
   // Crear el editor con modo obligatorio
@@ -1255,14 +1255,10 @@ function createDrawingEditor(imageUrl) {
         </div>
         ` : ''}
         <div class="rd-header-actions">
-          <button class="rd-btn-icon rd-btn-rapel" id="rd-btn-rapel" onclick="rdToggleRapelMode()" title="Colocar puntos de rápel">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="5" r="3"/>
-              <circle cx="12" cy="5" r="1.2" fill="currentColor"/>
-              <polyline points="10,8 8,14 10,20" stroke-linecap="round" stroke-linejoin="round"/>
-              <polyline points="14,8 16,14 14,20" stroke-linecap="round" stroke-linejoin="round"/>
-              <polyline points="6.5,18 8,20 9.5,18" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              <polyline points="14.5,18 16,20 17.5,18" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <button class="rd-btn-icon rd-btn-add" id="rd-btn-add" onclick="rdToggleAddMenu()" title="Añadir elemento">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
           </button>
           <button class="rd-btn-icon rd-btn-routes-toggle" onclick="rdToggleRouteList()" title="Lista de vías">
@@ -1540,11 +1536,8 @@ function redrawCanvas() {
     drawRoutePointOnly(drawing, isSelected);
   });
 
-  // PASO 3: Dibujar elementos auxiliares guardados
+  // PASO 3: Dibujar elementos auxiliares guardados (incluye rápel)
   drawAuxElements();
-
-  // PASO 4: Dibujar puntos de rápel encima de todo
-  drawRapelPoints();
 
   // Dibujar línea temporal si estamos dibujando
   if (rdDrawingMode && rdDrawingPoints.length > 0) {
@@ -2279,7 +2272,7 @@ function handleCanvasClick(e) {
   }
 
   // Solo mostrar menú si no hay ningún modo activo y no hubo arrastre
-  if (!rdDrawingMode && !rdCurrentRoute && !rdRapelMode && !rdAuxMode && !rdBifurcationMode && !rdWasDragging) {
+  if (!rdDrawingMode && !rdCurrentRoute && !rdAuxMode && !rdBifurcationMode && !rdEditAuxMode && !rdWasDragging) {
     showAuxContextMenu(e.clientX, e.clientY);
   }
   rdWasDragging = false;
@@ -2289,14 +2282,14 @@ function handleCanvasMouseDown(e) {
   // Cerrar menú contextual si está abierto (el canvas está debajo del menú, no interfiere)
   closeAuxContextMenu();
 
-  // Modo rápel: colocar, arrastrar o eliminar punto de rápel
-  if (rdRapelMode) {
+  // Modo edición de elementos auxiliares
+  if (rdEditAuxMode) {
     const { x, y } = getCanvasCoordinates(e);
-    handleRapelMouseDown(x, y);
+    handleEditAuxMouseDown(x, y);
     return;
   }
 
-  // Modo auxiliar: añadir puntos
+  // Modo auxiliar: añadir puntos (incluye rápel)
   if (rdAuxMode) {
     const { x, y } = getCanvasCoordinates(e);
     handleAuxMouseDown(x, y);
@@ -2334,19 +2327,18 @@ function handleCanvasMouseDown(e) {
  * Maneja movimiento del mouse en el canvas
  */
 function handleCanvasMouseMove(e) {
-  // Arrastre de rápel
-  if (rdRapelMode) {
+  // Arrastre en modo edición de elementos auxiliares
+  if (rdEditAuxMode) {
     const { x, y } = getCanvasCoordinates(e);
-    if (rdRapelIsDragging && rdRapelDraggingIndex !== -1) {
+    if (rdEditAuxIsDragging && rdEditAuxElementIndex !== -1 && rdEditAuxPointIndex !== -1) {
       const imageCoords = canvasToImageCoords(x, y);
-      rdRapelPoints[rdRapelDraggingIndex].x = imageCoords.x;
-      rdRapelPoints[rdRapelDraggingIndex].y = imageCoords.y;
+      rdAuxElements[rdEditAuxElementIndex].points[rdEditAuxPointIndex] = imageCoords;
+      rdWasDragging = true;
       redrawCanvas();
     } else {
-      // Cambiar cursor si estamos sobre un rápel
-      const imgCoords = canvasToImageCoords(x, y);
-      const hitIndex = findNearestRapelPoint(imgCoords.x, imgCoords.y);
-      rdCanvas.style.cursor = hitIndex !== -1 ? 'grab' : 'crosshair';
+      // Cambiar cursor si estamos sobre un punto de un elemento guardado
+      const hit = findNearestAuxElementPoint(x, y);
+      rdCanvas.style.cursor = hit ? 'grab' : 'crosshair';
     }
     return;
   }
@@ -2386,12 +2378,12 @@ function handleCanvasMouseMove(e) {
  * Maneja cuando se suelta el mouse
  */
 function handleCanvasMouseUp(e) {
-  // Fin de arrastre de rápel
-  if (rdRapelMode && rdRapelIsDragging && rdRapelDraggingIndex !== -1) {
-    showRDToast('Punto de rápel movido', 'success');
-    saveRapelPoints();
-    rdRapelIsDragging = false;
-    rdRapelDraggingIndex = -1;
+  // Fin de arrastre en modo edición
+  if (rdEditAuxMode && rdEditAuxIsDragging && rdEditAuxElementIndex !== -1) {
+    showRDToast('Elemento movido', 'success');
+    saveAuxElements();
+    rdEditAuxIsDragging = false;
+    rdEditAuxPointIndex = -1;
     rdCanvas.style.cursor = 'crosshair';
     redrawCanvas();
     return;
@@ -2444,14 +2436,14 @@ function handleCanvasTouchStart(e) {
   // Cerrar menú contextual si está abierto
   closeAuxContextMenu();
 
-  // Modo rápel: colocar, arrastrar o eliminar punto de rápel
-  if (rdRapelMode) {
+  // Modo edición de elementos auxiliares
+  if (rdEditAuxMode) {
     const { x, y } = getCanvasCoordinates(e, true);
-    handleRapelMouseDown(x, y);
+    handleEditAuxMouseDown(x, y);
     return;
   }
 
-  // Modo auxiliar: añadir puntos
+  // Modo auxiliar: añadir puntos (incluye rápel)
   if (rdAuxMode) {
     const { x, y } = getCanvasCoordinates(e, true);
     handleAuxMouseDown(x, y);
@@ -2547,12 +2539,11 @@ function handleCanvasTouchMove(e) {
     return;
   }
 
-  // 1 dedo: arrastrar rápel
-  if (rdRapelMode && rdRapelIsDragging && rdRapelDraggingIndex !== -1) {
+  // 1 dedo: arrastrar en modo edición
+  if (rdEditAuxMode && rdEditAuxIsDragging && rdEditAuxElementIndex !== -1 && rdEditAuxPointIndex !== -1) {
     const { x, y } = getCanvasCoordinates(e, true);
-    const imgCoords = canvasToImageCoords(x, y);
-    rdRapelPoints[rdRapelDraggingIndex].x = imgCoords.x;
-    rdRapelPoints[rdRapelDraggingIndex].y = imgCoords.y;
+    rdAuxElements[rdEditAuxElementIndex].points[rdEditAuxPointIndex] = canvasToImageCoords(x, y);
+    rdWasDragging = true;
     redrawCanvas();
     return;
   }
@@ -2599,12 +2590,12 @@ function handleCanvasTouchEnd(e) {
     return;
   }
 
-  // Fin de arrastre de rápel (touch)
-  if (rdRapelMode && rdRapelIsDragging && rdRapelDraggingIndex !== -1) {
-    showRDToast('Punto de rápel movido', 'success');
-    saveRapelPoints();
-    rdRapelIsDragging = false;
-    rdRapelDraggingIndex = -1;
+  // Fin de arrastre en modo edición (touch)
+  if (rdEditAuxMode && rdEditAuxIsDragging && rdEditAuxElementIndex !== -1) {
+    showRDToast('Elemento movido', 'success');
+    saveAuxElements();
+    rdEditAuxIsDragging = false;
+    rdEditAuxPointIndex = -1;
     redrawCanvas();
     return;
   }
@@ -2638,7 +2629,7 @@ function handleCanvasTouchEnd(e) {
   }
 
   // Detectar tap para mostrar menú contextual (sin modo activo)
-  if (rdTouchStartPos && !rdDrawingMode && !rdCurrentRoute && !rdRapelMode && !rdAuxMode && !rdBifurcationMode) {
+  if (rdTouchStartPos && !rdDrawingMode && !rdCurrentRoute && !rdAuxMode && !rdBifurcationMode && !rdEditAuxMode) {
     const elapsed = Date.now() - rdTouchStartTime;
     const touch = e.changedTouches[0];
     if (touch && elapsed < 400) {
@@ -2688,20 +2679,6 @@ function handleCanvasWheel(e) {
  * Maneja doble clic en el canvas para eliminar un punto
  */
 function handleCanvasDoubleClick(e) {
-  // Doble clic en modo rápel: eliminar punto
-  if (rdRapelMode) {
-    const { x, y } = getCanvasCoordinates(e);
-    const imgCoords = canvasToImageCoords(x, y);
-    const hitIndex = findNearestRapelPoint(imgCoords.x, imgCoords.y);
-    if (hitIndex !== -1) {
-      rdRapelPoints.splice(hitIndex, 1);
-      showRDToast('Punto de rápel eliminado', 'info');
-      saveRapelPoints();
-      redrawCanvas();
-    }
-    return;
-  }
-
   // Doble clic en modo auxiliar: eliminar punto
   if (rdAuxMode) {
     const { x, y } = getCanvasCoordinates(e);
@@ -3622,12 +3599,8 @@ function selectRouteForDrawing(routeId) {
   // Desactivar modo borrador si está activo
   if (rdEraserMode) rdEraserMode = false;
 
-  // Desactivar modo rápel si está activo
-  if (rdRapelMode) {
-    rdRapelMode = false;
-    const rapelBtn = document.getElementById('rd-btn-rapel');
-    if (rapelBtn) rapelBtn.classList.remove('rd-btn-rapel-active');
-  }
+  // Desactivar modo edición si está activo
+  if (rdEditAuxMode) exitEditAuxMode();
 
   // Desactivar modo auxiliar si está activo
   if (rdAuxMode) {
@@ -4010,120 +3983,7 @@ async function deleteRouteDrawing(routeId) {
 /**
  * Activa/desactiva el modo rápel
  */
-function rdToggleRapelMode() {
-  // Si estamos dibujando una vía, no permitir
-  if (rdDrawingMode) {
-    showRDToast('Termina o cancela el dibujo actual antes de colocar rápeles', 'warning');
-    return;
-  }
-  if (rdBifurcationMode) {
-    showRDToast('Termina o cancela la bifurcación antes de colocar rápeles', 'warning');
-    return;
-  }
-  // Si estamos en modo auxiliar, cancelarlo
-  if (rdAuxMode) {
-    rdAuxCancelDrawing();
-  }
-
-  rdRapelMode = !rdRapelMode;
-
-  // Actualizar estado visual del botón
-  const btn = document.getElementById('rd-btn-rapel');
-  if (btn) {
-    btn.classList.toggle('rd-btn-rapel-active', rdRapelMode);
-  }
-
-  if (rdRapelMode) {
-    rdCanvas.style.cursor = 'crosshair';
-    updateInstructions('Modo rápel: toca para colocar. Arrastra para mover. Doble clic para eliminar.');
-  } else {
-    rdCanvas.style.cursor = 'default';
-    updateInstructions('Selecciona una vía de la lista para dibujar su línea en la imagen');
-  }
-}
-
-/**
- * Maneja mousedown/touchstart en modo rápel
- * - Sobre un punto existente: inicia arrastre
- * - En zona vacía: coloca nuevo punto
- */
-function handleRapelMouseDown(canvasX, canvasY) {
-  const imageCoords = canvasToImageCoords(canvasX, canvasY);
-  const hitIndex = findNearestRapelPoint(imageCoords.x, imageCoords.y);
-
-  if (hitIndex !== -1) {
-    // Iniciar arrastre del punto existente
-    rdRapelDraggingIndex = hitIndex;
-    rdRapelIsDragging = true;
-    rdCanvas.style.cursor = 'grabbing';
-    updateInstructions('Arrastrando rápel. Suelta para posicionar. Doble clic para eliminar.');
-  } else {
-    // Añadir nuevo punto
-    rdRapelPoints.push({
-      x: imageCoords.x,
-      y: imageCoords.y,
-      id: Date.now()
-    });
-    showRDToast('Punto de rápel colocado', 'success');
-    saveRapelPoints();
-    redrawCanvas();
-  }
-}
-
-/**
- * Busca el punto de rápel más cercano al clic
- */
-function findNearestRapelPoint(imgX, imgY) {
-  const hitRadius = 20; // En coordenadas de imagen
-  let nearestIndex = -1;
-  let nearestDist = Infinity;
-
-  rdRapelPoints.forEach((pt, i) => {
-    const dx = pt.x - imgX;
-    const dy = pt.y - imgY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < hitRadius && dist < nearestDist) {
-      nearestDist = dist;
-      nearestIndex = i;
-    }
-  });
-
-  return nearestIndex;
-}
-
-/**
- * Dibuja todos los puntos de rápel en el canvas del editor
- */
-function drawRapelPoints() {
-  if (rdRapelPoints.length === 0) return;
-
-  const displayWidth = rdCanvas.displayWidth || rdCanvas.width;
-  const displayHeight = rdCanvas.displayHeight || rdCanvas.height;
-  const scaleX = displayWidth / rdImage.width;
-  const scaleY = displayHeight / rdImage.height;
-  const color = RD_COLORS.rapel;
-  const size = 14;
-
-  rdRapelPoints.forEach((pt, i) => {
-    const cx = pt.x * scaleX;
-    const cy = pt.y * scaleY;
-    const isDragging = rdRapelIsDragging && rdRapelDraggingIndex === i;
-
-    rdCtx.save();
-    rdCtx.translate(cx, cy);
-
-    // Glow cuando se arrastra
-    if (isDragging) {
-      rdCtx.fillStyle = 'rgba(168, 85, 247, 0.3)';
-      rdCtx.beginPath();
-      rdCtx.arc(0, -4 * (size / 20), 18 * (size / 20), 0, Math.PI * 2);
-      rdCtx.fill();
-    }
-
-    drawRapelIcon(rdCtx, 0, 0, isDragging ? size + 2 : size, color);
-    rdCtx.restore();
-  });
-}
+// rdToggleRapelMode removed - rapel now uses aux system via enterAuxMode('rapel')
 
 /**
  * Dibuja un icono de rápel genérico (reutilizable por editor y visor)
@@ -4251,6 +4111,13 @@ function showAuxContextMenu(clientX, clientY) {
   menu.className = 'rd-aux-context-menu';
   menu.innerHTML = `
     <div class="rd-aux-menu-title">Añadir elemento</div>
+    <button class="rd-aux-menu-item" onclick="toggleEditAuxMode()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2">
+        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+      </svg>
+      <span style="color: ${rdEditAuxMode ? '#3b82f6' : 'inherit'}">${rdEditAuxMode ? '✓ Editar (activo)' : 'Editar'}</span>
+    </button>
     <button class="rd-aux-menu-item" onclick="toggleEraserMode()">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
         <path d="M20 20H7L3 16c-.8-.8-.8-2 0-2.8L14.2 2c.8-.8 2-.8 2.8 0L21.8 6.8c.8.8.8 2 0 2.8L10 21"/>
@@ -4331,17 +4198,14 @@ function closeAuxContextMenuOutside(e) {
 function enterAuxMode(mode) {
   closeAuxContextMenu();
 
-  // Si es rapel, usar el sistema existente
-  if (mode === 'rapel') {
-    rdToggleRapelMode();
-    return;
-  }
-
   // Verificar que no hay otros modos activos
-  if (rdDrawingMode || rdBifurcationMode || rdRapelMode) {
+  if (rdDrawingMode || rdBifurcationMode) {
     showRDToast('Termina el modo actual antes de añadir elementos', 'warning');
     return;
   }
+
+  // Salir del modo edición si estaba activo
+  if (rdEditAuxMode) exitEditAuxMode();
 
   rdAuxMode = mode;
   rdAuxPoints = [];
@@ -4352,13 +4216,15 @@ function enterAuxMode(mode) {
   const modeNames = {
     descent_line: 'Línea de descenso/ascenso',
     grapas: 'Escalera de grapas',
-    cadena: 'Cadena'
+    cadena: 'Cadena',
+    rapel: 'Punto de Rápel'
   };
 
   const modeInstructions = {
     descent_line: 'Toca para añadir puntos de la línea. Doble clic para eliminar un punto.',
     grapas: 'Toca para colocar grapas. Doble clic para eliminar una grapa.',
-    cadena: 'Toca para añadir puntos de la cadena. Doble clic para eliminar un punto.'
+    cadena: 'Toca para añadir puntos de la cadena. Doble clic para eliminar un punto.',
+    rapel: 'Toca para colocar puntos de rápel. Doble clic para eliminar un punto.'
   };
 
   updateInstructions(`${modeNames[mode]}: ${modeInstructions[mode]}`);
@@ -4394,6 +4260,8 @@ function handleAuxMouseDown(canvasX, canvasY) {
   const count = rdAuxPoints.length;
   if (rdAuxMode === 'grapas') {
     showRDToast(`Grapa ${count} colocada`, 'success');
+  } else if (rdAuxMode === 'rapel') {
+    showRDToast(`Punto de rápel ${count} colocado`, 'success');
   } else {
     showRDToast(`Punto ${count} añadido`, 'success');
   }
@@ -4440,7 +4308,7 @@ function updateAuxDrawingControls() {
     const finishBtn = document.getElementById('rd-btn-finish');
     if (undoBtn) undoBtn.disabled = rdAuxPoints.length === 0;
     if (finishBtn) {
-      if (rdAuxMode === 'grapas') {
+      if (rdAuxMode === 'grapas' || rdAuxMode === 'rapel') {
         finishBtn.disabled = rdAuxPoints.length < 1;
       } else {
         finishBtn.disabled = rdAuxPoints.length < 2;
@@ -4458,7 +4326,7 @@ function rdAuxUndoLastPoint() {
     updateAuxDrawingControls();
 
     if (rdAuxPoints.length === 0) {
-      const modeNames = { descent_line: 'línea', grapas: 'grapas', cadena: 'cadena' };
+      const modeNames = { descent_line: 'línea', grapas: 'grapas', cadena: 'cadena', rapel: 'rápel' };
       updateInstructions(`Todos los puntos eliminados. Toca para añadir el primer punto de ${modeNames[rdAuxMode]}.`);
     }
     redrawCanvas();
@@ -4469,7 +4337,7 @@ function rdAuxUndoLastPoint() {
  * Termina y guarda el elemento auxiliar actual
  */
 async function rdAuxFinishDrawing() {
-  const minPoints = rdAuxMode === 'grapas' ? 1 : 2;
+  const minPoints = (rdAuxMode === 'grapas' || rdAuxMode === 'rapel') ? 1 : 2;
   if (rdAuxPoints.length < minPoints) {
     showRDToast(`Se requieren al menos ${minPoints} punto(s) para guardar`, 'warning');
     return;
@@ -4486,7 +4354,7 @@ async function rdAuxFinishDrawing() {
   rdAuxElements.push(element);
   await saveAuxElements();
 
-  const modeNames = { descent_line: 'Línea de descenso', grapas: 'Grapas', cadena: 'Cadena' };
+  const modeNames = { descent_line: 'Línea de descenso', grapas: 'Grapas', cadena: 'Cadena', rapel: 'Puntos de rápel' };
   showRDToast(`${modeNames[rdAuxMode]} guardado`, 'success');
 
   // Salir del modo auxiliar tras guardar
@@ -4535,7 +4403,7 @@ function drawAuxElements() {
   const scaleX = displayWidth / rdImage.width;
   const scaleY = displayHeight / rdImage.height;
 
-  rdAuxElements.forEach(element => {
+  rdAuxElements.forEach((element, elIdx) => {
     const scaledPoints = element.points.map(p => ({
       x: p.x * scaleX,
       y: p.y * scaleY
@@ -4551,6 +4419,18 @@ function drawAuxElements() {
       case 'cadena':
         drawCadenaElement(scaledPoints, RD_COLORS.cadena);
         break;
+      case 'rapel':
+        drawRapelAuxElement(scaledPoints, RD_COLORS.rapel);
+        break;
+    }
+
+    // En modo edición, dibujar puntos editables sobre los elementos guardados
+    if (rdEditAuxMode) {
+      const isEditingThis = rdEditAuxElementIndex === elIdx;
+      scaledPoints.forEach((pt, pIdx) => {
+        const isDragging = isEditingThis && rdEditAuxIsDragging && rdEditAuxPointIndex === pIdx;
+        drawEditablePoint(pt.x, pt.y, pIdx, RD_COLORS[element.type] || '#ffffff', isDragging, isEditingThis && rdEditAuxPointIndex === pIdx);
+      });
     }
   });
 }
@@ -4582,6 +4462,9 @@ function drawAuxTemporary() {
       break;
     case 'cadena':
       drawCadenaElement(scaledPoints, color);
+      break;
+    case 'rapel':
+      drawRapelAuxElement(scaledPoints, color);
       break;
   }
 
@@ -4765,6 +4648,20 @@ function drawChainSegment(x1, y1, x2, y2, color) {
   rdCtx.restore();
 }
 
+/**
+ * Dibuja puntos de rápel como elemento auxiliar
+ */
+function drawRapelAuxElement(scaledPoints, color) {
+  if (scaledPoints.length === 0) return;
+  const size = 14;
+  scaledPoints.forEach(pt => {
+    rdCtx.save();
+    rdCtx.translate(pt.x, pt.y);
+    drawRapelIcon(rdCtx, 0, 0, size, color);
+    rdCtx.restore();
+  });
+}
+
 // ============================================
 // ELEMENTOS AUXILIARES: PERSISTENCIA
 // ============================================
@@ -4839,72 +4736,59 @@ async function loadAuxElements(schoolId, sectorName, imageId = null) {
 }
 
 /**
- * Guarda los puntos de rápel en Firestore
+ * Migra puntos de rápel del formato antiguo (rapelPoints) al nuevo (auxElements con type 'rapel')
+ * Se ejecuta al cargar para compatibilidad con datos existentes
  */
-async function saveRapelPoints() {
-  try {
-    const docId = `${rdCurrentSector.schoolId}_${normalizeSectorName(rdCurrentSector.sectorName)}`;
-    const docRef = db.collection('sector_route_drawings').doc(docId);
-
-    // Guardar con imageId si aplica
-    const rapelData = rdRapelPoints.map(pt => ({
-      x: pt.x,
-      y: pt.y,
-      id: pt.id,
-      ...(rdCurrentSector.imageId && { imageId: rdCurrentSector.imageId })
-    }));
-
-    // Obtener documento existente para merge
-    const doc = await docRef.get();
-    let allRapelPoints = [];
-
-    if (doc.exists && doc.data().rapelPoints) {
-      allRapelPoints = doc.data().rapelPoints;
-      // Filtrar los de esta imagen y reemplazar
-      if (rdCurrentSector.imageId) {
-        allRapelPoints = allRapelPoints.filter(p => p.imageId !== rdCurrentSector.imageId);
-      } else {
-        allRapelPoints = allRapelPoints.filter(p => p.imageId);
-      }
-    }
-    allRapelPoints = allRapelPoints.concat(rapelData);
-
-    await docRef.set({
-      rapelPoints: allRapelPoints,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedBy: auth.currentUser?.uid
-    }, { merge: true });
-
-  } catch (error) {
-    console.error('[RouteDrawing] Error guardando puntos de rápel:', error);
-    showRDToast('Error al guardar rápel: ' + error.message, 'error');
-  }
-}
-
-/**
- * Carga los puntos de rápel de Firestore
- */
-async function loadRapelPoints(schoolId, sectorName, imageId = null) {
-  rdRapelPoints = [];
-
+async function migrateRapelPoints(schoolId, sectorName, imageId = null) {
   try {
     const docId = `${schoolId}_${normalizeSectorName(sectorName)}`;
     const doc = await db.collection('sector_route_drawings').doc(docId).get();
 
-    if (doc.exists && doc.data().rapelPoints) {
-      const allRapelPoints = doc.data().rapelPoints;
+    if (!doc.exists || !doc.data().rapelPoints || doc.data().rapelPoints.length === 0) return;
 
-      if (imageId) {
-        rdRapelPoints = allRapelPoints.filter(p => {
-          if (p.imageId) return p.imageId === imageId;
-          return imageId === 'legacy_0';
-        });
-      } else {
-        rdRapelPoints = allRapelPoints;
-      }
+    const allRapelPoints = doc.data().rapelPoints;
+    let pointsToMigrate;
+
+    if (imageId) {
+      pointsToMigrate = allRapelPoints.filter(p => {
+        if (p.imageId) return p.imageId === imageId;
+        return imageId === 'legacy_0';
+      });
+    } else {
+      pointsToMigrate = allRapelPoints;
     }
+
+    if (pointsToMigrate.length === 0) return;
+
+    // Convertir a elemento auxiliar de tipo rapel
+    const rapelElement = {
+      type: 'rapel',
+      points: pointsToMigrate.map(p => ({ x: p.x, y: p.y })),
+      id: Date.now(),
+      ...(imageId && { imageId: imageId })
+    };
+
+    rdAuxElements.push(rapelElement);
+
+    // Eliminar los rapelPoints migrados del documento
+    let remainingRapelPoints = allRapelPoints;
+    if (imageId) {
+      remainingRapelPoints = allRapelPoints.filter(p => {
+        if (p.imageId) return p.imageId !== imageId;
+        return imageId !== 'legacy_0';
+      });
+    } else {
+      remainingRapelPoints = [];
+    }
+
+    // Guardar la migración
+    await saveAuxElements();
+    const docRef = db.collection('sector_route_drawings').doc(docId);
+    await docRef.set({ rapelPoints: remainingRapelPoints }, { merge: true });
+
+    console.log(`[RouteDrawing] Migrados ${pointsToMigrate.length} puntos de rápel a auxElements`);
   } catch (error) {
-    console.error('[RouteDrawing] Error cargando puntos de rápel:', error);
+    console.error('[RouteDrawing] Error migrando puntos de rápel:', error);
   }
 }
 
@@ -4953,11 +4837,11 @@ function closeRouteDrawingEditor() {
   rdActiveForkSegmentIndex = -1;
   rdBifurcatingDrawing = null;
 
-  // Limpiar estado de rápel
-  rdRapelMode = false;
-  rdRapelPoints = [];
-  rdRapelDraggingIndex = -1;
-  rdRapelIsDragging = false;
+  // Limpiar estado de edición de auxiliares
+  rdEditAuxMode = false;
+  rdEditAuxElementIndex = -1;
+  rdEditAuxPointIndex = -1;
+  rdEditAuxIsDragging = false;
 
   // Limpiar estado de elementos auxiliares
   rdAuxMode = null;
@@ -5218,6 +5102,86 @@ function addLinkDrawingButtonToRoutePopup(routeId, isAdmin) {
 }
 
 // ============================================
+// BOTÓN "+" - MENÚ DESPLEGABLE
+// ============================================
+
+/**
+ * Abre el menú contextual desde el botón "+"
+ */
+function rdToggleAddMenu() {
+  const btn = document.getElementById('rd-btn-add');
+  if (!btn) return;
+  const rect = btn.getBoundingClientRect();
+  showAuxContextMenu(rect.left + rect.width / 2, rect.bottom + 4);
+}
+
+// ============================================
+// MODO EDICIÓN DE ELEMENTOS AUXILIARES
+// ============================================
+
+/**
+ * Activa/desactiva el modo edición de elementos auxiliares guardados
+ */
+function toggleEditAuxMode() {
+  closeAuxContextMenu();
+
+  if (rdDrawingMode || rdAuxMode || rdBifurcationMode) {
+    showRDToast('Termina el modo actual antes de editar', 'warning');
+    return;
+  }
+
+  // Desactivar borrador si está activo
+  if (rdEraserMode) {
+    rdEraserMode = false;
+    rdCanvas.style.cursor = 'default';
+  }
+
+  rdEditAuxMode = !rdEditAuxMode;
+  rdEditAuxElementIndex = -1;
+  rdEditAuxPointIndex = -1;
+  rdEditAuxIsDragging = false;
+
+  if (rdEditAuxMode) {
+    rdCanvas.style.cursor = 'crosshair';
+    updateInstructions('Modo edición: arrastra puntos para mover elementos. Clic en zona vacía para salir.');
+  } else {
+    exitEditAuxMode();
+  }
+  redrawCanvas();
+}
+
+/**
+ * Sale del modo edición
+ */
+function exitEditAuxMode() {
+  rdEditAuxMode = false;
+  rdEditAuxElementIndex = -1;
+  rdEditAuxPointIndex = -1;
+  rdEditAuxIsDragging = false;
+  rdCanvas.style.cursor = 'default';
+  updateInstructions('Selecciona una vía de la lista para dibujar su línea en la imagen');
+  redrawCanvas();
+}
+
+/**
+ * Maneja mousedown en modo edición: busca el punto más cercano de un elemento guardado
+ */
+function handleEditAuxMouseDown(canvasX, canvasY) {
+  const hit = findNearestAuxElementPoint(canvasX, canvasY);
+
+  if (hit && hit.pointIndex !== -1) {
+    rdEditAuxElementIndex = hit.elementIndex;
+    rdEditAuxPointIndex = hit.pointIndex;
+    rdEditAuxIsDragging = true;
+    rdCanvas.style.cursor = 'grabbing';
+    updateInstructions('Arrastrando punto. Suelta para posicionar.');
+  } else if (!hit) {
+    // Clic en zona vacía: salir del modo edición
+    exitEditAuxMode();
+  }
+}
+
+// ============================================
 // MODO BORRADOR
 // ============================================
 
@@ -5228,9 +5192,14 @@ function toggleEraserMode() {
   closeAuxContextMenu();
 
   // No permitir si hay un modo de dibujo activo
-  if (rdDrawingMode || rdAuxMode || rdRapelMode || rdBifurcationMode) {
+  if (rdDrawingMode || rdAuxMode || rdBifurcationMode) {
     showRDToast('Termina el modo actual antes de usar el borrador', 'warning');
     return;
+  }
+
+  // Desactivar modo edición si está activo
+  if (rdEditAuxMode) {
+    exitEditAuxMode();
   }
 
   rdEraserMode = !rdEraserMode;
@@ -5262,23 +5231,28 @@ function exitEraserMode() {
 async function eraserHitTest(canvasX, canvasY) {
   const imgCoords = canvasToImageCoords(canvasX, canvasY);
 
-  // 1. Comprobar puntos de rápel
-  const rapelHit = findNearestRapelPoint(imgCoords.x, imgCoords.y);
-  if (rapelHit !== -1) {
-    rdRapelPoints.splice(rapelHit, 1);
-    await saveRapelPoints();
-    showRDToast('Punto de rápel eliminado', 'info');
-    redrawCanvas();
-    return true;
-  }
+  // 1. Comprobar elementos auxiliares (descent_line, grapas, cadena, rapel)
+  const auxHit = findNearestAuxElementPoint(canvasX, canvasY);
+  if (auxHit) {
+    const element = rdAuxElements[auxHit.elementIndex];
+    const typeName = { descent_line: 'Línea de descenso', grapas: 'Grapa', cadena: 'Cadena', rapel: 'Punto de rápel' };
 
-  // 2. Comprobar elementos auxiliares (descent_line, grapas, cadena)
-  const auxHit = findNearestAuxElement(canvasX, canvasY);
-  if (auxHit !== -1) {
-    const typeName = { descent_line: 'Línea de descenso', grapas: 'Grapas', cadena: 'Cadena' };
-    const removed = rdAuxElements.splice(auxHit, 1)[0];
+    // Para elementos de punto individual (grapas, rapel): borrar solo ese punto
+    if ((element.type === 'grapas' || element.type === 'rapel') && auxHit.pointIndex !== -1) {
+      element.points.splice(auxHit.pointIndex, 1);
+      if (element.points.length === 0) {
+        rdAuxElements.splice(auxHit.elementIndex, 1);
+      }
+      await saveAuxElements();
+      showRDToast(`${typeName[element.type]} eliminado`, 'info');
+      redrawCanvas();
+      return true;
+    }
+
+    // Para elementos de línea (descent_line, cadena): borrar el elemento completo
+    rdAuxElements.splice(auxHit.elementIndex, 1);
     await saveAuxElements();
-    showRDToast(`${typeName[removed.type] || 'Elemento'} eliminado`, 'info');
+    showRDToast(`${typeName[element.type] || 'Elemento'} eliminado`, 'info');
     redrawCanvas();
     return true;
   }
@@ -5306,10 +5280,11 @@ async function eraserHitTest(canvasX, canvasY) {
 }
 
 /**
- * Busca el elemento auxiliar guardado más cercano al punto dado (canvas coords)
+ * Busca el punto más cercano de un elemento auxiliar guardado (canvas coords)
+ * Devuelve {elementIndex, pointIndex} o null si no hay hit
  */
-function findNearestAuxElement(canvasX, canvasY) {
-  if (rdAuxElements.length === 0) return -1;
+function findNearestAuxElementPoint(canvasX, canvasY) {
+  if (rdAuxElements.length === 0) return null;
 
   const displayWidth = rdCanvas.displayWidth || rdCanvas.width;
   const displayHeight = rdCanvas.displayHeight || rdCanvas.height;
@@ -5317,34 +5292,46 @@ function findNearestAuxElement(canvasX, canvasY) {
   const scaleY = displayHeight / rdImage.height;
   const hitRadius = RD_SEGMENT_HIT_RADIUS;
 
-  let nearestIndex = -1;
+  let nearestElementIndex = -1;
+  let nearestPointIndex = -1;
   let nearestDist = Infinity;
 
   rdAuxElements.forEach((element, elIdx) => {
     const scaledPoints = element.points.map(p => ({ x: p.x * scaleX, y: p.y * scaleY }));
 
-    // Para grapas: comprobar proximidad a cada punto
-    if (element.type === 'grapas') {
-      scaledPoints.forEach(pt => {
+    // Para grapas y rapel: comprobar proximidad a cada punto individual
+    if (element.type === 'grapas' || element.type === 'rapel') {
+      scaledPoints.forEach((pt, pIdx) => {
         const dist = Math.sqrt((pt.x - canvasX) ** 2 + (pt.y - canvasY) ** 2);
         if (dist < hitRadius && dist < nearestDist) {
           nearestDist = dist;
-          nearestIndex = elIdx;
+          nearestElementIndex = elIdx;
+          nearestPointIndex = pIdx;
         }
       });
     } else {
-      // Para líneas: comprobar proximidad a cada segmento
+      // Para líneas (cadena, descent_line): comprobar proximidad a cada segmento
       for (let i = 0; i < scaledPoints.length - 1; i++) {
         const dist = pointToSegmentDist(canvasX, canvasY, scaledPoints[i], scaledPoints[i + 1]);
         if (dist < hitRadius && dist < nearestDist) {
           nearestDist = dist;
-          nearestIndex = elIdx;
+          nearestElementIndex = elIdx;
+          nearestPointIndex = -1;
         }
       }
+      // También detectar puntos individuales para edición
+      scaledPoints.forEach((pt, pIdx) => {
+        const dist = Math.sqrt((pt.x - canvasX) ** 2 + (pt.y - canvasY) ** 2);
+        if (dist < hitRadius && dist < nearestDist) {
+          nearestDist = dist;
+          nearestElementIndex = elIdx;
+          nearestPointIndex = pIdx;
+        }
+      });
     }
   });
 
-  return nearestIndex;
+  return nearestElementIndex !== -1 ? { elementIndex: nearestElementIndex, pointIndex: nearestPointIndex } : null;
 }
 
 /**
@@ -5475,7 +5462,8 @@ window.rdNextImage = rdNextImage;
 window.showAnchorTypeModal = showAnchorTypeModal;
 window.closeAnchorModal = closeAnchorModal;
 window.selectAnchorType = selectAnchorType;
-window.rdToggleRapelMode = rdToggleRapelMode;
+window.rdToggleAddMenu = rdToggleAddMenu;
+window.toggleEditAuxMode = toggleEditAuxMode;
 window.drawRapelIcon = drawRapelIcon;
 // Funciones de elementos auxiliares
 window.showAuxContextMenu = showAuxContextMenu;

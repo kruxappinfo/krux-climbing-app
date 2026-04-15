@@ -2951,7 +2951,8 @@ function drawSvAuxElements(canvasWidth, canvasHeight) {
   const colors = {
     descent_line: '#00bcd4',
     grapas: '#ff9800',
-    cadena: '#78909c'
+    cadena: '#78909c',
+    rapel: '#a855f7'
   };
 
   svAuxElements.forEach(element => {
@@ -2973,6 +2974,9 @@ function drawSvAuxElements(canvasWidth, canvasHeight) {
         break;
       case 'cadena':
         drawSvCadena(scaledPoints, color);
+        break;
+      case 'rapel':
+        drawSvRapelFromAux(scaledPoints, color);
         break;
     }
   });
@@ -3105,7 +3109,34 @@ function drawSvCadena(scaledPoints, color) {
 }
 
 /**
- * Dibuja todos los puntos de rápel en el visor de sector
+ * Dibuja puntos de rápel desde auxElements en el visor
+ */
+function drawSvRapelFromAux(scaledPoints, color) {
+  if (scaledPoints.length === 0) return;
+  const isZoomed = svZoomState.scale > 1;
+  const scaleFactor = getLineScaleFactor();
+  const size = isZoomed ? 10 * scaleFactor : 14 * scaleFactor;
+  const alpha = isZoomed ? 0.6 : 1;
+
+  scaledPoints.forEach(pt => {
+    svCtx.save();
+    if (alpha < 1) svCtx.globalAlpha = alpha;
+    svCtx.translate(pt.x, pt.y);
+    if (typeof drawRapelIcon === 'function') {
+      drawRapelIcon(svCtx, 0, 0, size, color);
+    } else {
+      const s = size / 20;
+      svCtx.fillStyle = color;
+      svCtx.beginPath();
+      svCtx.arc(0, -14 * s, 7 * s, 0, Math.PI * 2);
+      svCtx.fill();
+    }
+    svCtx.restore();
+  });
+}
+
+/**
+ * Dibuja todos los puntos de rápel en el visor de sector (legacy, datos antiguos)
  * Utiliza drawRapelIcon de route-drawing.js si está disponible
  */
 function drawSvRapelPoints(canvasWidth, canvasHeight) {
