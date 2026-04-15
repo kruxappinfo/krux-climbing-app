@@ -1908,3 +1908,64 @@
     font-size: 13px;
   }
 }
+
+/* ============================================
+   MENÚ CONTEXTUAL DE ELEMENTOS AUXILIARES
+   ============================================ */
+
+.rd-aux-context-menu {
+  position: absolute;
+  z-index: 1100;
+  background: rgba(17, 24, 39, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 6px;
+  min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  animation: rd-aux-menu-in 0.15s ease-out;
+}
+
+@keyframes rd-aux-menu-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.rd-aux-menu-title {
+  padding: 8px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.rd-aux-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #e5e7eb;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: left;
+  min-height: 44px;
+}
+
+.rd-aux-menu-item:hover,
+.rd-aux-menu-item:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.rd-aux-menu-item svg {
+  flex-shrink: 0;
+}
+
+.rd-aux-menu-item span {
+  flex: 1;
+}

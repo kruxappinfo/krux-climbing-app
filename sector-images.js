@@ -1618,6 +1618,7 @@ let svCtx = null;
 let svImage = null;
 let svDrawings = [];
 let svRapelPoints = []; // Puntos de rápel independientes
+let svAuxElements = []; // Elementos auxiliares (líneas de descenso, grapas, cadenas)
 let svRoutesList = [];  // Lista de vías del sector para obtener grados
 let svCurrentImageId = null; // ID de la imagen actual (para galería)
 
@@ -1826,6 +1827,17 @@ async function loadViewerRouteDrawingsForImage(schoolId, sectorName, imageId) {
         });
       } else {
         svRapelPoints = allRapelPoints;
+      }
+
+      // Cargar elementos auxiliares
+      const allAuxElements = data.auxElements || [];
+      if (imageId) {
+        svAuxElements = allAuxElements.filter(el => {
+          if (el.imageId) return el.imageId === imageId;
+          return imageId === 'legacy_0';
+        });
+      } else {
+        svAuxElements = allAuxElements;
       }
     } else {
       console.log('[SectorViewer] No hay dibujos guardados para este sector');
@@ -2374,7 +2386,10 @@ function redrawCanvasOverlay() {
     drawOverlayRoutePoint(highlightedDrawing, imgWidth, imgHeight);
   }
 
-  // PASO 4: Dibujar puntos de rápel encima de todo
+  // PASO 4: Dibujar elementos auxiliares
+  drawSvAuxElements(imgWidth, imgHeight);
+
+  // PASO 5: Dibujar puntos de rápel encima de todo
   drawSvRapelPoints(imgWidth, imgHeight);
 }
 
@@ -2922,6 +2937,171 @@ function drawSvAnchorMosqueton(x, y, size, color) {
 
   svCtx.fillStyle = color;
   svCtx.fillRect(x - 2 * scale, y - 4 * scale, 4 * scale, 6 * scale);
+}
+
+/**
+ * Dibuja todos los elementos auxiliares en el visor de sector
+ */
+function drawSvAuxElements(canvasWidth, canvasHeight) {
+  if (!svAuxElements || svAuxElements.length === 0) return;
+
+  const scaleX = canvasWidth / svImage.width;
+  const scaleY = canvasHeight / svImage.height;
+
+  const colors = {
+    descent_line: '#00bcd4',
+    grapas: '#ff9800',
+    cadena: '#78909c'
+  };
+
+  svAuxElements.forEach(element => {
+    if (!element.points || element.points.length === 0) return;
+
+    const scaledPoints = element.points.map(p => ({
+      x: p.x * scaleX,
+      y: p.y * scaleY
+    }));
+
+    const color = colors[element.type] || '#ffffff';
+
+    switch (element.type) {
+      case 'descent_line':
+        drawSvDescentLine(scaledPoints, color);
+        break;
+      case 'grapas':
+        drawSvGrapas(scaledPoints, color);
+        break;
+      case 'cadena':
+        drawSvCadena(scaledPoints, color);
+        break;
+    }
+  });
+}
+
+/**
+ * Dibuja una línea de descenso/ascenso en el visor
+ */
+function drawSvDescentLine(scaledPoints, color) {
+  if (scaledPoints.length < 2) return;
+
+  svCtx.save();
+
+  // Sombra
+  svCtx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+  svCtx.lineWidth = 4;
+  svCtx.lineCap = 'round';
+  svCtx.lineJoin = 'round';
+  svCtx.setLineDash([10, 6]);
+  svCtx.beginPath();
+  svCtx.moveTo(scaledPoints[0].x, scaledPoints[0].y);
+  for (let i = 1; i < scaledPoints.length; i++) {
+    svCtx.lineTo(scaledPoints[i].x, scaledPoints[i].y);
+  }
+  svCtx.stroke();
+
+  // Línea principal
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 2.5;
+  svCtx.setLineDash([10, 6]);
+  svCtx.beginPath();
+  svCtx.moveTo(scaledPoints[0].x, scaledPoints[0].y);
+  for (let i = 1; i < scaledPoints.length; i++) {
+    svCtx.lineTo(scaledPoints[i].x, scaledPoints[i].y);
+  }
+  svCtx.stroke();
+  svCtx.setLineDash([]);
+
+  // Flecha en el extremo
+  if (scaledPoints.length >= 2) {
+    const last = scaledPoints[scaledPoints.length - 1];
+    const prev = scaledPoints[scaledPoints.length - 2];
+    const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
+    svCtx.fillStyle = color;
+    svCtx.beginPath();
+    svCtx.moveTo(last.x, last.y);
+    svCtx.lineTo(last.x - 8 * Math.cos(angle - Math.PI / 6), last.y - 8 * Math.sin(angle - Math.PI / 6));
+    svCtx.lineTo(last.x - 8 * Math.cos(angle + Math.PI / 6), last.y - 8 * Math.sin(angle + Math.PI / 6));
+    svCtx.closePath();
+    svCtx.fill();
+  }
+
+  svCtx.restore();
+}
+
+/**
+ * Dibuja grapas en el visor
+ */
+function drawSvGrapas(scaledPoints, color) {
+  scaledPoints.forEach(pt => {
+    if (typeof drawGrapaIcon === 'function') {
+      drawGrapaIcon(svCtx, pt.x, pt.y, 12, color);
+    } else {
+      // Fallback: simple U shape
+      const s = 1;
+      svCtx.save();
+      svCtx.strokeStyle = color;
+      svCtx.lineWidth = 3;
+      svCtx.lineCap = 'round';
+      svCtx.beginPath();
+      svCtx.moveTo(pt.x - 6 * s, pt.y - 8 * s);
+      svCtx.lineTo(pt.x - 6 * s, pt.y + 2 * s);
+      svCtx.quadraticCurveTo(pt.x - 6 * s, pt.y + 8 * s, pt.x, pt.y + 8 * s);
+      svCtx.quadraticCurveTo(pt.x + 6 * s, pt.y + 8 * s, pt.x + 6 * s, pt.y + 2 * s);
+      svCtx.lineTo(pt.x + 6 * s, pt.y - 8 * s);
+      svCtx.stroke();
+      svCtx.restore();
+    }
+  });
+}
+
+/**
+ * Dibuja cadena en el visor
+ */
+function drawSvCadena(scaledPoints, color) {
+  if (scaledPoints.length < 2) return;
+
+  svCtx.save();
+
+  for (let i = 0; i < scaledPoints.length - 1; i++) {
+    const p1 = scaledPoints[i];
+    const p2 = scaledPoints[i + 1];
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+    const linkLength = 12;
+    const linkWidth = 5;
+    const numLinks = Math.max(1, Math.floor(dist / linkLength));
+    const actualLinkLen = dist / numLinks;
+
+    svCtx.save();
+    svCtx.translate(p1.x, p1.y);
+    svCtx.rotate(angle);
+
+    for (let j = 0; j < numLinks; j++) {
+      const lx = j * actualLinkLen + actualLinkLen / 2;
+      const isEven = j % 2 === 0;
+      const w = isEven ? linkWidth : linkWidth * 0.7;
+      const h = actualLinkLen * 0.4;
+
+      svCtx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+      svCtx.lineWidth = 4;
+      svCtx.lineCap = 'round';
+      svCtx.beginPath();
+      svCtx.ellipse(lx, 0, h, w, 0, 0, Math.PI * 2);
+      svCtx.stroke();
+
+      svCtx.strokeStyle = color;
+      svCtx.lineWidth = 2;
+      svCtx.beginPath();
+      svCtx.ellipse(lx, 0, h, w, 0, 0, Math.PI * 2);
+      svCtx.stroke();
+    }
+
+    svCtx.restore();
+  }
+
+  svCtx.restore();
 }
 
 /**
