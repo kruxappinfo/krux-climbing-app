@@ -63,6 +63,9 @@ let rdAuxElements = [];                  // Elementos auxiliares guardados [{typ
 let rdAuxDraggingIndex = -1;             // Índice del punto aux siendo arrastrado
 let rdAuxIsDragging = false;             // Si estamos arrastrando un punto aux
 
+// Variable de modo borrador
+let rdEraserMode = false;                  // Modo borrador activo (1 clic elimina elementos)
+
 // Variables para detección de tap en touch (para menú contextual)
 let rdTouchStartPos = null;              // Posición inicial del touch
 let rdTouchStartTime = 0;               // Timestamp del inicio del touch
@@ -2262,6 +2265,19 @@ function findNearestPointIndex(canvasX, canvasY) {
  * Usado para mostrar el menú contextual al hacer clic en zona vacía
  */
 function handleCanvasClick(e) {
+  // Modo borrador: intentar borrar elemento bajo el cursor
+  if (rdEraserMode && !rdWasDragging) {
+    const { x, y } = getCanvasCoordinates(e);
+    eraserHitTest(x, y).then(hit => {
+      if (!hit) {
+        // Clic en zona vacía: salir del modo borrador
+        exitEraserMode();
+      }
+    });
+    rdWasDragging = false;
+    return;
+  }
+
   // Solo mostrar menú si no hay ningún modo activo y no hubo arrastre
   if (!rdDrawingMode && !rdCurrentRoute && !rdRapelMode && !rdAuxMode && !rdBifurcationMode && !rdWasDragging) {
     showAuxContextMenu(e.clientX, e.clientY);
@@ -2599,6 +2615,25 @@ function handleCanvasTouchEnd(e) {
     rdAuxIsDragging = false;
     rdAuxDraggingIndex = -1;
     redrawCanvas();
+    return;
+  }
+
+  // Modo borrador: detectar tap para borrar elemento
+  if (rdEraserMode && rdTouchStartPos) {
+    const elapsed = Date.now() - rdTouchStartTime;
+    const touch = e.changedTouches[0];
+    if (touch && elapsed < 400) {
+      const dx = touch.clientX - rdTouchStartPos.x;
+      const dy = touch.clientY - rdTouchStartPos.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 15) {
+        const { x, y } = getCanvasCoordinates(touch);
+        eraserHitTest(x, y).then(hit => {
+          if (!hit) exitEraserMode();
+        });
+      }
+    }
+    rdTouchStartPos = null;
+    rdTouchStartTime = 0;
     return;
   }
 
@@ -3584,6 +3619,9 @@ function selectRouteForDrawing(routeId) {
     return;
   }
 
+  // Desactivar modo borrador si está activo
+  if (rdEraserMode) rdEraserMode = false;
+
   // Desactivar modo rápel si está activo
   if (rdRapelMode) {
     rdRapelMode = false;
@@ -4213,6 +4251,14 @@ function showAuxContextMenu(clientX, clientY) {
   menu.className = 'rd-aux-context-menu';
   menu.innerHTML = `
     <div class="rd-aux-menu-title">Añadir elemento</div>
+    <button class="rd-aux-menu-item" onclick="toggleEraserMode()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+        <path d="M20 20H7L3 16c-.8-.8-.8-2 0-2.8L14.2 2c.8-.8 2-.8 2.8 0L21.8 6.8c.8.8.8 2 0 2.8L10 21"/>
+        <line x1="18" y1="13" x2="11" y2="6"/>
+      </svg>
+      <span style="color: ${rdEraserMode ? '#ef4444' : 'inherit'}">${rdEraserMode ? '✓ Borrador (activo)' : 'Borrador'}</span>
+    </button>
+    <div class="rd-aux-menu-separator" style="border-top: 1px solid rgba(255,255,255,0.1); margin: 4px 0;"></div>
     <button class="rd-aux-menu-item" onclick="enterAuxMode('rapel')">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${RD_COLORS.rapel}" stroke-width="2">
         <circle cx="12" cy="5" r="3"/>
@@ -4443,12 +4489,18 @@ async function rdAuxFinishDrawing() {
   const modeNames = { descent_line: 'Línea de descenso', grapas: 'Grapas', cadena: 'Cadena' };
   showRDToast(`${modeNames[rdAuxMode]} guardado`, 'success');
 
-  // Limpiar puntos temporales pero mantener el modo activo
+  // Salir del modo auxiliar tras guardar
+  rdAuxMode = null;
   rdAuxPoints = [];
-  updateAuxDrawingControls();
-  redrawCanvas();
+  rdAuxDraggingIndex = -1;
+  rdAuxIsDragging = false;
+  rdCanvas.style.cursor = 'default';
 
-  updateInstructions(`Elemento guardado. Puedes seguir añadiendo o pulsa Cancelar para salir.`);
+  const controlsDiv = document.getElementById('rd-drawing-controls');
+  if (controlsDiv) controlsDiv.style.display = 'none';
+
+  updateInstructions('Elemento guardado. Toca en la imagen para añadir otro elemento.');
+  redrawCanvas();
 }
 
 /**
@@ -4890,6 +4942,9 @@ function closeRouteDrawingEditor() {
   rdCurrentImageIndex = 0;
   rdAutoSelectRouteId = null;
 
+  // Limpiar estado de borrador
+  rdEraserMode = false;
+
   // Limpiar estado de bifurcación
   rdBifurcationMode = false;
   rdCurrentBranchId = -1;
@@ -5163,6 +5218,230 @@ function addLinkDrawingButtonToRoutePopup(routeId, isAdmin) {
 }
 
 // ============================================
+// MODO BORRADOR
+// ============================================
+
+/**
+ * Activa/desactiva el modo borrador
+ */
+function toggleEraserMode() {
+  closeAuxContextMenu();
+
+  // No permitir si hay un modo de dibujo activo
+  if (rdDrawingMode || rdAuxMode || rdRapelMode || rdBifurcationMode) {
+    showRDToast('Termina el modo actual antes de usar el borrador', 'warning');
+    return;
+  }
+
+  rdEraserMode = !rdEraserMode;
+
+  if (rdEraserMode) {
+    rdCanvas.style.cursor = 'crosshair';
+    updateInstructions('Modo borrador: haz clic en cualquier elemento para eliminarlo. Clic en zona vacía para salir.');
+  } else {
+    rdCanvas.style.cursor = 'default';
+    updateInstructions('Selecciona una vía de la lista para dibujar su línea en la imagen');
+  }
+  redrawCanvas();
+}
+
+/**
+ * Desactiva el modo borrador
+ */
+function exitEraserMode() {
+  rdEraserMode = false;
+  rdCanvas.style.cursor = 'default';
+  updateInstructions('Selecciona una vía de la lista para dibujar su línea en la imagen');
+  redrawCanvas();
+}
+
+/**
+ * Intenta borrar un elemento en las coordenadas dadas (canvas coords)
+ * Devuelve true si se borró algo
+ */
+async function eraserHitTest(canvasX, canvasY) {
+  const imgCoords = canvasToImageCoords(canvasX, canvasY);
+
+  // 1. Comprobar puntos de rápel
+  const rapelHit = findNearestRapelPoint(imgCoords.x, imgCoords.y);
+  if (rapelHit !== -1) {
+    rdRapelPoints.splice(rapelHit, 1);
+    await saveRapelPoints();
+    showRDToast('Punto de rápel eliminado', 'info');
+    redrawCanvas();
+    return true;
+  }
+
+  // 2. Comprobar elementos auxiliares (descent_line, grapas, cadena)
+  const auxHit = findNearestAuxElement(canvasX, canvasY);
+  if (auxHit !== -1) {
+    const typeName = { descent_line: 'Línea de descenso', grapas: 'Grapas', cadena: 'Cadena' };
+    const removed = rdAuxElements.splice(auxHit, 1)[0];
+    await saveAuxElements();
+    showRDToast(`${typeName[removed.type] || 'Elemento'} eliminado`, 'info');
+    redrawCanvas();
+    return true;
+  }
+
+  // 3. Comprobar dibujos de vías
+  const drawingHit = findNearestRouteDrawing(canvasX, canvasY);
+  if (drawingHit !== -1) {
+    const drawing = rdRouteDrawings[drawingHit];
+    const routeName = drawing.routeName || 'Vía';
+    rdRouteDrawings.splice(drawingHit, 1);
+    await saveAllRouteDrawings();
+    showRDToast(`Dibujo de "${routeName}" eliminado`, 'info');
+    redrawCanvas();
+    // Actualizar lista de vías
+    const listContainer = document.getElementById('rd-route-list');
+    if (listContainer) {
+      listContainer.innerHTML = typeof renderRoutesListMandatory === 'function' && rdMandatoryDrawingMode
+        ? renderRoutesListMandatory(rdPendingRouteInfo?.docId)
+        : renderRoutesList();
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Busca el elemento auxiliar guardado más cercano al punto dado (canvas coords)
+ */
+function findNearestAuxElement(canvasX, canvasY) {
+  if (rdAuxElements.length === 0) return -1;
+
+  const displayWidth = rdCanvas.displayWidth || rdCanvas.width;
+  const displayHeight = rdCanvas.displayHeight || rdCanvas.height;
+  const scaleX = displayWidth / rdImage.width;
+  const scaleY = displayHeight / rdImage.height;
+  const hitRadius = RD_SEGMENT_HIT_RADIUS;
+
+  let nearestIndex = -1;
+  let nearestDist = Infinity;
+
+  rdAuxElements.forEach((element, elIdx) => {
+    const scaledPoints = element.points.map(p => ({ x: p.x * scaleX, y: p.y * scaleY }));
+
+    // Para grapas: comprobar proximidad a cada punto
+    if (element.type === 'grapas') {
+      scaledPoints.forEach(pt => {
+        const dist = Math.sqrt((pt.x - canvasX) ** 2 + (pt.y - canvasY) ** 2);
+        if (dist < hitRadius && dist < nearestDist) {
+          nearestDist = dist;
+          nearestIndex = elIdx;
+        }
+      });
+    } else {
+      // Para líneas: comprobar proximidad a cada segmento
+      for (let i = 0; i < scaledPoints.length - 1; i++) {
+        const dist = pointToSegmentDist(canvasX, canvasY, scaledPoints[i], scaledPoints[i + 1]);
+        if (dist < hitRadius && dist < nearestDist) {
+          nearestDist = dist;
+          nearestIndex = elIdx;
+        }
+      }
+    }
+  });
+
+  return nearestIndex;
+}
+
+/**
+ * Busca el dibujo de vía más cercano al punto dado (canvas coords)
+ */
+function findNearestRouteDrawing(canvasX, canvasY) {
+  if (rdRouteDrawings.length === 0) return -1;
+
+  const displayWidth = rdCanvas.displayWidth || rdCanvas.width;
+  const displayHeight = rdCanvas.displayHeight || rdCanvas.height;
+  const scaleX = displayWidth / rdImage.width;
+  const scaleY = displayHeight / rdImage.height;
+  const hitRadius = RD_SEGMENT_HIT_RADIUS;
+
+  let nearestIndex = -1;
+  let nearestDist = Infinity;
+
+  rdRouteDrawings.forEach((drawing, dIdx) => {
+    const points = drawing.points || [];
+    const scaledPoints = points.map(p => ({ x: p.x * scaleX, y: p.y * scaleY }));
+
+    for (let i = 0; i < scaledPoints.length - 1; i++) {
+      const dist = pointToSegmentDist(canvasX, canvasY, scaledPoints[i], scaledPoints[i + 1]);
+      if (dist < hitRadius && dist < nearestDist) {
+        nearestDist = dist;
+        nearestIndex = dIdx;
+      }
+    }
+
+    // También comprobar branches
+    if (drawing.branches) {
+      drawing.branches.forEach(branch => {
+        const branchScaled = (branch.points || []).map(p => ({ x: p.x * scaleX, y: p.y * scaleY }));
+        for (let i = 0; i < branchScaled.length - 1; i++) {
+          const dist = pointToSegmentDist(canvasX, canvasY, branchScaled[i], branchScaled[i + 1]);
+          if (dist < hitRadius && dist < nearestDist) {
+            nearestDist = dist;
+            nearestIndex = dIdx;
+          }
+        }
+      });
+    }
+  });
+
+  return nearestIndex;
+}
+
+/**
+ * Distancia de un punto a un segmento de línea
+ */
+function pointToSegmentDist(px, py, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.sqrt((px - a.x) ** 2 + (py - a.y) ** 2);
+  let t = ((px - a.x) * dx + (py - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const projX = a.x + t * dx;
+  const projY = a.y + t * dy;
+  return Math.sqrt((px - projX) ** 2 + (py - projY) ** 2);
+}
+
+/**
+ * Guarda todos los route drawings en Firestore (usado por eraser)
+ */
+async function saveAllRouteDrawings() {
+  try {
+    const docId = `${rdCurrentSector.schoolId}_${normalizeSectorName(rdCurrentSector.sectorName)}`;
+    const docRef = db.collection('sector_route_drawings').doc(docId);
+    const doc = await docRef.get();
+
+    let allDrawings = [];
+    if (doc.exists) {
+      allDrawings = doc.data().drawings || [];
+    }
+
+    // Filtrar dibujos de esta imagen y reemplazar con los actuales
+    if (rdCurrentSector.imageId) {
+      allDrawings = allDrawings.filter(d => d.imageId !== rdCurrentSector.imageId);
+      const withImageId = rdRouteDrawings.map(d => ({ ...d, imageId: rdCurrentSector.imageId }));
+      allDrawings = allDrawings.concat(withImageId);
+    } else {
+      allDrawings = [...rdRouteDrawings];
+    }
+
+    await docRef.set({
+      drawings: allDrawings,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: auth.currentUser?.uid
+    }, { merge: true });
+  } catch (error) {
+    console.error('[RouteDrawing] Error guardando drawings tras borrado:', error);
+    showRDToast('Error al guardar: ' + error.message, 'error');
+  }
+}
+
+// ============================================
 // EXPORTAR FUNCIONES
 // ============================================
 
@@ -5203,5 +5482,8 @@ window.showAuxContextMenu = showAuxContextMenu;
 window.closeAuxContextMenu = closeAuxContextMenu;
 window.enterAuxMode = enterAuxMode;
 window.drawGrapaIcon = drawGrapaIcon;
+// Funciones de borrador
+window.toggleEraserMode = toggleEraserMode;
+window.exitEraserMode = exitEraserMode;
 
 console.log('[RouteDrawing] Módulo cargado');
