@@ -217,27 +217,81 @@
 
     async function handleGoogleLogin() {
       console.log('[MobileAuth] Iniciando login con Google...');
+      console.log('[MobileAuth] GoogleAuth disponible:', !!window.GoogleAuth);
+      console.log('[MobileAuth] GoogleAuthReady:', !!window.GoogleAuthReady);
 
       try {
         // Usar el plugin nativo de Google Auth si está disponible
         if (window.GoogleAuth) {
+          // Esperar a que initialize() haya completado antes de llamar signIn()
+          if (window.GoogleAuthInitPromise) {
+            console.log('[MobileAuth] Esperando a que GoogleAuth.initialize() complete...');
+            await window.GoogleAuthInitPromise;
+            console.log('[MobileAuth] GoogleAuth inicializado. GoogleAuthReady:', window.GoogleAuthReady);
+          }
+
+          if (!window.GoogleAuthReady) {
+            console.error('[MobileAuth] GoogleAuth no se inicializó correctamente, intentando con Firebase redirect...');
+            await handleGoogleLoginFirebase();
+            return;
+          }
+
           const result = await window.GoogleAuth.signIn();
-          console.log('[MobileAuth] Google Auth result:', result);
+          console.log('[MobileAuth] Google Auth result:', JSON.stringify(result));
 
           // Autenticar con Firebase usando el token de Google
           if (result && result.authentication && result.authentication.idToken) {
             const credential = firebase.auth.GoogleAuthProvider.credential(result.authentication.idToken);
             await firebase.auth().signInWithCredential(credential);
             onLoginSuccess();
+          } else {
+            console.error('[MobileAuth] Google signIn no devolvió idToken. Result:', JSON.stringify(result));
+            showError('Error de autenticación con Google. Inténtalo de nuevo.');
           }
         } else {
-          // Fallback a Firebase Auth popup/redirect
-          const provider = new firebase.auth.GoogleAuthProvider();
-          await firebase.auth().signInWithPopup(provider);
-          onLoginSuccess();
+          console.log('[MobileAuth] Plugin nativo no disponible, usando Firebase...');
+          await handleGoogleLoginFirebase();
         }
       } catch (error) {
+        // Logging detallado del error para diagnóstico
         console.error('[MobileAuth] Error en Google login:', error);
+        console.error('[MobileAuth] Error message:', error.message);
+        console.error('[MobileAuth] Error code:', error.code);
+        console.error('[MobileAuth] Error status:', error.status);
+        console.error('[MobileAuth] Error JSON:', JSON.stringify(error));
+        try {
+          // Intentar extraer todas las propiedades del error
+          const errorProps = {};
+          for (const key in error) {
+            errorProps[key] = error[key];
+          }
+          console.error('[MobileAuth] Error props:', JSON.stringify(errorProps));
+        } catch (e) { /* ignore */ }
+
+        // No mostrar error si el usuario canceló
+        if (error.error === 'popup_closed_by_user' || error.type === 'userCancel' ||
+            error.code === '12501' || error.code === 12501 ||
+            (error.message && (error.message.includes('cancel') || error.message.includes('canceled')))) {
+          console.log('[MobileAuth] Usuario canceló el login con Google');
+          return;
+        }
+        showError('Error al iniciar sesión con Google');
+      }
+    }
+
+    // Fallback: usar Firebase Auth con signInWithRedirect (signInWithPopup NO funciona en WebView)
+    async function handleGoogleLoginFirebase() {
+      console.log('[MobileAuth] Intentando login con Firebase redirect...');
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.addScope('profile');
+      provider.addScope('email');
+      try {
+        // signInWithRedirect funciona mejor que signInWithPopup en WebViews de Capacitor
+        await firebase.auth().signInWithRedirect(provider);
+      } catch (redirectError) {
+        console.error('[MobileAuth] Firebase redirect también falló:', redirectError);
+        console.error('[MobileAuth] Redirect error code:', redirectError.code);
+        console.error('[MobileAuth] Redirect error message:', redirectError.message);
         showError('Error al iniciar sesión con Google');
       }
     }

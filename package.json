@@ -31,19 +31,19 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@capacitor/android": "^5.7.8",
-    "@capacitor/app": "^5.0.8",
-    "@capacitor/camera": "^5.0.10",
-    "@capacitor/cli": "^5.7.8",
-    "@capacitor/core": "^5.7.8",
-    "@capacitor/geolocation": "^5.0.8",
-    "@capacitor/haptics": "^5.0.8",
-    "@capacitor/ios": "^5.7.8",
-    "@capacitor/keyboard": "^5.0.9",
-    "@capacitor/push-notifications": "^5.1.2",
-    "@capacitor/share": "^5.0.8",
-    "@capacitor/splash-screen": "^5.0.8",
-    "@capacitor/status-bar": "^5.0.8",
-    "@codetrix-studio/capacitor-google-auth": "^3.3.5"
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.2",
+    "@capacitor/camera": "^6.1.0",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/geolocation": "^6.1.0",
+    "@capacitor/haptics": "^6.0.2",
+    "@capacitor/ios": "^6.2.1",
+    "@capacitor/keyboard": "^6.0.3",
+    "@capacitor/push-notifications": "^6.0.3",
+    "@capacitor/share": "^6.0.3",
+    "@capacitor/splash-screen": "^6.0.3",
+    "@capacitor/status-bar": "^6.0.3",
+    "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4"
   }
 }

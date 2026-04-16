@@ -1,6 +1,6 @@
 {
 "type": "FeatureCollection",
-"name": "Cuenca_Vias",
+"name": "Toledo_Vias",
 "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
 "features": [
 { "type": "Feature", "properties": { "fid": 1, "id": 1, "nombre": "El ratoncito Pérez", "descripcion": "Placa ", "sector": "Juego de Bolos", "grado1": "6c", "long1": 20, "exp1": 9, "grado2": null, "long2": null, "exp2": null, "grado3": null, "long3": null, "exp3": null, "grado4": null, "long4": null, "exp4": null, "grado5": null, "long5": null, "exp5": null, "modalidad": "Simple", "variante": null, "union": null }, "geometry": { "type": "MultiPoint", "coordinates": [ [ -2.13288325, 40.080234566666668 ] ] } },

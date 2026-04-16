@@ -1892,21 +1892,20 @@ async function loadProfileClimbingStatsForUser(userId, loadId = null) {
     let totalAscents = ascentsSnapshot.size;
     let maxGrade = '-';
     const zones = new Set();
-    let maxGradeValue = -1;
+    const grades = [];
 
     ascentsSnapshot.forEach(doc => {
       const data = doc.data();
       if (data.schoolId) zones.add(data.schoolId);
-
-      const grade = data.grade;
-      if (grade) {
-        const gradeValue = getGradeValue(grade);
-        if (gradeValue > maxGradeValue) {
-          maxGradeValue = gradeValue;
-          maxGrade = grade;
-        }
+      if (data.grade && data.grade.trim() !== '') {
+        grades.push(data.grade);
       }
     });
+
+    if (grades.length > 0) {
+      const compareFunc = typeof compareGradesLocal === 'function' ? compareGradesLocal : (a, b) => a.localeCompare(b);
+      maxGrade = grades.sort(compareFunc).reverse()[0];
+    }
 
     // Final check before DOM update
     if (loadId && profileLoadingState.currentLoadId !== loadId) {
@@ -3523,29 +3522,31 @@ async function initProfile() {
   if (followingStat) followingStat.textContent = realFollowingCount;
 
   // 3. Climbing Stats (Real calculation)
-  const ascents = await getUserAscents(authUser.uid);
+  const ascents = await getUserAscents();
   const projects = getProjects();
 
   const totalAscentsEl = document.getElementById('total-ascents');
-  if (totalAscentsEl) totalAscentsEl.textContent = userStats.totalAscents || ascents.length;
+  if (totalAscentsEl) totalAscentsEl.textContent = ascents.length || userStats.totalAscents || 0;
 
-  // Calculate Max Grade
+  // Calculate Max Grade using compareGradesLocal
   let maxGrade = '-';
   if (ascents.length > 0) {
-    // Simple lexicographical sort might not be enough for grades (6a < 6a+ < 6b),
-    // but for now let's assume standard string comparison or just take the "highest" if we had a value map.
-    // For MVP, let's just show the grade of the most recent hard ascent or similar.
-    // Better: Helper function to compare grades.
-    // For now, let's just pick the last one or "-"
-    // TODO: Implement proper grade comparison
-    maxGrade = ascents[0].grade; // Just showing one for now
+    const grades = ascents
+      .map(a => a.grade)
+      .filter(g => g && g.trim() !== '');
+    if (grades.length > 0) {
+      const compareFunc = typeof compareGradesLocal === 'function' ? compareGradesLocal : (a, b) => a.localeCompare(b);
+      maxGrade = grades.sort(compareFunc).reverse()[0];
+    }
   }
 
   const maxGradeEl = document.getElementById('max-grade');
   if (maxGradeEl) maxGradeEl.textContent = maxGrade;
 
-  // Unique zones
-  const zones = new Set(ascents.map(a => a.schoolName));
+  // Unique zones (filter empty schoolNames)
+  const zones = new Set(
+    ascents.map(a => a.schoolName).filter(z => z && z.trim() !== '')
+  );
   const zonesVisitedEl = document.getElementById('zones-visited');
   if (zonesVisitedEl) zonesVisitedEl.textContent = zones.size;
 
@@ -11072,8 +11073,15 @@ function initLogbook() {
   }
 
   // Filters
+  const schoolFilter = document.getElementById('logbook-filter-school');
+  const sectorFilter = document.getElementById('logbook-filter-sector');
   const gradeFilter = document.getElementById('logbook-filter-grade');
   const styleFilter = document.getElementById('logbook-filter-style');
+  if (schoolFilter) schoolFilter.addEventListener('change', () => {
+    populateSectorFilter(logbookAscents);
+    applyLogbookFilters();
+  });
+  if (sectorFilter) sectorFilter.addEventListener('change', applyLogbookFilters);
   if (gradeFilter) gradeFilter.addEventListener('change', applyLogbookFilters);
   if (styleFilter) styleFilter.addEventListener('change', applyLogbookFilters);
 
@@ -11141,6 +11149,8 @@ async function openLogbook() {
     logbookAscents = ascents;
     logbookFiltered = ascents;
 
+    populateSchoolFilter(ascents);
+    populateSectorFilter(ascents);
     populateGradeFilter(ascents);
     applyLogbookFilters();
 
@@ -11159,11 +11169,57 @@ function closeLogbook() {
 }
 
 function getCurrentProfileUserId() {
-  // Check if we're viewing our own profile or someone else's
+  // If viewing another user's profile, return their ID
+  if (currentProfileUserId) {
+    return currentProfileUserId;
+  }
+  // Otherwise return logged-in user's ID
   if (typeof currentUser !== 'undefined' && currentUser && currentUser.uid) {
     return currentUser.uid;
   }
   return null;
+}
+
+function populateSchoolFilter(ascents) {
+  const select = document.getElementById('logbook-filter-school');
+  if (!select) return;
+
+  const schools = [...new Set(ascents.map(a => a.schoolName).filter(s => s && s.trim() !== ''))];
+  schools.sort((a, b) => a.localeCompare(b, 'es'));
+
+  const currentVal = select.value;
+  select.innerHTML = '<option value="">Todas las escuelas</option>';
+  schools.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    select.appendChild(opt);
+  });
+  if (currentVal && schools.includes(currentVal)) {
+    select.value = currentVal;
+  }
+}
+
+function populateSectorFilter(ascents) {
+  const select = document.getElementById('logbook-filter-sector');
+  if (!select) return;
+
+  const schoolVal = document.getElementById('logbook-filter-school')?.value || '';
+  const filtered = schoolVal ? ascents.filter(a => a.schoolName === schoolVal) : ascents;
+  const sectors = [...new Set(filtered.map(a => a.sector).filter(s => s && s.trim() !== ''))];
+  sectors.sort((a, b) => a.localeCompare(b, 'es'));
+
+  const currentVal = select.value;
+  select.innerHTML = '<option value="">Todos los sectores</option>';
+  sectors.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    select.appendChild(opt);
+  });
+  if (currentVal && sectors.includes(currentVal)) {
+    select.value = currentVal;
+  }
 }
 
 function populateGradeFilter(ascents) {
@@ -11189,21 +11245,27 @@ function populateGradeFilter(ascents) {
 }
 
 function applyLogbookFilters() {
+  const schoolVal = document.getElementById('logbook-filter-school')?.value || '';
+  const sectorVal = document.getElementById('logbook-filter-sector')?.value || '';
   const gradeVal = document.getElementById('logbook-filter-grade')?.value || '';
   const styleVal = document.getElementById('logbook-filter-style')?.value || '';
 
   logbookFiltered = logbookAscents.filter(a => {
+    if (schoolVal && a.schoolName !== schoolVal) return false;
+    if (sectorVal && a.sector !== sectorVal) return false;
     if (gradeVal && a.grade !== gradeVal) return false;
     if (styleVal && a.style !== styleVal) return false;
     return true;
   });
+
+  const hasFilter = schoolVal || sectorVal || gradeVal || styleVal;
 
   // Update result count
   const countEl = document.getElementById('logbook-result-count');
   if (countEl) {
     const total = logbookAscents.length;
     const shown = logbookFiltered.length;
-    countEl.textContent = (gradeVal || styleVal)
+    countEl.textContent = hasFilter
       ? `${shown} de ${total} ascensiones`
       : `${total} ascensiones`;
   }
@@ -11216,9 +11278,11 @@ function renderLogbookList(ascents) {
   if (!list) return;
 
   if (!ascents || ascents.length === 0) {
+    const schoolVal = document.getElementById('logbook-filter-school')?.value || '';
+    const sectorVal = document.getElementById('logbook-filter-sector')?.value || '';
     const gradeVal = document.getElementById('logbook-filter-grade')?.value || '';
     const styleVal = document.getElementById('logbook-filter-style')?.value || '';
-    const isFiltered = gradeVal || styleVal;
+    const isFiltered = schoolVal || sectorVal || gradeVal || styleVal;
 
     renderLogbookEmpty(
       isFiltered ? 'No hay ascensiones con esos filtros' : null
@@ -11260,14 +11324,14 @@ function renderLogbookList(ascents) {
             ${checkHtml}
           </div>
         </div>
-        <button class="logbook-item-delete" data-ascent-id="${ascent.id}" data-school-id="${ascent.schoolId || ''}" data-route-id="${ascent.routeId || ''}" title="Eliminar ascensión">
+        ${!currentProfileUserId ? `<button class="logbook-item-delete" data-ascent-id="${ascent.id}" data-school-id="${ascent.schoolId || ''}" data-route-id="${ascent.routeId || ''}" title="Eliminar ascensión">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
             <path d="M10 11v6M14 11v6"></path>
             <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
           </svg>
-        </button>
+        </button>` : ''}
       </div>
     `;
   });

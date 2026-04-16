@@ -201,6 +201,19 @@
   border-color: #f87171;
 }
 
+/* Botón de añadir (+) - verde */
+.rd-btn-add {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10b981;
+  color: #34d399;
+}
+
+.rd-btn-add:hover {
+  background: rgba(16, 185, 129, 0.4);
+  color: #ffffff;
+  border-color: #34d399;
+}
+
 /* ============================================
    CANVAS CONTAINER
    ============================================ */
@@ -215,10 +228,21 @@
   overflow: hidden;
 }
 
+#rd-canvas-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+  will-change: transform;
+  touch-action: none;
+}
+
 #rd-canvas {
   max-width: 100%;
   max-height: 100%;
   cursor: crosshair;
+  touch-action: none;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   /* Mejorar nitidez del canvas en pantallas de alta densidad */
   image-rendering: -webkit-optimize-contrast;
@@ -473,34 +497,49 @@
 
 .rd-drawing-controls {
   position: absolute;
-  bottom: 80px;
-  bottom: calc(80px + env(safe-area-inset-bottom));
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(31, 41, 55, 0.95);
+  top: 70px;
+  right: 12px;
+  right: calc(12px + env(safe-area-inset-right));
+  background: rgba(31, 41, 55, 0.9);
   backdrop-filter: blur(8px);
-  padding: 10px;
-  border-radius: 12px;
+  padding: 6px;
+  border-radius: 10px;
   border: 1px solid #374151;
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   z-index: 250;
-  animation: rd-slide-up 0.3s ease-out;
+  transition: right 0.3s ease, opacity 0.3s ease;
+  animation: rd-fade-in 0.2s ease-out;
+}
+
+/* Cuando el panel de vías está abierto, retraer los controles */
+.rd-routes-panel:not(.rd-panel-collapsed) ~ .rd-drawing-controls {
+  right: 332px;
+}
+
+@keyframes rd-fade-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .rd-btn-control {
-  padding: 10px 16px;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid #374151;
   color: #ffffff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   transition: all 0.2s;
   white-space: nowrap;
+}
+
+.rd-btn-control svg {
+  flex-shrink: 0;
 }
 
 .rd-btn-control:disabled {
@@ -570,6 +609,17 @@
   to {
     opacity: 1;
     transform: translate(-50%, 0);
+  }
+}
+
+@keyframes rd-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 
@@ -860,11 +910,76 @@
   }
 
   .rd-drawing-controls {
-    bottom: calc(70px + env(safe-area-inset-bottom));
+    top: 60px;
+    right: 10px;
+    padding: 5px;
+    gap: 5px;
+  }
+
+  .rd-btn-control {
+    padding: 7px 10px;
+    font-size: 11px;
+    gap: 4px;
+  }
+
+  .rd-btn-control svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* En tablet, cuando panel abierto mover controles */
+  .rd-routes-panel:not(.rd-panel-collapsed) ~ .rd-drawing-controls {
+    right: calc(85vw + 10px);
+  }
+}
+
+@media (max-height: 400px) {
+  .rd-drawing-controls {
+    top: auto;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    right: 50%;
+    transform: translateX(50%);
+    flex-direction: row;
+    animation: rd-slide-up 0.3s ease-out;
   }
 }
 
 @media (max-width: 480px) {
+  /* Mobile: controles compactos horizontales en la parte inferior */
+  .rd-drawing-controls {
+    top: auto;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    flex-direction: row;
+    padding: 5px 6px;
+    gap: 5px;
+    border-radius: 10px;
+  }
+
+  .rd-btn-control {
+    padding: 8px 10px;
+    font-size: 11px;
+    gap: 3px;
+    border-radius: 6px;
+    min-width: auto;
+    min-height: auto;
+    justify-content: center;
+  }
+
+  .rd-btn-control svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* En mobile, cuando panel abierto ocultar controles */
+  .rd-routes-panel:not(.rd-panel-collapsed) ~ .rd-drawing-controls {
+    opacity: 0;
+    pointer-events: none;
+    left: -100%;
+    transform: none;
+  }
   .rd-header-left {
     flex-direction: column;
     align-items: flex-start;
@@ -1785,4 +1900,65 @@
     padding: 12px 14px;
     font-size: 13px;
   }
+}
+
+/* ============================================
+   MENÚ CONTEXTUAL DE ELEMENTOS AUXILIARES
+   ============================================ */
+
+.rd-aux-context-menu {
+  position: absolute;
+  z-index: 1100;
+  background: rgba(17, 24, 39, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 6px;
+  min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  animation: rd-aux-menu-in 0.15s ease-out;
+}
+
+@keyframes rd-aux-menu-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.rd-aux-menu-title {
+  padding: 8px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.rd-aux-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #e5e7eb;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: left;
+  min-height: 44px;
+}
+
+.rd-aux-menu-item:hover,
+.rd-aux-menu-item:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.rd-aux-menu-item svg {
+  flex-shrink: 0;
+}
+
+.rd-aux-menu-item span {
+  flex: 1;
 }

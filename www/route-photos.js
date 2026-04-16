@@ -31,7 +31,7 @@ async function isPhotoAdmin() {
         const adminDoc = await db.collection('admins').doc(currentUser.uid).get();
         if (!adminDoc.exists) return false;
 
-        return adminDoc.data().role === 'admin';
+        return adminDoc.data().role === 'admin' || adminDoc.data().role === 'spotter';
     } catch (error) {
         console.error('Error checking admin permissions:', error);
         return false;

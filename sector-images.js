@@ -63,14 +63,27 @@ let svPreviousZoomState = false;      // Trackea si estábamos en zoom (scale > 
 
 /**
  * Verifica si el usuario actual es admin
+ * Espera a que Firebase Auth haya restaurado la sesión (crítico en Capacitor/iOS/Android)
  */
 async function isSectorImageAdmin() {
   try {
+    // Esperar a que auth esté listo (en Capacitor puede tardar en restaurar la sesión)
+    if (typeof waitForAuthReady === 'function') {
+      await waitForAuthReady();
+    }
+
     const user = auth.currentUser;
+    console.log('[SectorImages] Admin check - user:', user ? user.uid : 'NULL', 'isCapacitor:', window.Capacitor !== undefined);
     if (!user) return false;
 
     const adminDoc = await db.collection('admins').doc(user.uid).get();
-    return adminDoc.exists && adminDoc.data().role === 'admin';
+    if (!adminDoc.exists) return false;
+
+    const adminData = adminDoc.data();
+    // Aceptar admin o spotter como roles con permisos de edición
+    const isAdmin = adminData.role === 'admin' || adminData.role === 'spotter';
+    console.log('[SectorImages] Admin check - result:', isAdmin, 'role:', adminData.role, 'uid:', user.uid);
+    return isAdmin;
   } catch (error) {
     console.error('[SectorImages] Error verificando admin:', error);
     return false;
@@ -1604,6 +1617,8 @@ let svCanvas = null;
 let svCtx = null;
 let svImage = null;
 let svDrawings = [];
+let svRapelPoints = []; // Puntos de rápel independientes
+let svAuxElements = []; // Elementos auxiliares (líneas de descenso, grapas, cadenas)
 let svRoutesList = [];  // Lista de vías del sector para obtener grados
 let svCurrentImageId = null; // ID de la imagen actual (para galería)
 
@@ -1802,6 +1817,28 @@ async function loadViewerRouteDrawingsForImage(schoolId, sectorName, imageId) {
       });
 
       console.log('[SectorViewer] Dibujos cargados para imagen', imageId, ':', svDrawings.length);
+
+      // Cargar puntos de rápel
+      const allRapelPoints = data.rapelPoints || [];
+      if (imageId) {
+        svRapelPoints = allRapelPoints.filter(p => {
+          if (p.imageId) return p.imageId === imageId;
+          return imageId === 'legacy_0';
+        });
+      } else {
+        svRapelPoints = allRapelPoints;
+      }
+
+      // Cargar elementos auxiliares
+      const allAuxElements = data.auxElements || [];
+      if (imageId) {
+        svAuxElements = allAuxElements.filter(el => {
+          if (el.imageId) return el.imageId === imageId;
+          return imageId === 'legacy_0';
+        });
+      } else {
+        svAuxElements = allAuxElements;
+      }
     } else {
       console.log('[SectorViewer] No hay dibujos guardados para este sector');
     }
@@ -2348,6 +2385,12 @@ function redrawCanvasOverlay() {
     drawOverlayRouteAnchor(highlightedDrawing, imgWidth, imgHeight);
     drawOverlayRoutePoint(highlightedDrawing, imgWidth, imgHeight);
   }
+
+  // PASO 4: Dibujar elementos auxiliares
+  drawSvAuxElements(imgWidth, imgHeight);
+
+  // PASO 5: Dibujar puntos de rápel encima de todo
+  drawSvRapelPoints(imgWidth, imgHeight);
 }
 
 /**
@@ -2894,6 +2937,250 @@ function drawSvAnchorMosqueton(x, y, size, color) {
 
   svCtx.fillStyle = color;
   svCtx.fillRect(x - 2 * scale, y - 4 * scale, 4 * scale, 6 * scale);
+}
+
+/**
+ * Dibuja todos los elementos auxiliares en el visor de sector
+ */
+function drawSvAuxElements(canvasWidth, canvasHeight) {
+  if (!svAuxElements || svAuxElements.length === 0) return;
+
+  const scaleX = canvasWidth / svImage.width;
+  const scaleY = canvasHeight / svImage.height;
+
+  const colors = {
+    descent_line: '#00bcd4',
+    grapas: '#ff9800',
+    cadena: '#78909c',
+    rapel: '#a855f7'
+  };
+
+  svAuxElements.forEach(element => {
+    if (!element.points || element.points.length === 0) return;
+
+    const scaledPoints = element.points.map(p => ({
+      x: p.x * scaleX,
+      y: p.y * scaleY
+    }));
+
+    const color = colors[element.type] || '#ffffff';
+
+    switch (element.type) {
+      case 'descent_line':
+        drawSvDescentLine(scaledPoints, color);
+        break;
+      case 'grapas':
+        drawSvGrapas(scaledPoints, color);
+        break;
+      case 'cadena':
+        drawSvCadena(scaledPoints, color);
+        break;
+      case 'rapel':
+        drawSvRapelFromAux(scaledPoints, color);
+        break;
+    }
+  });
+}
+
+/**
+ * Dibuja una línea de descenso/ascenso en el visor
+ */
+function drawSvDescentLine(scaledPoints, color) {
+  if (scaledPoints.length < 2) return;
+
+  svCtx.save();
+
+  // Sombra
+  svCtx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+  svCtx.lineWidth = 4;
+  svCtx.lineCap = 'round';
+  svCtx.lineJoin = 'round';
+  svCtx.setLineDash([10, 6]);
+  svCtx.beginPath();
+  svCtx.moveTo(scaledPoints[0].x, scaledPoints[0].y);
+  for (let i = 1; i < scaledPoints.length; i++) {
+    svCtx.lineTo(scaledPoints[i].x, scaledPoints[i].y);
+  }
+  svCtx.stroke();
+
+  // Línea principal
+  svCtx.strokeStyle = color;
+  svCtx.lineWidth = 2.5;
+  svCtx.setLineDash([10, 6]);
+  svCtx.beginPath();
+  svCtx.moveTo(scaledPoints[0].x, scaledPoints[0].y);
+  for (let i = 1; i < scaledPoints.length; i++) {
+    svCtx.lineTo(scaledPoints[i].x, scaledPoints[i].y);
+  }
+  svCtx.stroke();
+  svCtx.setLineDash([]);
+
+  // Flecha en el extremo
+  if (scaledPoints.length >= 2) {
+    const last = scaledPoints[scaledPoints.length - 1];
+    const prev = scaledPoints[scaledPoints.length - 2];
+    const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
+    svCtx.fillStyle = color;
+    svCtx.beginPath();
+    svCtx.moveTo(last.x, last.y);
+    svCtx.lineTo(last.x - 8 * Math.cos(angle - Math.PI / 6), last.y - 8 * Math.sin(angle - Math.PI / 6));
+    svCtx.lineTo(last.x - 8 * Math.cos(angle + Math.PI / 6), last.y - 8 * Math.sin(angle + Math.PI / 6));
+    svCtx.closePath();
+    svCtx.fill();
+  }
+
+  svCtx.restore();
+}
+
+/**
+ * Dibuja grapas en el visor
+ */
+function drawSvGrapas(scaledPoints, color) {
+  scaledPoints.forEach(pt => {
+    if (typeof drawGrapaIcon === 'function') {
+      drawGrapaIcon(svCtx, pt.x, pt.y, 12, color);
+    } else {
+      // Fallback: simple U shape
+      const s = 1;
+      svCtx.save();
+      svCtx.strokeStyle = color;
+      svCtx.lineWidth = 3;
+      svCtx.lineCap = 'round';
+      svCtx.beginPath();
+      svCtx.moveTo(pt.x - 6 * s, pt.y - 8 * s);
+      svCtx.lineTo(pt.x - 6 * s, pt.y + 2 * s);
+      svCtx.quadraticCurveTo(pt.x - 6 * s, pt.y + 8 * s, pt.x, pt.y + 8 * s);
+      svCtx.quadraticCurveTo(pt.x + 6 * s, pt.y + 8 * s, pt.x + 6 * s, pt.y + 2 * s);
+      svCtx.lineTo(pt.x + 6 * s, pt.y - 8 * s);
+      svCtx.stroke();
+      svCtx.restore();
+    }
+  });
+}
+
+/**
+ * Dibuja cadena en el visor
+ */
+function drawSvCadena(scaledPoints, color) {
+  if (scaledPoints.length < 2) return;
+
+  svCtx.save();
+
+  for (let i = 0; i < scaledPoints.length - 1; i++) {
+    const p1 = scaledPoints[i];
+    const p2 = scaledPoints[i + 1];
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+    const linkLength = 12;
+    const linkWidth = 5;
+    const numLinks = Math.max(1, Math.floor(dist / linkLength));
+    const actualLinkLen = dist / numLinks;
+
+    svCtx.save();
+    svCtx.translate(p1.x, p1.y);
+    svCtx.rotate(angle);
+
+    for (let j = 0; j < numLinks; j++) {
+      const lx = j * actualLinkLen + actualLinkLen / 2;
+      const isEven = j % 2 === 0;
+      const w = isEven ? linkWidth : linkWidth * 0.7;
+      const h = actualLinkLen * 0.4;
+
+      svCtx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+      svCtx.lineWidth = 4;
+      svCtx.lineCap = 'round';
+      svCtx.beginPath();
+      svCtx.ellipse(lx, 0, h, w, 0, 0, Math.PI * 2);
+      svCtx.stroke();
+
+      svCtx.strokeStyle = color;
+      svCtx.lineWidth = 2;
+      svCtx.beginPath();
+      svCtx.ellipse(lx, 0, h, w, 0, 0, Math.PI * 2);
+      svCtx.stroke();
+    }
+
+    svCtx.restore();
+  }
+
+  svCtx.restore();
+}
+
+/**
+ * Dibuja puntos de rápel desde auxElements en el visor
+ */
+function drawSvRapelFromAux(scaledPoints, color) {
+  if (scaledPoints.length === 0) return;
+  const isZoomed = svZoomState.scale > 1;
+  const scaleFactor = getLineScaleFactor();
+  const size = isZoomed ? 10 * scaleFactor : 14 * scaleFactor;
+  const alpha = isZoomed ? 0.6 : 1;
+
+  scaledPoints.forEach(pt => {
+    svCtx.save();
+    if (alpha < 1) svCtx.globalAlpha = alpha;
+    svCtx.translate(pt.x, pt.y);
+    if (typeof drawRapelIcon === 'function') {
+      drawRapelIcon(svCtx, 0, 0, size, color);
+    } else {
+      const s = size / 20;
+      svCtx.fillStyle = color;
+      svCtx.beginPath();
+      svCtx.arc(0, -14 * s, 7 * s, 0, Math.PI * 2);
+      svCtx.fill();
+    }
+    svCtx.restore();
+  });
+}
+
+/**
+ * Dibuja todos los puntos de rápel en el visor de sector (legacy, datos antiguos)
+ * Utiliza drawRapelIcon de route-drawing.js si está disponible
+ */
+function drawSvRapelPoints(canvasWidth, canvasHeight) {
+  if (!svRapelPoints || svRapelPoints.length === 0) return;
+
+  const scaleX = canvasWidth / svImage.width;
+  const scaleY = canvasHeight / svImage.height;
+  const isZoomed = svZoomState.scale > 1;
+  const scaleFactor = getLineScaleFactor();
+  const color = '#a855f7'; // Púrpura
+  const size = isZoomed ? 10 * scaleFactor : 14 * scaleFactor;
+  const alpha = isZoomed ? 0.6 : 1;
+
+  svRapelPoints.forEach(pt => {
+    const cx = pt.x * scaleX;
+    const cy = pt.y * scaleY;
+
+    svCtx.save();
+    if (alpha < 1) svCtx.globalAlpha = alpha;
+    svCtx.translate(cx, cy);
+
+    // Usar drawRapelIcon de route-drawing.js si está disponible
+    if (typeof drawRapelIcon === 'function') {
+      drawRapelIcon(svCtx, 0, 0, size, color);
+    } else {
+      // Fallback simple: círculo con anillo
+      const s = size / 20;
+      svCtx.strokeStyle = 'white';
+      svCtx.lineWidth = 4;
+      svCtx.beginPath();
+      svCtx.arc(0, -14 * s, 7 * s, 0, Math.PI * 2);
+      svCtx.stroke();
+      svCtx.fillStyle = color;
+      svCtx.beginPath();
+      svCtx.arc(0, -14 * s, 7 * s, 0, Math.PI * 2);
+      svCtx.fill();
+      svCtx.fillStyle = 'white';
+      svCtx.beginPath();
+      svCtx.arc(0, -14 * s, 3 * s, 0, Math.PI * 2);
+      svCtx.fill();
+    }
+
+    svCtx.restore();
+  });
 }
 
 /**

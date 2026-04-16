@@ -17624,6 +17624,10 @@ body.pwa-standalone .feed-header {
   gap: 8px;
 }
 
+.logbook-filter-row + .logbook-filter-row {
+  margin-top: 8px;
+}
+
 .logbook-select {
   flex: 1;
   padding: 8px 12px;
@@ -17867,4 +17871,107 @@ body.pwa-standalone .feed-header {
   .logbook-select:hover {
     border-color: var(--accent-primary, #6366f1);
   }
+}
+
+/* ================================================
+   VARIANT CAROUSEL - Popup/BottomSheet Navigation
+   ================================================ */
+
+/* Navigation bar: ‹ Variante X de Y › */
+.ml-variant-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.ml-variant-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--bg-secondary, #f3f4f6);
+  border-radius: 50%;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary, #374151);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ml-variant-nav-btn:hover {
+  background: var(--bg-tertiary, #e5e7eb);
+}
+
+.ml-variant-nav-btn:active {
+  transform: scale(0.9);
+}
+
+.ml-variant-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+  transform: none;
+}
+
+.ml-variant-indicator {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+/* Dots indicator bar */
+.ml-variant-dots-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.ml-variant-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bg-tertiary, #d1d5db);
+  transition: background 0.2s, transform 0.2s;
+}
+
+.ml-variant-dot.active {
+  background: var(--accent-primary, #6366f1);
+  transform: scale(1.25);
+}
+
+/* Content area that updates on slide change */
+#ml-variant-content {
+  transition: opacity 0.15s ease;
+}
+
+#ml-variant-content.fading {
+  opacity: 0;
+}
+
+/* Mobile bottom sheet variant nav override */
+.rbs-variant-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.rbs-variant-dots-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-bottom: 8px;
 }
