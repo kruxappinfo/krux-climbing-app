@@ -19,6 +19,15 @@ let mlGradeRangeMin = 0;              // Índice mínimo del rango de grado (0 =
 let mlGradeRangeMax = -1;             // Índice máximo del rango de grado (-1 = se inicializa al total)
 
 // ============================================
+// VARIANT GROUPS STATE
+// ============================================
+let mlVariantGroups = new Map();       // groupKey → [{ props, coords }, ...]
+let mlVariantFeatureIndex = new Map(); // featureId → groupKey (reverse lookup)
+let mlCurrentVariantGroup = null;      // Array of variant data for active carousel
+let mlCurrentVariantSlide = 0;         // Active slide index in carousel
+let mlVariantSwipeStartX = 0;         // Touch swipe tracking
+
+// ============================================
 // PALETA DE COLORES PARA SECTORES
 // ============================================
 // 20 colores vibrantes y distinguibles para sectores
@@ -1490,6 +1499,19 @@ async function mlLoadSchoolVectorTiles(school) {
     // Añadir interactividad
     setupViasInteraction();
     setupSectoresInteraction();
+
+    // Cargar GeoJSON en paralelo solo para construir el índice de variantes
+    // (las tiles PBF no permiten pre-procesamiento de features)
+    if (school.geojson && school.geojson.vias) {
+      fetch(school.geojson.vias + '?v=' + Date.now())
+        .then(r => r.ok ? r.json() : null)
+        .then(geojson => {
+          if (geojson && geojson.features) {
+            mlBuildVariantGroupsIndex(geojson.features);
+          }
+        })
+        .catch(e => console.warn('Error loading variant index for tiles path:', e));
+    }
   }
 
   // Cargar parkings (símbolos)
@@ -1628,7 +1650,9 @@ async function mlLoadSchoolGeoJSON(school) {
         'circle-stroke-width': isMobileDevice() ? 1 : 1.5,
         'circle-opacity': 0.95
       },
-      school.zoomLevels.vias
+      school.zoomLevels.vias,
+      {},
+      mlProcessVariantsForGeoJSON
     );
 
     // Añadir interactividad a vías
@@ -1981,7 +2005,7 @@ async function mlLoadPuntosInteres(url) {
 /**
  * Carga una capa GeoJSON
  */
-async function mlLoadGeoJSONLayer(layerId, url, type, paint, minzoom = 0, layout = {}) {
+async function mlLoadGeoJSONLayer(layerId, url, type, paint, minzoom = 0, layout = {}, preprocessFn = null) {
   const sourceId = `${layerId}-source`;
   const fullLayerId = `${layerId}-layer`;
 
@@ -1993,6 +2017,11 @@ async function mlLoadGeoJSONLayer(layerId, url, type, paint, minzoom = 0, layout
     const response = await fetch(urlWithCache);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const geojson = await response.json();
+
+    // Pre-procesar GeoJSON si se proporciona callback (ej. variantes)
+    if (typeof preprocessFn === 'function') {
+      preprocessFn(geojson);
+    }
 
     // Añadir source
     if (mlMap.getSource(sourceId)) {
@@ -2030,8 +2059,14 @@ async function mlLoadGeoJSONLayer(layerId, url, type, paint, minzoom = 0, layout
  * Limpia las capas de la escuela actual
  */
 function mlClearSchoolLayers() {
-  const layerIds = ['vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer'];
-  const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source'];
+  const layerIds = ['vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer', 'vias-variant-connector-layer'];
+  const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source', 'vias-variant-connector-source'];
+
+  // Limpiar estado de variantes
+  mlVariantGroups.clear();
+  mlVariantFeatureIndex.clear();
+  mlCurrentVariantGroup = null;
+  mlCurrentVariantSlide = 0;
 
   layerIds.forEach(id => {
     if (mlMap.getLayer(id)) {
@@ -2198,6 +2233,284 @@ function scheduleTicksUpdate() {
 }
 
 // ============================================
+// VARIANT GROUPS PROCESSING
+// ============================================
+
+/**
+ * Construye el índice de grupos de variantes a partir de los features GeoJSON.
+ * Procesa los campos `variante` y `Union` según la matriz de casos:
+ *   A: variante=null → sin cambios
+ *   B1: variante=SI, Union=null, modalidad=Simple → trinomios como variantes
+ *   B2: variante=SI, Union!=null → agrupar por IDs del Union
+ *   C: variante=NO, Union!=null → igual que B2
+ */
+function mlBuildVariantGroupsIndex(features) {
+  mlVariantGroups.clear();
+  mlVariantFeatureIndex.clear();
+
+  // Map feature id → feature (for Union cross-referencing)
+  const featureById = new Map();
+  for (const f of features) {
+    const fId = f.properties.id;
+    if (fId != null) {
+      featureById.set(Number(fId), f);
+    }
+  }
+
+  // --- Paso 1: Procesar grupos Union (Casos B2 y C) ---
+  // Collect all Union strings to find groups
+  const unionGroupsRaw = new Map(); // normalizedKey → { originalUnion, features[] }
+
+  for (const f of features) {
+    const props = f.properties;
+    const union = props.Union;
+    const variante = props.variante;
+
+    if (!union) continue;
+    // B2: variante=SI con Union, o C: variante=NO con Union
+    if (variante !== 'SI' && variante !== 'NO') continue;
+
+    const ids = union.split('_').map(Number).filter(n => !isNaN(n));
+    if (ids.length < 2) continue;
+
+    // Normalizar key ordenando los IDs
+    const normalizedKey = ids.slice().sort((a, b) => a - b).join('_');
+
+    if (!unionGroupsRaw.has(normalizedKey)) {
+      unionGroupsRaw.set(normalizedKey, { originalUnion: union, featureIds: new Set() });
+    }
+    // Añadir todos los IDs referenciados por este Union string
+    for (const id of ids) {
+      unionGroupsRaw.get(normalizedKey).featureIds.add(id);
+    }
+  }
+
+  // Construir grupos finales con features reales
+  for (const [key, groupData] of unionGroupsRaw) {
+    const orderedIds = groupData.originalUnion.split('_').map(Number).filter(n => !isNaN(n));
+    const groupFeatures = [];
+
+    for (const id of orderedIds) {
+      const f = featureById.get(id);
+      if (!f) continue; // ID referenciado no existe en dataset
+      const coords = f.geometry && f.geometry.coordinates
+        ? (f.geometry.type === 'MultiPoint' ? f.geometry.coordinates[0] : f.geometry.coordinates)
+        : null;
+      groupFeatures.push({ props: { ...f.properties }, coords: coords });
+    }
+
+    if (groupFeatures.length < 2) continue; // Solo agrupar si hay 2+ features
+
+    // Asignar metadata de grupo a cada feature
+    groupFeatures.forEach((gf, idx) => {
+      gf.props._variantGroupKey = key;
+      gf.props._variantIndex = idx;
+      // Actualizar el feature original
+      const origFeature = featureById.get(Number(gf.props.id));
+      if (origFeature) {
+        origFeature.properties._variantGroupKey = key;
+        origFeature.properties._variantIndex = idx;
+      }
+      mlVariantFeatureIndex.set(Number(gf.props.id), key);
+    });
+
+    mlVariantGroups.set(key, groupFeatures);
+  }
+
+  // --- Paso 2: Procesar Caso B1 (trinomios internos) ---
+  for (const f of features) {
+    const props = f.properties;
+    // Solo para: variante=SI, sin Union, modalidad Simple
+    if (props.variante !== 'SI') continue;
+    if (props.Union) continue;
+    if (props._variantGroupKey) continue; // Ya fue procesado en un grupo Union
+
+    // Recoger trinomios con datos
+    const trinomials = [];
+    for (let i = 1; i <= 5; i++) {
+      const grado = props['grado' + i];
+      if (grado != null && grado !== '') {
+        trinomials.push({
+          index: i,
+          grado: grado,
+          exp: props['exp' + i],
+          long: props['long' + i]
+        });
+      }
+    }
+
+    if (trinomials.length < 2) continue; // Se necesitan al menos 2 variantes
+
+    const groupKey = 'b1_' + props.id;
+    const coords = f.geometry && f.geometry.coordinates
+      ? (f.geometry.type === 'MultiPoint' ? f.geometry.coordinates[0] : f.geometry.coordinates)
+      : null;
+
+    // Crear un "slide" por cada trinomio
+    const groupFeatures = trinomials.map((t, idx) => ({
+      props: {
+        ...props,
+        _variantGroupKey: groupKey,
+        _variantIndex: idx,
+        _isTrinomialGroup: true,
+        _trinomialIndex: t.index,
+        // Override de grado/exp/long con datos del trinomio
+        _displayGrado: t.grado,
+        _displayExp: t.exp,
+        _displayLong: t.long,
+        _variantLabel: 'Variante ' + (idx + 1)
+      },
+      coords: coords
+    }));
+
+    f.properties._variantGroupKey = groupKey;
+    f.properties._variantIndex = 0;
+    f.properties._isTrinomialGroup = true;
+    mlVariantFeatureIndex.set(Number(props.id), groupKey);
+    mlVariantGroups.set(groupKey, groupFeatures);
+  }
+
+  console.log(`Variant groups index built: ${mlVariantGroups.size} groups, ${mlVariantFeatureIndex.size} features indexed`);
+}
+
+/**
+ * Aplica offsets geográficos laterales a features de grupos Union (B2/C)
+ * para que se dibujen separados en el mapa en lugar de apilados.
+ * Offset: ~2.5m por step en latitud de España.
+ */
+function mlApplyLateralOffsets(features) {
+  const OFFSET_STEP = 0.000025; // ~2.5m en latitud
+
+  for (const [key, group] of mlVariantGroups) {
+    // No aplicar offset a grupos B1 (trinomios de un solo punto)
+    if (key.startsWith('b1_')) continue;
+    if (group.length < 2) continue;
+
+    // Calcular centroide
+    let sumLng = 0, sumLat = 0, count = 0;
+    for (const gf of group) {
+      if (gf.coords) {
+        sumLng += gf.coords[0];
+        sumLat += gf.coords[1];
+        count++;
+      }
+    }
+    if (count === 0) continue;
+    const centerLat = sumLat / count;
+
+    // Distribuir offsets laterales (N-S) centrados en el centroide
+    const n = group.length;
+    group.forEach((gf, idx) => {
+      const offset = OFFSET_STEP * (idx - (n - 1) / 2);
+      const targetLat = centerLat + offset;
+
+      // Encontrar y modificar el feature original en el array
+      const origFeature = features.find(f => Number(f.properties.id) === Number(gf.props.id));
+      if (origFeature && origFeature.geometry && origFeature.geometry.coordinates) {
+        if (origFeature.geometry.type === 'MultiPoint') {
+          origFeature.geometry.coordinates[0][1] = targetLat;
+        } else {
+          origFeature.geometry.coordinates[1] = targetLat;
+        }
+        // Actualizar coords en el grupo también
+        gf.coords = origFeature.geometry.type === 'MultiPoint'
+          ? origFeature.geometry.coordinates[0]
+          : origFeature.geometry.coordinates;
+      }
+    });
+  }
+}
+
+/**
+ * Genera GeoJSON de líneas conectoras entre features de cada grupo Union.
+ * Las líneas unen visualmente las variantes agrupadas.
+ */
+function mlBuildVariantConnectorGeoJSON(features) {
+  const connectorFeatures = [];
+
+  for (const [key, group] of mlVariantGroups) {
+    if (key.startsWith('b1_')) continue; // B1 no tiene conectores
+    if (group.length < 2) continue;
+
+    // Coordenadas ordenadas de cada feature del grupo
+    const coords = group
+      .filter(gf => gf.coords)
+      .map(gf => [gf.coords[0], gf.coords[1]]);
+
+    if (coords.length < 2) continue;
+
+    connectorFeatures.push({
+      type: 'Feature',
+      properties: {
+        groupKey: key,
+        primaryGrade: group[0].props.grado1 || ''
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: coords
+      }
+    });
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: connectorFeatures
+  };
+}
+
+/**
+ * Añade la capa de líneas conectoras de variantes al mapa
+ */
+function mlLoadVariantConnectorLayer(connectorGeoJSON) {
+  const sourceId = 'vias-variant-connector-source';
+  const layerId = 'vias-variant-connector-layer';
+
+  // Limpiar si ya existe
+  if (mlMap.getLayer(layerId)) mlMap.removeLayer(layerId);
+  if (mlMap.getSource(sourceId)) mlMap.removeSource(sourceId);
+
+  if (!connectorGeoJSON.features || connectorGeoJSON.features.length === 0) return;
+
+  mlMap.addSource(sourceId, {
+    type: 'geojson',
+    data: connectorGeoJSON
+  });
+  mlLoadedSources.add(sourceId);
+
+  mlMap.addLayer({
+    id: layerId,
+    type: 'line',
+    source: sourceId,
+    minzoom: 17,
+    paint: {
+      'line-color': generateGradeColorExpression('primaryGrade'),
+      'line-width': [
+        'interpolate', ['linear'], ['zoom'],
+        17, 1.5,
+        19, 2.5,
+        20, 3
+      ],
+      'line-opacity': 0.6,
+      'line-dasharray': [2, 1.5]
+    }
+  });
+
+  console.log(`Variant connector layer loaded: ${connectorGeoJSON.features.length} connectors`);
+}
+
+/**
+ * Procesa variantes tras cargar un GeoJSON de vías:
+ * construye índice, aplica offsets y carga capa de conectores.
+ */
+function mlProcessVariantsForGeoJSON(geojson) {
+  if (!geojson || !geojson.features) return;
+  mlBuildVariantGroupsIndex(geojson.features);
+  mlApplyLateralOffsets(geojson.features);
+  const connectorGeoJSON = mlBuildVariantConnectorGeoJSON(geojson.features);
+  mlLoadVariantConnectorLayer(connectorGeoJSON);
+}
+
+// ============================================
 // INTERACTIVIDAD
 // ============================================
 
@@ -2218,13 +2531,37 @@ function setupViasInteraction() {
       props.descripcion = props.descripcio;
     }
 
-    // En móvil: usar bottom sheet. En desktop: usar popup clásico.
+    // --- Detección de grupo de variantes ---
+    const featureId = Number(props.id);
+    const variantGroupKey = props._variantGroupKey || mlVariantFeatureIndex.get(featureId);
+    const variantGroup = variantGroupKey ? mlVariantGroups.get(variantGroupKey) : null;
+
+    if (variantGroup && variantGroup.length >= 2) {
+      // Encontrar el índice del feature clickeado dentro del grupo
+      let clickedIndex = variantGroup.findIndex(gf => Number(gf.props.id) === featureId);
+      if (clickedIndex < 0) clickedIndex = 0;
+
+      if (isMobileDevice()) {
+        adaptiveMapPanForBottomSheet(coords);
+        mlShowVariantGroupBottomSheet(variantGroup, clickedIndex, coords);
+      } else {
+        mlMap.flyTo({
+          center: coords,
+          zoom: mlMap.getZoom(),
+          speed: 0.8,
+          curve: 1,
+          padding: { top: 450, bottom: 0, left: 0, right: 0 }
+        });
+        mlShowVariantGroupPopup(variantGroup, clickedIndex, coords);
+      }
+      return;
+    }
+
+    // --- Comportamiento estándar (sin variantes) ---
     if (isMobileDevice()) {
-      // Desplazamiento adaptativo: solo mover si la vía queda tapada por el bottom sheet
       adaptiveMapPanForBottomSheet(coords);
       showRouteBottomSheet(props, coords);
     } else {
-      // Auto-centrar con padding para evitar que el popup quede cortado
       mlMap.flyTo({
         center: coords,
         zoom: mlMap.getZoom(),
@@ -2429,6 +2766,503 @@ async function showRoutePopup(props, coords) {
     .setLngLat(coords)
     .setHTML(html)
     .addTo(mlMap);
+}
+
+// ============================================
+// VARIANT GROUP CAROUSEL - POPUP (DESKTOP)
+// ============================================
+
+/**
+ * Muestra un popup con carrusel de variantes (desktop).
+ * @param {Array} groupFeatures - Array de { props, coords } del grupo
+ * @param {number} startIndex - Índice de la variante clickeada
+ * @param {Object} coords - lngLat del click
+ */
+async function mlShowVariantGroupPopup(groupFeatures, startIndex, coords) {
+  mlCurrentVariantGroup = groupFeatures;
+  mlCurrentVariantSlide = startIndex >= 0 ? startIndex : 0;
+
+  const n = groupFeatures.length;
+  const isTrinomial = groupFeatures[0].props._isTrinomialGroup;
+
+  // Generar dots
+  let dotsHTML = '';
+  for (let i = 0; i < n; i++) {
+    dotsHTML += `<span class="ml-variant-dot${i === mlCurrentVariantSlide ? ' active' : ''}"></span>`;
+  }
+
+  // Generar contenido del slide actual
+  const slideHTML = await mlBuildVariantSlideHTML(groupFeatures[mlCurrentVariantSlide], isTrinomial);
+
+  const html = `
+    <div class="ml-route-popup-new ml-variant-popup">
+      <div class="ml-variant-nav-bar">
+        <button class="ml-variant-nav-btn" onclick="mlVariantNav(-1)">&#8249;</button>
+        <span class="ml-variant-indicator" id="ml-variant-indicator">
+          ${isTrinomial ? 'Variante' : ''} ${mlCurrentVariantSlide + 1} de ${n}
+        </span>
+        <button class="ml-variant-nav-btn" onclick="mlVariantNav(1)">&#8250;</button>
+      </div>
+      <div class="ml-variant-dots-bar" id="ml-variant-dots">${dotsHTML}</div>
+      <div id="ml-variant-content">${slideHTML}</div>
+    </div>
+  `;
+
+  // Cerrar popup existente
+  if (mlRoutePopup) mlRoutePopup.remove();
+  mlRoutePopup = new maplibregl.Popup({
+    closeButton: true,
+    closeOnClick: false,
+    maxWidth: '380px'
+  });
+
+  mlRoutePopup
+    .setLngLat(coords)
+    .setHTML(html)
+    .addTo(mlMap);
+
+  // Añadir soporte de swipe al popup
+  setTimeout(() => {
+    const container = document.getElementById('ml-variant-content');
+    if (container) {
+      container.addEventListener('touchstart', (e) => {
+        mlVariantSwipeStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+      container.addEventListener('touchend', (e) => {
+        const diff = mlVariantSwipeStartX - e.changedTouches[0].screenX;
+        if (Math.abs(diff) > 50) {
+          mlVariantNav(diff > 0 ? 1 : -1);
+        }
+      }, { passive: true });
+    }
+  }, 100);
+
+  // Cargar datos asíncronos (aleje, estado)
+  mlLoadVariantSlideAsyncData(groupFeatures[mlCurrentVariantSlide], isTrinomial);
+}
+
+/**
+ * Construye el HTML de un slide individual del carrusel de variantes.
+ * Reutiliza el mismo layout que showRoutePopup pero con datos de la variante.
+ */
+async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
+  const props = variantData.props;
+  const schoolId = mlCurrentSchool || 'valeria';
+
+  // Para B1 (trinomios), usar los campos _display*; para B2/C usar grado1/exp1/long1
+  let grade, exp, longM;
+  if (isTrinomial) {
+    grade = props._displayGrado || props.grado1 || '?';
+    exp = props._displayExp;
+    longM = props._displayLong;
+  } else {
+    grade = props.grado1 || '?';
+    exp = props.exp1;
+    longM = props.long1;
+  }
+
+  const gradeColor = getGradeColor(grade);
+  const routeId = Number(props.id);
+  const routeName = props.nombre || 'Sin nombre';
+
+  // Check de ascenso
+  const hasAscent = (typeof hasUserAscent === 'function') && hasUserAscent(schoolId, routeId);
+  const ascentInfo = hasAscent && (typeof getUserAscentInfo === 'function') ? getUserAscentInfo(schoolId, routeId) : null;
+  const ascentStyleSVG = ascentInfo && ascentInfo.style && (typeof getAscentStyleSVG === 'function') ? getAscentStyleSVG(ascentInfo.style) : '';
+  const ascentCheckHTML = hasAscent ? `
+    <span class="ml-route-ascent-check">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </span>
+    ${ascentStyleSVG ? `<span class="ml-route-ascent-style ascent-style-${ascentInfo.style}">${ascentStyleSVG}</span>` : ''}
+  ` : '';
+
+  // Normalizar descripcio → descripcion
+  if (!props.descripcion && props.descripcio) {
+    props.descripcion = props.descripcio;
+  }
+
+  const hasDescripcion = props.descripcion && props.descripcion.trim();
+  const hasExp = exp != null && exp !== '';
+  const hasLong = longM != null && longM !== '';
+
+  // Iconos PNG
+  const iconClimber = `<img src="icons/placa.png" alt="Tipo" width="32" height="32">`;
+  const iconExpress = `<img src="icons/mosq.png" alt="Expresos" width="32" height="32">`;
+  const iconRope = `<img src="icons/cuerda.png" alt="Cuerda" width="32" height="32">`;
+
+  // Iconos SVG botonera
+  const iconCheck = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+  const iconBookmark = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+  const iconComment = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
+  const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+
+  return `
+    <!-- Header: Check + Nombre + Grado -->
+    <div class="ml-route-header">
+      ${ascentCheckHTML}
+      <span class="ml-route-name">${routeName}</span>
+      <span class="ml-route-grade" style="background-color: ${gradeColor}">${grade}</span>
+    </div>
+
+    <!-- Info items -->
+    <div class="ml-route-info">
+      ${hasDescripcion ? `
+        <div class="ml-route-item">
+          <span class="ml-route-icon">${iconClimber}</span>
+          <span class="ml-route-text">${props.descripcion}</span>
+        </div>
+      ` : ''}
+
+      ${hasExp ? `
+        <div class="ml-route-item">
+          <span class="ml-route-icon">${iconExpress}</span>
+          <span class="ml-route-text">${exp} express</span>
+        </div>
+      ` : ''}
+
+      ${hasLong ? `
+        <div class="ml-route-item">
+          <span class="ml-route-icon">${iconRope}</span>
+          <span class="ml-route-text">${longM} mts</span>
+        </div>
+      ` : ''}
+    </div>
+
+    <!-- Aleje (cargado asíncronamente) -->
+    <div id="ml-variant-aleje-${routeId}"><div style="text-align:center;color:#888;font-size:13px;">Cargando...</div></div>
+
+    <!-- Estado (cargado asíncronamente) -->
+    <div id="ml-variant-estado-${routeId}"><div style="text-align:center;color:#888;font-size:13px;">Cargando...</div></div>
+
+    <!-- Botonera -->
+    <div class="ml-route-actions">
+      <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">
+        ${iconCheck}
+      </button>
+      <button class="ml-route-action-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
+        ${iconBookmark}
+      </button>
+      <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">
+        ${iconComment}
+      </button>
+      <button class="ml-route-action-btn" onclick="mlShareRoute(${routeId}, '${encodeURIComponent(routeName)}')" title="Compartir">
+        ${iconShare}
+      </button>
+    </div>
+  `;
+}
+
+/**
+ * Carga datos asíncronos (aleje, estado) para el slide de variante actual.
+ */
+function mlLoadVariantSlideAsyncData(variantData, isTrinomial) {
+  const props = variantData.props;
+  const schoolId = mlCurrentSchool || 'valeria';
+  const routeId = Number(props.id);
+
+  // Aleje
+  if (typeof getAlejeVotes === 'function') {
+    getAlejeVotes(schoolId, routeId).then(alejeData => {
+      const el = document.getElementById(`ml-variant-aleje-${routeId}`);
+      if (el && typeof generateAlejeBarHTML === 'function') {
+        el.innerHTML = generateAlejeBarHTML(routeId, schoolId, alejeData.avg, alejeData.userVote);
+      }
+    }).catch(() => {});
+  }
+
+  // Estado
+  if (typeof getEstadoVotes === 'function') {
+    getEstadoVotes(schoolId, routeId).then(estadoData => {
+      const el = document.getElementById(`ml-variant-estado-${routeId}`);
+      if (el && typeof generateEstadoStarsHTML === 'function') {
+        el.innerHTML = generateEstadoStarsHTML(routeId, schoolId, estadoData.avg, estadoData.userVote);
+      }
+    }).catch(() => {});
+  }
+}
+
+/**
+ * Navega entre slides del carrusel de variantes.
+ * @param {number} direction - -1 para anterior, +1 para siguiente
+ */
+async function mlVariantNav(direction) {
+  if (!mlCurrentVariantGroup || mlCurrentVariantGroup.length === 0) return;
+
+  const n = mlCurrentVariantGroup.length;
+  mlCurrentVariantSlide = (mlCurrentVariantSlide + direction + n) % n;
+  const isTrinomial = mlCurrentVariantGroup[0].props._isTrinomialGroup;
+
+  // Actualizar indicador
+  const indicator = document.getElementById('ml-variant-indicator');
+  if (indicator) {
+    indicator.textContent = `${isTrinomial ? 'Variante ' : ''}${mlCurrentVariantSlide + 1} de ${n}`;
+  }
+
+  // Actualizar dots
+  const dotsContainer = document.getElementById('ml-variant-dots');
+  if (dotsContainer) {
+    const dots = dotsContainer.querySelectorAll('.ml-variant-dot');
+    dots.forEach((dot, i) => {
+      dot.classList.toggle('active', i === mlCurrentVariantSlide);
+    });
+  }
+
+  // Transición fade del contenido
+  const contentEl = document.getElementById('ml-variant-content');
+  if (contentEl) {
+    contentEl.classList.add('fading');
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    const slideHTML = await mlBuildVariantSlideHTML(mlCurrentVariantGroup[mlCurrentVariantSlide], isTrinomial);
+    contentEl.innerHTML = slideHTML;
+    contentEl.classList.remove('fading');
+
+    // Cargar datos asíncronos del nuevo slide
+    mlLoadVariantSlideAsyncData(mlCurrentVariantGroup[mlCurrentVariantSlide], isTrinomial);
+  }
+
+  // Actualizar estado global de ruta para funciones externas
+  const currentProps = mlCurrentVariantGroup[mlCurrentVariantSlide].props;
+  mlCurrentRouteGrade = isTrinomial ? (currentProps._displayGrado || currentProps.grado1) : currentProps.grado1;
+  mlCurrentRouteSector = currentProps.sector || '';
+  mlCurrentRouteId = Number(currentProps.id);
+  mlCurrentRouteName = currentProps.nombre || 'Sin nombre';
+}
+
+// ============================================
+// VARIANT GROUP CAROUSEL - BOTTOM SHEET (MOBILE)
+// ============================================
+
+/**
+ * Muestra un bottom sheet con carrusel de variantes (móvil).
+ * Reutiliza el bottom sheet existente pero le prepone navegación de variantes.
+ */
+async function mlShowVariantGroupBottomSheet(groupFeatures, startIndex, coords) {
+  mlCurrentVariantGroup = groupFeatures;
+  mlCurrentVariantSlide = startIndex >= 0 ? startIndex : 0;
+
+  const isTrinomial = groupFeatures[0].props._isTrinomialGroup;
+  const currentVariant = groupFeatures[mlCurrentVariantSlide];
+
+  // Primero mostrar el bottom sheet estándar con los datos de la variante actual
+  const propsForSheet = { ...currentVariant.props };
+  if (isTrinomial) {
+    // Para B1, sobrescribir grado1/exp1/long1 con los del trinomio
+    propsForSheet.grado1 = propsForSheet._displayGrado || propsForSheet.grado1;
+    propsForSheet.exp1 = propsForSheet._displayExp;
+    propsForSheet.long1 = propsForSheet._displayLong;
+  }
+
+  await showRouteBottomSheet(propsForSheet, coords);
+
+  // Añadir barra de navegación de variantes al inicio del bottom sheet
+  const sheet = document.getElementById('route-bottom-sheet');
+  if (!sheet) return;
+
+  // Eliminar barra de variantes previa si existe
+  const existingNav = sheet.querySelector('.rbs-variant-nav-bar');
+  if (existingNav) existingNav.remove();
+  const existingDots = sheet.querySelector('.rbs-variant-dots-bar');
+  if (existingDots) existingDots.remove();
+
+  const n = groupFeatures.length;
+
+  // Generar dots
+  let dotsHTML = '';
+  for (let i = 0; i < n; i++) {
+    dotsHTML += `<span class="ml-variant-dot${i === mlCurrentVariantSlide ? ' active' : ''}"></span>`;
+  }
+
+  // Insertar barra de navegación después del handle del bottom sheet
+  const handle = sheet.querySelector('.rbs-handle') || sheet.firstElementChild;
+  if (handle) {
+    const navBar = document.createElement('div');
+    navBar.className = 'rbs-variant-nav-bar';
+    navBar.innerHTML = `
+      <button class="ml-variant-nav-btn" onclick="mlVariantNavBottomSheet(-1)">&#8249;</button>
+      <span class="ml-variant-indicator" id="rbs-variant-indicator">
+        ${isTrinomial ? 'Variante ' : ''}${mlCurrentVariantSlide + 1} de ${n}
+      </span>
+      <button class="ml-variant-nav-btn" onclick="mlVariantNavBottomSheet(1)">&#8250;</button>
+    `;
+    handle.insertAdjacentElement('afterend', navBar);
+
+    const dotsBar = document.createElement('div');
+    dotsBar.className = 'rbs-variant-dots-bar';
+    dotsBar.id = 'rbs-variant-dots';
+    dotsBar.innerHTML = dotsHTML;
+    navBar.insertAdjacentElement('afterend', dotsBar);
+  }
+
+  // Añadir swipe horizontal al contenido del bottom sheet
+  const sheetContent = sheet.querySelector('.rbs-content') || sheet;
+  sheetContent.addEventListener('touchstart', mlBottomSheetSwipeStart, { passive: true });
+  sheetContent.addEventListener('touchend', mlBottomSheetSwipeEnd, { passive: true });
+}
+
+function mlBottomSheetSwipeStart(e) {
+  mlVariantSwipeStartX = e.changedTouches[0].screenX;
+}
+
+function mlBottomSheetSwipeEnd(e) {
+  const diff = mlVariantSwipeStartX - e.changedTouches[0].screenX;
+  if (Math.abs(diff) > 50 && mlCurrentVariantGroup) {
+    mlVariantNavBottomSheet(diff > 0 ? 1 : -1);
+  }
+}
+
+/**
+ * Navega entre variantes en el bottom sheet móvil.
+ * Recarga el contenido del bottom sheet con la nueva variante.
+ */
+async function mlVariantNavBottomSheet(direction) {
+  if (!mlCurrentVariantGroup || mlCurrentVariantGroup.length === 0) return;
+
+  const n = mlCurrentVariantGroup.length;
+  mlCurrentVariantSlide = (mlCurrentVariantSlide + direction + n) % n;
+  const isTrinomial = mlCurrentVariantGroup[0].props._isTrinomialGroup;
+  const currentVariant = mlCurrentVariantGroup[mlCurrentVariantSlide];
+
+  // Actualizar indicador
+  const indicator = document.getElementById('rbs-variant-indicator');
+  if (indicator) {
+    indicator.textContent = `${isTrinomial ? 'Variante ' : ''}${mlCurrentVariantSlide + 1} de ${n}`;
+  }
+
+  // Actualizar dots
+  const dotsContainer = document.getElementById('rbs-variant-dots');
+  if (dotsContainer) {
+    const dots = dotsContainer.querySelectorAll('.ml-variant-dot');
+    dots.forEach((dot, i) => {
+      dot.classList.toggle('active', i === mlCurrentVariantSlide);
+    });
+  }
+
+  // Preparar props para el bottom sheet
+  const propsForSheet = { ...currentVariant.props };
+  if (isTrinomial) {
+    propsForSheet.grado1 = propsForSheet._displayGrado || propsForSheet.grado1;
+    propsForSheet.exp1 = propsForSheet._displayExp;
+    propsForSheet.long1 = propsForSheet._displayLong;
+  }
+
+  // Actualizar datos del bottom sheet sin cerrar/reabrir
+  mlUpdateBottomSheetContent(propsForSheet, isTrinomial);
+}
+
+/**
+ * Actualiza el contenido del bottom sheet de ruta con datos de una nueva variante.
+ * Modifica directamente los elementos DOM existentes del bottom sheet.
+ */
+function mlUpdateBottomSheetContent(props, isTrinomial) {
+  const schoolId = mlCurrentSchool || 'valeria';
+  const grade = props.grado1 || '?';
+  const gradeColor = getGradeColor(grade);
+  const routeId = Number(props.id);
+  const routeName = props.nombre || 'Sin nombre';
+
+  // Actualizar estado global
+  mlCurrentRouteGrade = grade;
+  mlCurrentRouteSector = props.sector || '';
+  mlCurrentRouteId = routeId;
+  mlCurrentRouteName = routeName;
+
+  // --- Header ---
+  const nameEl = document.getElementById('rbs-route-name');
+  if (nameEl) nameEl.textContent = routeName;
+
+  const gradeEl = document.getElementById('rbs-route-grade');
+  if (gradeEl) {
+    gradeEl.textContent = grade;
+    gradeEl.style.backgroundColor = gradeColor;
+  }
+
+  // Check de ascenso
+  const hasAscent = (typeof hasUserAscent === 'function') && hasUserAscent(schoolId, routeId);
+  const checkEl = document.getElementById('rbs-ascent-check');
+  if (checkEl) checkEl.classList.toggle('hidden', !hasAscent);
+
+  const styleEl = document.getElementById('rbs-ascent-style');
+  if (styleEl) {
+    if (hasAscent && typeof getUserAscentInfo === 'function' && typeof getAscentStyleSVG === 'function') {
+      const ascentInfo = getUserAscentInfo(schoolId, routeId);
+      if (ascentInfo && ascentInfo.style) {
+        styleEl.innerHTML = getAscentStyleSVG(ascentInfo.style);
+        styleEl.className = 'rbs-ascent-style ascent-style-' + ascentInfo.style;
+        styleEl.classList.remove('hidden');
+      } else {
+        styleEl.classList.add('hidden');
+      }
+    } else {
+      styleEl.classList.add('hidden');
+    }
+  }
+
+  // --- Info items ---
+  const infoContainer = document.getElementById('rbs-info-items');
+  if (infoContainer) {
+    if (!props.descripcion && props.descripcio) {
+      props.descripcion = props.descripcio;
+    }
+
+    const iconClimber = `<img src="icons/placa.png" alt="Tipo" width="32" height="32">`;
+    const iconExpress = `<img src="icons/mosq.png" alt="Expresos" width="32" height="32">`;
+    const iconRope = `<img src="icons/cuerda.png" alt="Cuerda" width="32" height="32">`;
+
+    const hasDescripcion = props.descripcion && props.descripcion.trim();
+    const hasExp = props.exp1 != null && props.exp1 !== '';
+    const hasLong = props.long1 != null && props.long1 !== '';
+
+    let infoHTML = '';
+    if (hasDescripcion) {
+      infoHTML += `<div class="ml-route-item"><span class="ml-route-icon">${iconClimber}</span><span class="ml-route-text">${props.descripcion}</span></div>`;
+    }
+    if (hasExp) {
+      infoHTML += `<div class="ml-route-item"><span class="ml-route-icon">${iconExpress}</span><span class="ml-route-text">${props.exp1} express</span></div>`;
+    }
+    if (hasLong) {
+      infoHTML += `<div class="ml-route-item"><span class="ml-route-icon">${iconRope}</span><span class="ml-route-text">${props.long1} mts</span></div>`;
+    }
+    infoContainer.innerHTML = infoHTML;
+  }
+
+  // --- Aleje (async) ---
+  const alejeContainer = document.getElementById('rbs-aleje-container');
+  if (alejeContainer && typeof getAlejeVotes === 'function') {
+    alejeContainer.innerHTML = '<div style="text-align:center;color:#888;font-size:13px;">Cargando...</div>';
+    getAlejeVotes(schoolId, routeId).then(alejeData => {
+      if (typeof generateAlejeBarHTML === 'function') {
+        alejeContainer.innerHTML = generateAlejeBarHTML(routeId, schoolId, alejeData.avg, alejeData.userVote);
+      }
+    }).catch(() => { alejeContainer.innerHTML = ''; });
+  }
+
+  // --- Estado (async) ---
+  const estadoContainer = document.getElementById('rbs-estado-container');
+  if (estadoContainer && typeof getEstadoVotes === 'function') {
+    estadoContainer.innerHTML = '<div style="text-align:center;color:#888;font-size:13px;">Cargando...</div>';
+    getEstadoVotes(schoolId, routeId).then(estadoData => {
+      if (typeof generateEstadoStarsHTML === 'function') {
+        estadoContainer.innerHTML = generateEstadoStarsHTML(routeId, schoolId, estadoData.avg, estadoData.userVote);
+      }
+    }).catch(() => { estadoContainer.innerHTML = ''; });
+  }
+
+  // --- Botonera ---
+  const actionsContainer = document.getElementById('rbs-actions');
+  if (actionsContainer) {
+    const iconCheck = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+    const iconBookmark = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+    const iconComment = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
+    const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+
+    actionsContainer.innerHTML = `
+      <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">${iconCheck}</button>
+      <button class="ml-route-action-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">${iconBookmark}</button>
+      <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">${iconComment}</button>
+      <button class="ml-route-action-btn" onclick="mlShareRoute(${routeId}, '${encodeURIComponent(routeName)}')" title="Compartir">${iconShare}</button>
+    `;
+  }
 }
 
 /**
