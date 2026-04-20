@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 1. Navegar a la carpeta del proyecto
-cd /Users/jaimelillo/Documents/00_CODE/KRUX/krux-climbing-app || { echo "❌ Error: No se encuentra la carpeta"; exit 1; }
+cd /Users/jaimelillo/krux-climbing-app/scripts/Personal || { echo "❌ Error: No se encuentra la carpeta"; exit 1; }
 
 # 2. Verificar que estamos en main
 CURRENT_BRANCH=$(git branch --show-current)
