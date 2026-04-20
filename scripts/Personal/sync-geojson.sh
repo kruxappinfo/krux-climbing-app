@@ -1,20 +1,26 @@
 #!/bin/bash
 # =============================================================================
 # KRUX - GeoJSON Sync
-# Ejecuta este script en local y olvídate.
-# Vigila Cartografia/ y sincroniza automáticamente a www/, iOS y Android.
-# Detecta nuevas escuelas sin necesidad de cambiar el script.
+#
+# Modo vigía (sin argumentos):
+#   bash scripts/Personal/sync-geojson.sh
+#   npm run geojson
+#   → Sincroniza todo y se queda vigilando cambios en Cartografia/
+#
+# Modo archivo directo (arrastra o pasa rutas):
+#   bash scripts/Personal/sync-geojson.sh archivo1.geojson archivo2.geojson
+#   → Reemplaza solo esos archivos en www/ y lanza cap sync
 # =============================================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")" 
 CARTOGRAFIA_SRC="$PROJECT_ROOT/Cartografia"
 CARTOGRAFIA_WWW="$PROJECT_ROOT/www/Cartografia"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'
-CYAN='\033[0;36m';  BOLD='\033[1m';      NC='\033[0m'
+CYAN='\033[0;36m';  BOLD='\033[1m';      RED='\033[0;31m'; NC='\033[0m'
 
 # ── Copia un archivo a www/ preservando su ruta dentro de Cartografia/ ────────
 sync_file() {
@@ -26,7 +32,7 @@ sync_file() {
   echo -e "  ${GREEN}✓${NC} ${CYAN}${rel}${NC}"
 }
 
-# ── Copia todos los GeoJSON actuales ──────────────────────────────────────────
+# ── Copia todos los GeoJSON de Cartografia/ ───────────────────────────────────
 sync_all() {
   echo -e "${YELLOW}🔄 Sincronizando todos los GeoJSON → www/${NC}"
   local n=0
@@ -34,6 +40,40 @@ sync_all() {
     sync_file "$f"; ((n++)) || true
   done < <(find "$CARTOGRAFIA_SRC" -name "*.geojson" -print0 | sort -z)
   echo -e "  ${BOLD}${n} archivo(s) listos${NC}"
+}
+
+# ── Sincroniza archivos pasados como argumentos ───────────────────────────────
+sync_files_from_args() {
+  echo -e "${YELLOW}🔄 Reemplazando archivos especificados → www/${NC}"
+  local n=0
+  local errors=0
+  for arg in "$@"; do
+    # Acepta rutas absolutas, relativas al proyecto o relativas a Cartografia/
+    local src=""
+    if [[ -f "$arg" ]]; then
+      src="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")"
+    elif [[ -f "$PROJECT_ROOT/$arg" ]]; then
+      src="$PROJECT_ROOT/$arg"
+    elif [[ -f "$CARTOGRAFIA_SRC/$arg" ]]; then
+      src="$CARTOGRAFIA_SRC/$arg"
+    else
+      echo -e "  ${RED}✗ No encontrado:${NC} $arg"
+      ((errors++)) || true
+      continue
+    fi
+
+    # Verificar que el archivo pertenece a Cartografia/
+    if [[ "$src" != "$CARTOGRAFIA_SRC/"* ]]; then
+      echo -e "  ${RED}✗ Fuera de Cartografia/:${NC} $src"
+      ((errors++)) || true
+      continue
+    fi
+
+    sync_file "$src"
+    ((n++)) || true
+  done
+  echo -e "  ${BOLD}${n} archivo(s) reemplazados${NC}"
+  [[ $errors -gt 0 ]] && echo -e "  ${RED}${errors} error(es)${NC}"
 }
 
 # ── Lanza cap sync para iOS y Android ────────────────────────────────────────
@@ -51,7 +91,7 @@ cap_sync() {
   echo -e "  ${GREEN}✓ cap sync completado${NC}"
 }
 
-# ── Reacción a un cambio detectado ───────────────────────────────────────────
+# ── Reacción a un cambio en modo vigía ───────────────────────────────────────
 on_change() {
   local file="$1"
   [[ "$file" != *.geojson ]] && return
@@ -98,10 +138,18 @@ echo ""
 echo -e "${BOLD}${BLUE}🗺️  KRUX GeoJSON Sync${NC}"
 echo -e "${BLUE}════════════════════════════════${NC}"
 
-sync_all
-cap_sync
+if [[ $# -gt 0 ]]; then
+  # ── MODO ARCHIVO DIRECTO: recibe rutas como argumentos ──────────────────────
+  sync_files_from_args "$@"
+  cap_sync
+else
+  # ── MODO VIGÍA: sincroniza todo y se queda escuchando ───────────────────────
+  sync_all
+  cap_sync
+  echo ""
+  echo -e "${BLUE}════════════════════════════════${NC}"
+  echo -e "${YELLOW}👁️  Vigilando Cartografia/ — Ctrl+C para salir${NC}"
+  start_watch
+fi
 
 echo ""
-echo -e "${BLUE}════════════════════════════════${NC}"
-echo -e "${YELLOW}👁️  Vigilando Cartografia/ — Ctrl+C para salir${NC}"
-start_watch
