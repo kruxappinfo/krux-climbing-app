@@ -4,7 +4,7 @@
  * PWA completa con soporte offline
  */
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `krux-cache-${CACHE_VERSION}`;
 const DATA_CACHE_NAME = `krux-data-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
@@ -128,10 +128,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Estrategia para archivos GeoJSON y tiles del mapa
+  // Estrategia para archivos GeoJSON: Network First para reflejar actualizaciones
   if (url.pathname.includes('/Cartografia/') ||
-      url.pathname.includes('/tiles/') ||
       url.pathname.endsWith('.geojson')) {
+    event.respondWith(networkFirstThenCache(request));
+    return;
+  }
+
+  // Estrategia para tiles del mapa
+  if (url.pathname.includes('/tiles/')) {
     event.respondWith(cacheFirstThenNetwork(request, DATA_CACHE_NAME));
     return;
   }
