@@ -2263,7 +2263,7 @@ function mlBuildVariantGroupsIndex(features) {
 
   for (const f of features) {
     const props = f.properties;
-    const union = props.Union;
+    const union = props.union;
     const variante = props.variante;
 
     if (!union) continue;
@@ -2322,7 +2322,7 @@ function mlBuildVariantGroupsIndex(features) {
     const props = f.properties;
     // Solo para: variante=SI, sin Union, modalidad Simple
     if (props.variante !== 'SI') continue;
-    if (props.Union) continue;
+    if (props.union) continue;
     if (props._variantGroupKey) continue; // Ya fue procesado en un grupo Union
 
     // Recoger trinomios con datos
