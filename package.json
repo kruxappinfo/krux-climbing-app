@@ -15,7 +15,11 @@
     "cap:run:android": "npx cap run android",
     "cap:build:ios": "npx cap build ios",
     "cap:build:android": "npx cap build android",
-    "icons:generate": "cd icons/pwa && ./generate-icons.sh"
+    "icons:generate": "cd icons/pwa && ./generate-icons.sh",
+    "geojson:sync": "bash scripts/sync-geojson.sh",
+    "geojson:sync:mobile": "bash scripts/sync-geojson.sh --mobile",
+    "geojson:watch": "bash scripts/sync-geojson.sh --watch",
+    "geojson:watch:mobile": "bash scripts/sync-geojson.sh --watch --mobile"
   },
   "keywords": [
     "climbing",
