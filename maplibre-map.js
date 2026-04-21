@@ -8183,13 +8183,20 @@ function applyGradeFilter() {
     mlMap.setFilter('vias-layer', gradeExpr || routeSetExpr);
   }
 
-  // Sincronizar ticks con el filtro de grado (el filtro de "mis vías" no aplica:
-  // los ticks ya son solo vías del usuario por construcción)
+  // Sincronizar ticks con filtros:
+  // - El filtro "Solo vías hechas" no restringe los ticks (ya son vías hechas por construcción).
+  // - El filtro "Proyectos" (activo en solitario) SÍ restringe los ticks: solo se muestran
+  //   ticks de vías que también son proyectos, para que no aparezcan ticks sueltos
+  //   sobre vías que ya no están visibles.
+  let ticksExpr = gradeExpr;
+  if (mlShowOnlyProjects && !mlShowOnlyMyRoutes && projectsExpr) {
+    ticksExpr = ticksExpr ? ['all', ticksExpr, projectsExpr] : projectsExpr;
+  }
   if (mlMap.getLayer('vias-ticks-circle-layer')) {
-    mlMap.setFilter('vias-ticks-circle-layer', gradeExpr || null);
+    mlMap.setFilter('vias-ticks-circle-layer', ticksExpr || null);
   }
   if (mlMap.getLayer('vias-ticks-layer')) {
-    mlMap.setFilter('vias-ticks-layer', gradeExpr || null);
+    mlMap.setFilter('vias-ticks-layer', ticksExpr || null);
   }
 }
 
