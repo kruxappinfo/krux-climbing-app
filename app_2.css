@@ -17316,6 +17316,60 @@ body.pwa-standalone .feed-header {
   background: #f3f4f6;
 }
 
+/* Fila "Solo mis vías" */
+.gfp-myvias-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.gfp-myvias-row:hover {
+  background: #f3f4f6;
+}
+
+.gfp-myvias-row input[type="checkbox"] {
+  display: none;
+}
+
+.gfp-myvias-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #d1d5db;
+  border-radius: 5px;
+  background: white;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.gfp-myvias-icon svg {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.gfp-myvias-row input[type="checkbox"]:checked ~ .gfp-myvias-icon {
+  border-color: #15803d;
+  background: #dcfce7;
+}
+
+.gfp-myvias-row input[type="checkbox"]:checked ~ .gfp-myvias-icon svg {
+  opacity: 1;
+}
+
+.gfp-myvias-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+}
+
 /* ================ LEGEND MODAL ================ */
 
 .grade-legend-overlay {

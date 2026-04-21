@@ -17,6 +17,7 @@ let mlIs3DEnabled = false;           // Estado del terreno 3D
 let mlFilterPanelOpen = false;        // Estado del panel de filtro
 let mlGradeRangeMin = 0;              // Índice mínimo del rango de grado (0 = primer grado)
 let mlGradeRangeMax = -1;             // Índice máximo del rango de grado (-1 = se inicializa al total)
+let mlShowOnlyMyRoutes = false;       // Mostrar solo vías realizadas por el usuario
 
 // ============================================
 // VARIANT GROUPS STATE
@@ -7810,6 +7811,16 @@ function buildGradeFilterPanelHTML() {
     <div class="gfp-range-ticks" id="gfp-range-ticks"></div>
 
     <div class="gfp-divider"></div>
+
+    <label class="gfp-myvias-row" id="gfp-myvias-label">
+      <input type="checkbox" id="gfp-myvias-checkbox" onchange="toggleShowOnlyMyRoutes(this.checked)">
+      <span class="gfp-myvias-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      </span>
+      <span class="gfp-myvias-text">Solo mis vías</span>
+    </label>
+
+    <div class="gfp-divider"></div>
     <button class="gfp-legend-btn" onclick="openGradeLegendModal()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       Leyenda de colores
@@ -8017,6 +8028,10 @@ function closeGradeFilterPanel() {
 function resetGradeFilter() {
   mlGradeRangeMin = 0;
   mlGradeRangeMax = ALL_GRADES_ORDERED.length - 1;
+  mlShowOnlyMyRoutes = false;
+
+  const cb = document.getElementById('gfp-myvias-checkbox');
+  if (cb) cb.checked = false;
 
   updateSliderPositions();
   updateRangeLabels();
@@ -8025,20 +8040,56 @@ function resetGradeFilter() {
 }
 
 /**
- * Aplica el filtro de grados a la capa vias-layer del mapa
+ * Activa/desactiva el filtro "solo mis vías"
+ */
+function toggleShowOnlyMyRoutes(checked) {
+  mlShowOnlyMyRoutes = checked;
+  applyGradeFilter();
+  updateFilterButtonBadge();
+}
+
+/**
+ * Aplica el filtro de grados (y opcionalmente "solo mis vías") a la capa vias-layer
  */
 function applyGradeFilter() {
   if (!mlMap) return;
   if (!mlMap.getLayer('vias-layer')) return;
 
-  if (isFullGradeRange()) {
-    // Sin filtro: mostrar todo
-    mlMap.setFilter('vias-layer', null);
-  } else {
-    // Obtener grados del rango seleccionado
+  const gradeActive = !isFullGradeRange();
+
+  // Construir filtro de grados
+  let gradeExpr = null;
+  if (gradeActive) {
     const selectedGrades = ALL_GRADES_ORDERED.slice(mlGradeRangeMin, mlGradeRangeMax + 1);
-    const filterExpr = ['in', ['get', 'grado1'], ['literal', selectedGrades]];
-    mlMap.setFilter('vias-layer', filterExpr);
+    gradeExpr = ['in', ['get', 'grado1'], ['literal', selectedGrades]];
+  }
+
+  // Construir filtro de "mis vías"
+  let myViasExpr = null;
+  if (mlShowOnlyMyRoutes && mlCurrentSchool && typeof userAscentsCache !== 'undefined' && userAscentsCache.size > 0) {
+    const myRouteIds = [];
+    const prefix = mlCurrentSchool + ':';
+    for (const key of userAscentsCache.keys()) {
+      if (key.startsWith(prefix)) {
+        const id = parseInt(key.slice(prefix.length), 10);
+        if (!isNaN(id)) myRouteIds.push(id);
+      }
+    }
+    if (myRouteIds.length > 0) {
+      myViasExpr = ['in', ['get', 'id'], ['literal', myRouteIds]];
+    } else {
+      // Usuario sin ascensiones en esta escuela: no mostrar nada
+      myViasExpr = ['literal', false];
+    }
+  }
+
+  // Combinar filtros
+  if (!gradeExpr && !myViasExpr) {
+    mlMap.setFilter('vias-layer', null);
+  } else if (gradeExpr && myViasExpr) {
+    mlMap.setFilter('vias-layer', ['all', gradeExpr, myViasExpr]);
+  } else {
+    mlMap.setFilter('vias-layer', gradeExpr || myViasExpr);
   }
 }
 
@@ -8049,7 +8100,7 @@ function updateFilterButtonBadge() {
   const btn = document.getElementById('btn-grade-filter');
   if (!btn) return;
 
-  if (!isFullGradeRange()) {
+  if (!isFullGradeRange() || mlShowOnlyMyRoutes) {
     btn.classList.add('has-filter');
   } else {
     btn.classList.remove('has-filter');
