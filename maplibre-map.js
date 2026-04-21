@@ -2124,6 +2124,7 @@ function updateAscentTicksLayer() {
     if (!routeId && routeId !== 0) return;
 
     const routeName = feature.properties?.nombre;
+    const grado1 = feature.properties?.grado1 || null;
     const key = `${mlCurrentSchool}:${routeId}`;
     if (userAscentsCache.has(key) && !addedRoutes.has(routeId)) {
       addedRoutes.add(routeId);
@@ -2141,7 +2142,7 @@ function updateAscentTicksLayer() {
       tickFeatures.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: coords },
-        properties: { nombre: routeName, id: routeId }
+        properties: { nombre: routeName, id: routeId, grado1 }
       });
     }
   });
@@ -2176,9 +2177,9 @@ function updateAscentTicksLayer() {
           'icon-image': 'tick-icon',
           'icon-size': [
             'interpolate', ['linear'], ['zoom'],
-            16, isMobileDevice() ? 0.12 : 0.16,
-            18, isMobileDevice() ? 0.2 : 0.28,
-            20, isMobileDevice() ? 0.3 : 0.42
+            16, isMobileDevice() ? 0.22 : 0.28,
+            18, isMobileDevice() ? 0.34 : 0.44,
+            20, isMobileDevice() ? 0.48 : 0.60
           ],
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
@@ -2203,8 +2204,9 @@ function loadTickIcon() {
     const size = 48;
     const svgIcon = `
       <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 48 48">
-        <polyline points="14,25 22,33 34,15" fill="none" stroke="#15803d" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-        <polyline points="14,25 22,33 34,15" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="24" cy="24" r="21" fill="#15803d"/>
+        <circle cx="24" cy="24" r="21" fill="none" stroke="white" stroke-width="3"/>
+        <polyline points="13,25 21,34 35,14" fill="none" stroke="white" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     `;
 
@@ -8094,13 +8096,19 @@ function applyGradeFilter() {
     }
   }
 
-  // Combinar filtros
+  // Combinar filtros para vias-layer
   if (!gradeExpr && !myViasExpr) {
     mlMap.setFilter('vias-layer', null);
   } else if (gradeExpr && myViasExpr) {
     mlMap.setFilter('vias-layer', ['all', gradeExpr, myViasExpr]);
   } else {
     mlMap.setFilter('vias-layer', gradeExpr || myViasExpr);
+  }
+
+  // Sincronizar ticks con el filtro de grado (el filtro de "mis vías" no aplica:
+  // los ticks ya son solo vías del usuario por construcción)
+  if (mlMap.getLayer('vias-ticks-layer')) {
+    mlMap.setFilter('vias-ticks-layer', gradeExpr || null);
   }
 }
 
