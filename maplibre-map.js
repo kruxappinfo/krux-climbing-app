@@ -18,6 +18,7 @@ let mlFilterPanelOpen = false;        // Estado del panel de filtro
 let mlGradeRangeMin = 0;              // Índice mínimo del rango de grado (0 = primer grado)
 let mlGradeRangeMax = -1;             // Índice máximo del rango de grado (-1 = se inicializa al total)
 let mlShowOnlyMyRoutes = false;       // Mostrar solo vías realizadas por el usuario
+let mlShowOnlyProjects = false;       // Mostrar solo vías guardadas en proyectos
 
 // ============================================
 // VARIANT GROUPS STATE
@@ -7851,6 +7852,14 @@ function buildGradeFilterPanelHTML() {
       <span class="gfp-myvias-text">Solo vías hechas</span>
     </label>
 
+    <label class="gfp-myvias-row" id="gfp-projects-label">
+      <input type="checkbox" id="gfp-projects-checkbox" onchange="toggleShowOnlyProjects(this.checked)">
+      <span class="gfp-myvias-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </span>
+      <span class="gfp-myvias-text">Proyectos</span>
+    </label>
+
     <div class="gfp-divider"></div>
     <button class="gfp-legend-btn" onclick="openGradeLegendModal()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -8060,9 +8069,12 @@ function resetGradeFilter() {
   mlGradeRangeMin = 0;
   mlGradeRangeMax = ALL_GRADES_ORDERED.length - 1;
   mlShowOnlyMyRoutes = false;
+  mlShowOnlyProjects = false;
 
   const cb = document.getElementById('gfp-myvias-checkbox');
   if (cb) cb.checked = false;
+  const cbProj = document.getElementById('gfp-projects-checkbox');
+  if (cbProj) cbProj.checked = false;
 
   updateSliderPositions();
   updateRangeLabels();
@@ -8075,6 +8087,15 @@ function resetGradeFilter() {
  */
 function toggleShowOnlyMyRoutes(checked) {
   mlShowOnlyMyRoutes = checked;
+  applyGradeFilter();
+  updateFilterButtonBadge();
+}
+
+/**
+ * Activa/desactiva el filtro "proyectos"
+ */
+function toggleShowOnlyProjects(checked) {
+  mlShowOnlyProjects = checked;
   applyGradeFilter();
   updateFilterButtonBadge();
 }
@@ -8095,7 +8116,7 @@ function applyGradeFilter() {
     gradeExpr = ['in', ['get', 'grado1'], ['literal', selectedGrades]];
   }
 
-  // Construir filtro de "mis vías"
+  // Construir filtro de "solo vías hechas"
   let myViasExpr = null;
   if (mlShowOnlyMyRoutes && mlCurrentSchool && typeof userAscentsCache !== 'undefined' && userAscentsCache.size > 0) {
     const myRouteIds = [];
@@ -8109,18 +8130,40 @@ function applyGradeFilter() {
     if (myRouteIds.length > 0) {
       myViasExpr = ['in', ['get', 'id'], ['literal', myRouteIds]];
     } else {
-      // Usuario sin ascensiones en esta escuela: no mostrar nada
       myViasExpr = ['literal', false];
     }
   }
 
-  // Combinar filtros para vias-layer
-  if (!gradeExpr && !myViasExpr) {
-    mlMap.setFilter('vias-layer', null);
-  } else if (gradeExpr && myViasExpr) {
-    mlMap.setFilter('vias-layer', ['all', gradeExpr, myViasExpr]);
+  // Construir filtro de "proyectos"
+  let projectsExpr = null;
+  if (mlShowOnlyProjects && typeof userProjects !== 'undefined' && userProjects.size > 0) {
+    const projectIds = [];
+    for (const key of userProjects.keys()) {
+      const id = parseInt(key.replace('route_', ''), 10);
+      if (!isNaN(id)) projectIds.push(id);
+    }
+    if (projectIds.length > 0) {
+      projectsExpr = ['in', ['get', 'id'], ['literal', projectIds]];
+    } else {
+      projectsExpr = ['literal', false];
+    }
+  }
+
+  // Combinar filtros de usuario (union si ambos activos)
+  let routeSetExpr = null;
+  if (myViasExpr && projectsExpr) {
+    routeSetExpr = ['any', myViasExpr, projectsExpr];
   } else {
-    mlMap.setFilter('vias-layer', gradeExpr || myViasExpr);
+    routeSetExpr = myViasExpr || projectsExpr;
+  }
+
+  // Combinar con filtro de grado
+  if (!gradeExpr && !routeSetExpr) {
+    mlMap.setFilter('vias-layer', null);
+  } else if (gradeExpr && routeSetExpr) {
+    mlMap.setFilter('vias-layer', ['all', gradeExpr, routeSetExpr]);
+  } else {
+    mlMap.setFilter('vias-layer', gradeExpr || routeSetExpr);
   }
 
   // Sincronizar ticks con el filtro de grado (el filtro de "mis vías" no aplica:
@@ -8140,7 +8183,7 @@ function updateFilterButtonBadge() {
   const btn = document.getElementById('btn-grade-filter');
   if (!btn) return;
 
-  if (!isFullGradeRange() || mlShowOnlyMyRoutes) {
+  if (!isFullGradeRange() || mlShowOnlyMyRoutes || mlShowOnlyProjects) {
     btn.classList.add('has-filter');
   } else {
     btn.classList.remove('has-filter');
