@@ -2744,7 +2744,7 @@ async function showRoutePopup(props, coords) {
         <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">
           ${iconCheck}
         </button>
-        <button class="ml-route-action-btn" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
+        <button class="ml-route-action-btn ${isRouteInProjects(routeId) ? 'bookmark-active' : ''}" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
           ${iconBookmark}
         </button>
         <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">
@@ -2961,7 +2961,7 @@ async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
       <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">
         ${iconCheck}
       </button>
-      <button class="ml-route-action-btn" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
+      <button class="ml-route-action-btn ${isRouteInProjects(routeId) ? 'bookmark-active' : ''}" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
         ${iconBookmark}
       </button>
       <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">
@@ -3280,7 +3280,7 @@ function mlUpdateBottomSheetContent(props, isTrinomial) {
 
     actionsContainer.innerHTML = `
       <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">${iconCheck}</button>
-      <button class="ml-route-action-btn" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">${iconBookmark}</button>
+      <button class="ml-route-action-btn ${isRouteInProjects(routeId) ? 'bookmark-active' : ''}" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">${iconBookmark}</button>
       <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">${iconComment}</button>
       <button class="ml-route-action-btn" onclick="mlShareRoute(${routeId}, '${encodeURIComponent(routeName)}')" title="Compartir">${iconShare}</button>
     `;
@@ -3950,9 +3950,13 @@ function mlToggleFavorite(encodedName) {
 
 function buildBookmarkIcon(routeId) {
   const inProj = typeof isProject === 'function' && isProject(routeId);
-  const color = inProj ? '#b45309' : 'currentColor';
-  const fill = inProj ? '#b45309' : 'none';
+  const color = inProj ? '#eab308' : 'currentColor';
+  const fill = inProj ? '#eab308' : 'none';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="${fill}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+}
+
+function isRouteInProjects(routeId) {
+  return typeof isProject === 'function' && isProject(routeId);
 }
 
 async function mlToggleBookmark(routeId, encodedName) {
@@ -3965,9 +3969,12 @@ async function mlToggleBookmark(routeId, encodedName) {
 
   await toggleProject(routeId, name, mlCurrentRouteGrade || '');
 
-  // Actualizar icono del botón en el popup activo
+  // Actualizar icono + estado "presionado" del botón en el popup activo
   const btn = document.getElementById('ml-bookmark-btn');
-  if (btn) btn.innerHTML = buildBookmarkIcon(routeId);
+  if (btn) {
+    btn.innerHTML = buildBookmarkIcon(routeId);
+    btn.classList.toggle('bookmark-active', isRouteInProjects(routeId));
+  }
 
   // Si el filtro de proyectos está activo, reaplicar para reflejar el cambio
   if (mlShowOnlyProjects) applyGradeFilter();
@@ -6401,7 +6408,7 @@ async function showRouteBottomSheet(props, coords) {
 
     actionsContainer.innerHTML = `
       <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">${iconCheck}</button>
-      <button class="ml-route-action-btn" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">${iconBookmark}</button>
+      <button class="ml-route-action-btn ${isRouteInProjects(routeId) ? 'bookmark-active' : ''}" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">${iconBookmark}</button>
       <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">${iconComment}${commentBadge}</button>
       <button class="ml-route-action-btn" onclick="mlShareRoute(${routeId}, '${encodeURIComponent(routeName)}')" title="Compartir">${iconShare}</button>
     `;
@@ -7675,7 +7682,7 @@ async function showUserRoutePopup(props, coords) {
         <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">
           ${iconCheck}
         </button>
-        <button class="ml-route-action-btn" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
+        <button class="ml-route-action-btn ${isRouteInProjects(routeId) ? 'bookmark-active' : ''}" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
           ${iconBookmark}
         </button>
         <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">
