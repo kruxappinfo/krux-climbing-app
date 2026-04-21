@@ -7744,7 +7744,7 @@ function addGradeFilterButton() {
     color: #333;
     cursor: pointer;
     z-index: 1000;
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     box-shadow: 0 2px 8px rgba(0,0,0,0.18);
@@ -7769,6 +7769,17 @@ function addGradeFilterButton() {
 
   // Inicializar sliders después de insertar en el DOM
   initRangeSliders();
+
+  // Mostrar/ocultar sincronizado con resetViewBtn (mismo umbral de zoom)
+  const updateFilterVisibility = () => {
+    if (!mlMap) return;
+    const ccaa = getCurrentCCAA();
+    const visible = mlMap.getZoom() > ccaa.zoom + 1;
+    btn.style.display = visible ? 'flex' : 'none';
+    if (!visible) closeGradeFilterPanel();
+  };
+  mlMap.on('zoom', updateFilterVisibility);
+  updateFilterVisibility();
 
   // Cerrar panel al hacer clic fuera
   document.addEventListener('click', (e) => {
