@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RouteMarker — Visual Demo</title>
+
+  <!-- React + Babel via CDN (dev-only, no bundler needed) -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      padding: 32px 24px 64px;
+      min-height: 100vh;
+    }
+
+    h1  { font-size: 1.4rem; font-weight: 700; margin-bottom: 6px; color: #fff; }
+    h2  { font-size: 0.85rem; font-weight: 600; text-transform: uppercase;
+          letter-spacing: .08em; color: #888; margin-bottom: 20px; }
+    h3  { font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+          letter-spacing: .06em; color: #666; margin-bottom: 10px; }
+
+    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 40px; }
+
+    /* ── Case grid ───────────────────────────────────── */
+    .cases {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+      margin-bottom: 48px;
+    }
+
+    .card {
+      background: #252540;
+      border: 1px solid #333358;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .card-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #aaa;
+      margin-bottom: 16px;
+    }
+
+    .card-title span {
+      display: inline-block;
+      background: #1a1a3e;
+      border: 1px solid #333358;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #7878cc;
+      margin-left: 6px;
+    }
+
+    /* marker sits on a fake map tile for realism */
+    .map-tile {
+      background: #3a5a3a;
+      background-image:
+        linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+      background-size: 20px 20px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      margin-bottom: 8px;
+    }
+
+    .map-tile.light {
+      background: #c8d8a8;
+      background-image:
+        linear-gradient(rgba(0,0,0,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,.04) 1px, transparent 1px);
+    }
+
+    /* ── Scale section ───────────────────────────────── */
+    .scale-section { margin-top: 48px; }
+
+    .scale-row {
+      display: grid;
+      grid-template-columns: 80px repeat(4, 1fr);
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .scale-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #666;
+      text-align: right;
+      padding-right: 12px;
+      border-right: 1px solid #333;
+    }
+
+    .scale-header {
+      display: grid;
+      grid-template-columns: 80px repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .scale-header > div {
+      font-size: 0.7rem;
+      color: #555;
+      text-align: center;
+    }
+
+    .scale-cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #3a5a3a;
+      border-radius: 8px;
+      padding: 16px 8px;
+    }
+
+    hr { border: none; border-top: 1px solid #2a2a4a; margin: 40px 0; }
+  </style>
+</head>
+<body>
+
+<h1>RouteMarker</h1>
+<p class="subtitle">SVG climbing-route map marker · center circle + concentric variant rings</p>
+
+<div id="root"></div>
+
+<script type="text/babel">
+/* ─────────────────────────────────────────────────────────────────
+   RouteMarker component (inlined — identical logic to RouteMarker.jsx)
+   ───────────────────────────────────────────────────────────────── */
+function RouteMarker({ color, variants = [] }) {
+  const CENTER_R    = 12;
+  const RING_STROKE = 6;
+  const GAP         = 4;
+  const PADDING     = 2;
+
+  const N      = variants.length;
+  const outerR = CENTER_R + N * (GAP + RING_STROKE);
+  const totalR = outerR + PADDING;
+  const size   = totalR * 2;
+  const cx     = totalR;
+  const cy     = totalR;
+
+  return (
+    <svg
+      width={size} height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: "block" }}
+    >
+      <circle cx={cx} cy={cy} r={CENTER_R} fill={color} />
+
+      {variants.map((variant, i) => {
+        const gapR  = CENTER_R + GAP / 2          + i * (GAP + RING_STROKE); // 14 + 10i
+        const ringR = CENTER_R + GAP + RING_STROKE / 2 + i * (GAP + RING_STROKE); // 19 + 10i
+        return (
+          <g key={i}>
+            <circle cx={cx} cy={cy} r={gapR}  fill="none" stroke="white"         strokeWidth={GAP}         />
+            <circle cx={cx} cy={cy} r={ringR} fill="none" stroke={variant.color} strokeWidth={RING_STROKE} />
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Demo data  (colors sampled from app's getGradeColor palette)
+   ───────────────────────────────────────────────────────────────── */
+const CASES = [
+  {
+    label: "No variants",
+    tag:   "variants=[]",
+    props: { color: "#ff6161" },
+  },
+  {
+    label: "1 variant",
+    tag:   "variants.length=1",
+    props: {
+      color:    "#ffeb3b",
+      variants: [{ color: "#ff9800" }],
+    },
+  },
+  {
+    label: "2 variants",
+    tag:   "variants.length=2",
+    props: {
+      color:    "#46923a",
+      variants: [
+        { color: "#ffeb3b" },
+        { color: "#f44336" },
+      ],
+    },
+  },
+  {
+    label: "4 variants",
+    tag:   "variants.length=4",
+    props: {
+      color:    "#00bcd4",
+      variants: [
+        { color: "#46923a" },
+        { color: "#ffeb3b" },
+        { color: "#ff9800" },
+        { color: "#f44336" },
+      ],
+    },
+  },
+];
+
+const SCALES = [0.5, 1, 1.5];
+
+/* ─────────────────────────────────────────────────────────────────
+   ScaledMarker — wraps with CSS transform so the hit-area stays
+   consistent but the visual renders at the requested zoom level.
+   ───────────────────────────────────────────────────────────────── */
+function ScaledMarker({ caseProps, scale }) {
+  return (
+    <div style={{
+      transform:       `scale(${scale})`,
+      transformOrigin: "center center",
+    }}>
+      <RouteMarker {...caseProps} />
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   App
+   ───────────────────────────────────────────────────────────────── */
+function App() {
+  return (
+    <div>
+
+      {/* ── Section 1: individual cases ─────────────────────── */}
+      <h2>Test cases</h2>
+      <div className="cases">
+        {CASES.map((c) => (
+          <div key={c.label} className="card">
+            <div className="card-title">
+              {c.label} <span>{c.tag}</span>
+            </div>
+            {/* dark map tile */}
+            <div className="map-tile">
+              <RouteMarker {...c.props} />
+            </div>
+            {/* light map tile */}
+            <div className="map-tile light">
+              <RouteMarker {...c.props} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <hr />
+
+      {/* ── Section 2: scale legibility grid ────────────────── */}
+      <div className="scale-section">
+        <h2>Scale legibility</h2>
+        <h3>Each column = one test case · Each row = one zoom scale</h3>
+
+        {/* column headers */}
+        <div className="scale-header">
+          <div></div>
+          {CASES.map(c => (
+            <div key={c.label}>{c.label}</div>
+          ))}
+        </div>
+
+        {SCALES.map(scale => (
+          <div key={scale} className="scale-row">
+            <div className="scale-label">{scale}×</div>
+            {CASES.map(c => (
+              <div key={c.label} className="scale-cell">
+                <ScaledMarker caseProps={c.props} scale={scale} />
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
