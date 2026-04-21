@@ -2060,7 +2060,7 @@ async function mlLoadGeoJSONLayer(layerId, url, type, paint, minzoom = 0, layout
  * Limpia las capas de la escuela actual
  */
 function mlClearSchoolLayers() {
-  const layerIds = ['vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer', 'vias-variant-connector-layer'];
+  const layerIds = ['vias-ticks-circle-layer', 'vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer', 'vias-variant-connector-layer'];
   const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source', 'vias-variant-connector-source'];
 
   // Limpiar estado de variantes
@@ -2142,7 +2142,7 @@ function updateAscentTicksLayer() {
       tickFeatures.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: coords },
-        properties: { nombre: routeName, id: routeId, grado1 }
+        properties: { nombre: routeName, id: routeId, grado1, gradeColor: getGradeColor(grado1 || '') }
       });
     }
   });
@@ -2168,6 +2168,26 @@ function updateAscentTicksLayer() {
         data: tickGeoJSON
       });
 
+      // Círculo de fondo con el color del grado de la vía
+      mlMap.addLayer({
+        id: 'vias-ticks-circle-layer',
+        type: 'circle',
+        source: tickSourceId,
+        minzoom: 16,
+        paint: {
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            16, isMobileDevice() ? 5 : 7,
+            18, isMobileDevice() ? 8 : 11,
+            20, isMobileDevice() ? 12 : 15
+          ],
+          'circle-color': ['get', 'gradeColor'],
+          'circle-stroke-color': 'white',
+          'circle-stroke-width': 1.5
+        }
+      });
+
+      // Check blanco encima del círculo
       mlMap.addLayer({
         id: tickLayerId,
         type: 'symbol',
@@ -2204,9 +2224,7 @@ function loadTickIcon() {
     const size = 48;
     const svgIcon = `
       <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 48 48">
-        <circle cx="24" cy="24" r="21" fill="#15803d"/>
-        <circle cx="24" cy="24" r="21" fill="none" stroke="white" stroke-width="3"/>
-        <polyline points="13,25 21,34 35,14" fill="none" stroke="white" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline points="10,26 20,36 38,14" fill="none" stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     `;
 
@@ -8107,6 +8125,9 @@ function applyGradeFilter() {
 
   // Sincronizar ticks con el filtro de grado (el filtro de "mis vías" no aplica:
   // los ticks ya son solo vías del usuario por construcción)
+  if (mlMap.getLayer('vias-ticks-circle-layer')) {
+    mlMap.setFilter('vias-ticks-circle-layer', gradeExpr || null);
+  }
   if (mlMap.getLayer('vias-ticks-layer')) {
     mlMap.setFilter('vias-ticks-layer', gradeExpr || null);
   }
