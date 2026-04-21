@@ -405,7 +405,7 @@ async function toggleProject(id, name, grade = '') {
 
     try {
         const projectsRef = db.collection('users').doc(currentUser.uid).collection('projects');
-        const docId = `route_${id.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const docId = `route_${String(id).replace(/[^a-zA-Z0-9]/g, '_')}`;
 
         if (isProj) {
             // Remove from projects
