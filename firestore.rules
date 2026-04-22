@@ -214,6 +214,30 @@ service cloud.firestore {
       allow update, delete: if isAuthenticated() && (isAdmin() || isSuperAdmin());
     }
 
+    // Pending POI (puntos de interés pendientes de aprobación)
+    match /pending_poi/{poiId} {
+      allow read: if resource.data.status == 'approved' ||
+        (isAuthenticated() && (isAdminOrSpotter() || isSuperAdmin()));
+      allow create: if isAuthenticated() && isAdminOrSpotter();
+      allow update, delete: if isAuthenticated() && (isAdmin() || isSuperAdmin());
+    }
+
+    // Pending sectors (sectores pendientes de aprobación)
+    match /pending_sectors/{sectorId} {
+      allow read: if resource.data.status == 'approved' ||
+        (isAuthenticated() && (isAdminOrSpotter() || isSuperAdmin()));
+      allow create: if isAuthenticated() && isAdminOrSpotter();
+      allow update, delete: if isAuthenticated() && (isAdmin() || isSuperAdmin());
+    }
+
+    // Pending schools (escuelas pendientes de aprobación)
+    match /pending_schools/{schoolId} {
+      allow read: if resource.data.status == 'approved' ||
+        (isAuthenticated() && (isAdminOrSpotter() || isSuperAdmin()));
+      allow create: if isAuthenticated() && isAdminOrSpotter();
+      allow update, delete: if isAuthenticated() && (isAdmin() || isSuperAdmin());
+    }
+
     // Aleje votes (votaciones de aleje por ruta)
     match /aleje_votes/{docId} {
       allow read: if true;

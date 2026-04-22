@@ -1,12 +1,15 @@
 /**
- * Developer Route Editor Tool
+ * Spotter Tool — Menú de creación para Spotters/Admins
  *
- * Herramienta de desarrollador para agregar nuevas vías al mapa.
- * Solo disponible para usuarios con rol 'admin' en Firestore.
+ * Herramienta para agregar nuevas vías, sectores, puntos de interés y escuelas.
+ * Solo disponible para usuarios con rol 'admin' o 'spotter' en Firestore.
  *
  * Funcionalidades:
+ * - Menú desplegable con opciones: + Vía, + Sector, + Punto de Interés, + Escuela
  * - Dibujar puntos de vías en el mapa
- * - Formulario para completar información de la vía
+ * - Dibujar contorno de sectores en el mapa
+ * - Añadir puntos de interés con tipo seleccionable
+ * - Proponer nuevas escuelas de escalada
  * - Sincronización con Firestore (pendientes de aprobación)
  * - Descarga de GeoJSON actualizado
  */
@@ -14,11 +17,34 @@
 // ============================================
 // VARIABLES GLOBALES
 // ============================================
+
+// --- Modo Vía (existente) ---
 let devModeActive = false;
 let devCurrentSchoolSectors = [];
 let devPendingRouteCoords = null;
 let devRouteMarker = null;
-let devPendingRouteDocId = null; // ID del documento de vía pendiente de dibujo
+let devPendingRouteDocId = null;
+
+// --- Menú Spotter ---
+let devSpotterMenuOpen = false;
+
+// --- Modo Punto de Interés ---
+let devPOIMode = false;
+let devPOICoords = null;
+let devPOIMarker = null;
+let devPOIType = null;
+
+// --- Modo Escuela ---
+let devSchoolMode = false;
+let devSchoolCoords = null;
+let devSchoolMarker = null;
+
+// --- Modo Sector (dibujo polígono) ---
+let devSectorMode = false;
+let devSectorVertices = [];
+const DEV_SECTOR_SOURCE = 'dev-sector-draw-source';
+const DEV_SECTOR_LINE_LAYER = 'dev-sector-draw-line';
+const DEV_SECTOR_VERTEX_LAYER = 'dev-sector-draw-vertices';
 
 // ============================================
 // VERIFICACIÓN DE PERMISOS
@@ -120,16 +146,15 @@ async function addDevEditorButton() {
 }
 
 /**
- * Actualiza visibilidad del botón dev según proximidad a escuela
+ * Actualiza visibilidad del botón Spotter.
+ * Visible siempre que el usuario sea admin/spotter (sin restricción de proximidad).
  */
 function updateDevButtonVisibility() {
   const btn = document.getElementById('btn-dev-editor');
   if (!btn) return;
 
-  // Mismo criterio que el botón 3D
-  const nearSchool = typeof isNearSchool === 'function' ? isNearSchool() : false;
-
-  if (nearSchool && mlCurrentSchool) {
+  // Visible siempre — los permisos se verificaron al crear el botón
+  if (true) {
     btn.style.display = 'flex';
     // Las vías pendientes NO se muestran en el mapa - solo se ven en el panel de admin
   } else {
@@ -145,14 +170,151 @@ function updateDevButtonVisibility() {
 // ============================================
 
 /**
- * Toggle del modo desarrollador
+ * Toggle del menú Spotter — reemplaza el antiguo toggleDevMode
  */
 function toggleDevMode() {
-  if (devModeActive) {
-    deactivateDevMode();
-  } else {
-    activateDevMode();
+  // Si hay algún modo activo, desactivarlo
+  if (devModeActive || devPOIMode || devSchoolMode || devSectorMode) {
+    deactivateAllModes();
+    return;
   }
+  toggleSpotterMenu();
+}
+
+/**
+ * Abre/cierra el menú desplegable del Spotter
+ */
+function toggleSpotterMenu() {
+  const existing = document.getElementById('dev-spotter-menu');
+  if (existing) {
+    closeSpotterMenu();
+    return;
+  }
+
+  devSpotterMenuOpen = true;
+
+  // Tipos POI del POI_EMOJI_MAP (definido en maplibre-map.js)
+  const poiTypes = [
+    { key: 'fuente', label: 'Fuente', emoji: '🚰' },
+    { key: 'parking', label: 'Parking', emoji: '🅿️' },
+    { key: 'tienda', label: 'Tienda', emoji: '🛒' },
+    { key: 'gasolinera', label: 'Gasolinera', emoji: '⛽' },
+    { key: 'hospital', label: 'Hospital', emoji: '🏥' },
+    { key: 'farmacia', label: 'Farmacia', emoji: '💊' },
+    { key: 'bar', label: 'Bar', emoji: '🍺' },
+    { key: 'restaurante', label: 'Restaurante', emoji: '🍽️' },
+    { key: 'camping', label: 'Camping', emoji: '⛺' },
+    { key: 'wc', label: 'WC', emoji: '🚻' },
+    { key: 'refugio', label: 'Refugio', emoji: '🏠' },
+    { key: 'mirador', label: 'Mirador', emoji: '👁️' },
+    { key: 'supermercado', label: 'Supermercado', emoji: '🛒' },
+    { key: 'hotel', label: 'Hotel', emoji: '🏨' },
+    { key: 'albergue', label: 'Albergue', emoji: '🛏️' },
+    { key: 'informacion', label: 'Informacion', emoji: 'ℹ️' },
+    { key: 'ducha', label: 'Ducha', emoji: '🚿' },
+    { key: 'merendero', label: 'Merendero', emoji: '🧺' },
+  ];
+
+  const poiItemsHTML = poiTypes.map(t =>
+    `<button class="dev-spotter-poi-type" onclick="selectPOIType('${t.key}')">
+      <span class="dev-spotter-poi-emoji">${t.emoji}</span>${t.label}
+    </button>`
+  ).join('');
+
+  const menu = document.createElement('div');
+  menu.id = 'dev-spotter-menu';
+  menu.className = 'dev-spotter-menu';
+  menu.innerHTML = `
+    <button class="dev-spotter-menu-item" onclick="selectSpotterOption('via')">
+      <span class="dev-spotter-menu-icon">📍</span> Via
+    </button>
+    <button class="dev-spotter-menu-item" onclick="selectSpotterOption('sector')">
+      <span class="dev-spotter-menu-icon">📐</span> Sector
+    </button>
+    <button class="dev-spotter-menu-item dev-spotter-menu-item-poi" onclick="togglePOIAccordion(event)">
+      <span class="dev-spotter-menu-icon">📌</span> Punto de Interes
+      <span class="dev-spotter-poi-chevron" id="dev-poi-chevron">›</span>
+    </button>
+    <div class="dev-spotter-poi-submenu" id="dev-poi-submenu">
+      ${poiItemsHTML}
+    </div>
+    <button class="dev-spotter-menu-item" onclick="selectSpotterOption('escuela')">
+      <span class="dev-spotter-menu-icon">🏔️</span> Escuela
+    </button>
+  `;
+
+  document.getElementById('map').appendChild(menu);
+
+  // Cerrar al hacer clic fuera (con delay para no cerrar inmediatamente)
+  setTimeout(() => {
+    document.addEventListener('click', handleSpotterMenuOutsideClick);
+  }, 10);
+}
+
+function handleSpotterMenuOutsideClick(e) {
+  const menu = document.getElementById('dev-spotter-menu');
+  const btn = document.getElementById('btn-dev-editor');
+  if (menu && !menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+    closeSpotterMenu();
+  }
+}
+
+function closeSpotterMenu() {
+  const menu = document.getElementById('dev-spotter-menu');
+  if (menu) menu.remove();
+  devSpotterMenuOpen = false;
+  document.removeEventListener('click', handleSpotterMenuOutsideClick);
+}
+
+/**
+ * Expande/colapsa el acordeón de tipos de POI
+ */
+function togglePOIAccordion(e) {
+  e.stopPropagation();
+  const submenu = document.getElementById('dev-poi-submenu');
+  const chevron = document.getElementById('dev-poi-chevron');
+  if (submenu) {
+    const isOpen = submenu.classList.toggle('open');
+    if (chevron) chevron.textContent = isOpen ? '⌄' : '›';
+  }
+}
+
+/**
+ * Selecciona un tipo de POI desde el acordeón
+ */
+function selectPOIType(poiType) {
+  closeSpotterMenu();
+  devPOIType = poiType;
+  activatePOIMode(poiType);
+}
+
+/**
+ * Maneja la selección de una opción del menú Spotter
+ */
+function selectSpotterOption(option) {
+  closeSpotterMenu();
+  switch (option) {
+    case 'via':
+      activateDevMode();
+      break;
+    case 'sector':
+      activateSectorMode();
+      break;
+    case 'escuela':
+      activateSchoolMode();
+      break;
+  }
+}
+
+/**
+ * Desactiva todos los modos activos
+ */
+function deactivateAllModes() {
+  if (devModeActive) deactivateDevMode();
+  if (devPOIMode) deactivatePOIMode();
+  if (devSchoolMode) deactivateSchoolMode();
+  if (devSectorMode) deactivateSectorMode();
+  closeSpotterMenu();
 }
 
 /**
@@ -905,6 +1067,672 @@ async function exportPendingRoutesAsGeoJSON() {
 }
 
 // ============================================
+// MODO PUNTO DE INTERÉS
+// ============================================
+
+/**
+ * Activa el modo de creación de POI
+ */
+function activatePOIMode(poiType) {
+  deactivateAllModes();
+  devPOIMode = true;
+  devPOIType = poiType;
+
+  const btn = document.getElementById('btn-dev-editor');
+  if (btn) {
+    btn.style.background = '#f59e0b';
+    btn.style.color = 'white';
+  }
+
+  const emoji = (typeof getPOIEmoji === 'function') ? getPOIEmoji(poiType) : '📌';
+  showDevToast(`${emoji} Haz clic en el mapa para colocar: ${poiType}`, 'info');
+
+  if (mlMap) {
+    mlMap.on('click', handlePOIMapClick);
+    mlMap.getCanvas().style.cursor = 'crosshair';
+  }
+}
+
+/**
+ * Desactiva el modo POI
+ */
+function deactivatePOIMode() {
+  devPOIMode = false;
+  devPOIType = null;
+  devPOICoords = null;
+
+  const btn = document.getElementById('btn-dev-editor');
+  if (btn) {
+    btn.style.background = 'white';
+    btn.style.color = '#333';
+  }
+
+  if (mlMap) {
+    mlMap.off('click', handlePOIMapClick);
+    mlMap.getCanvas().style.cursor = '';
+  }
+
+  if (devPOIMarker) {
+    devPOIMarker.remove();
+    devPOIMarker = null;
+  }
+
+  closePOIModal();
+}
+
+/**
+ * Maneja clic en mapa para colocar POI
+ */
+function handlePOIMapClick(e) {
+  if (e.originalEvent && e.originalEvent.target !== mlMap.getCanvas()) return;
+
+  const coords = e.lngLat;
+  devPOICoords = [coords.lng, coords.lat];
+
+  if (devPOIMarker) {
+    devPOIMarker.setLngLat(coords);
+  } else {
+    const el = document.createElement('div');
+    el.style.cssText = `
+      width: 28px; height: 28px;
+      background: #f59e0b; border: 3px solid white; border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    `;
+    const emoji = (typeof getPOIEmoji === 'function') ? getPOIEmoji(devPOIType) : '📌';
+    el.textContent = emoji;
+
+    devPOIMarker = new maplibregl.Marker({ element: el, draggable: true })
+      .setLngLat(coords)
+      .addTo(mlMap);
+
+    devPOIMarker.on('dragend', () => {
+      const lngLat = devPOIMarker.getLngLat();
+      devPOICoords = [lngLat.lng, lngLat.lat];
+    });
+  }
+
+  showPOIModal();
+}
+
+/**
+ * Muestra modal para completar datos del POI
+ */
+function showPOIModal() {
+  closePOIModal();
+
+  const emoji = (typeof getPOIEmoji === 'function') ? getPOIEmoji(devPOIType) : '📌';
+
+  const modal = document.createElement('div');
+  modal.id = 'dev-poi-modal';
+  modal.className = 'dev-route-modal-overlay';
+  modal.innerHTML = `
+    <div class="dev-route-modal">
+      <div class="dev-route-modal-header">
+        <h3>${emoji} Nuevo Punto de Interes</h3>
+        <button class="dev-modal-close" onclick="closePOIModal()">&times;</button>
+      </div>
+      <div class="dev-route-modal-body">
+        <div class="dev-form-group">
+          <label>Tipo</label>
+          <input type="text" value="${devPOIType}" readonly style="background:#f5f5f5;color:#888;">
+        </div>
+        <div class="dev-form-group">
+          <label for="dev-poi-name">Nombre (opcional)</label>
+          <input type="text" id="dev-poi-name" placeholder="Ej: Fuente del rio">
+        </div>
+        <div class="dev-form-group">
+          <label for="dev-poi-link">Link (opcional)</label>
+          <input type="url" id="dev-poi-link" placeholder="https://...">
+        </div>
+      </div>
+      <div class="dev-route-modal-footer">
+        <button class="dev-btn-cancel" onclick="closePOIModal()">Cancelar</button>
+        <button class="dev-btn-save" onclick="savePOI()">Guardar POI</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  setTimeout(() => document.getElementById('dev-poi-name')?.focus(), 100);
+}
+
+function closePOIModal() {
+  const modal = document.getElementById('dev-poi-modal');
+  if (modal) modal.remove();
+}
+
+/**
+ * Guarda el POI en Firestore
+ */
+async function savePOI() {
+  if (!devPOICoords) {
+    showDevToast('No se ha definido la ubicacion', 'error');
+    return;
+  }
+
+  try {
+    const user = auth.currentUser;
+    const nombre = document.getElementById('dev-poi-name')?.value?.trim() || null;
+    const link = document.getElementById('dev-poi-link')?.value?.trim() || null;
+
+    const poiData = {
+      descripcio: devPOIType,
+      nombre: nombre,
+      link: link,
+      coordinates: devPOICoords,
+      schoolId: mlCurrentSchool || null,
+      createdBy: user.uid,
+      createdByEmail: user.email,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      status: 'pending'
+    };
+
+    await db.collection('pending_poi').add(poiData);
+
+    showDevToast('Punto de interes guardado correctamente', 'success');
+    deactivatePOIMode();
+  } catch (error) {
+    console.error('[Spotter] Error guardando POI:', error);
+    showDevToast('Error al guardar: ' + error.message, 'error');
+  }
+}
+
+// ============================================
+// MODO ESCUELA
+// ============================================
+
+/**
+ * Activa el modo de creación de escuela
+ */
+function activateSchoolMode() {
+  deactivateAllModes();
+  devSchoolMode = true;
+
+  const btn = document.getElementById('btn-dev-editor');
+  if (btn) {
+    btn.style.background = '#8b5cf6';
+    btn.style.color = 'white';
+  }
+
+  showDevToast('Haz clic en el mapa para marcar la ubicacion de la nueva escuela', 'info');
+
+  if (mlMap) {
+    mlMap.on('click', handleSchoolMapClick);
+    mlMap.getCanvas().style.cursor = 'crosshair';
+  }
+}
+
+/**
+ * Desactiva el modo escuela
+ */
+function deactivateSchoolMode() {
+  devSchoolMode = false;
+  devSchoolCoords = null;
+
+  const btn = document.getElementById('btn-dev-editor');
+  if (btn) {
+    btn.style.background = 'white';
+    btn.style.color = '#333';
+  }
+
+  if (mlMap) {
+    mlMap.off('click', handleSchoolMapClick);
+    mlMap.getCanvas().style.cursor = '';
+  }
+
+  if (devSchoolMarker) {
+    devSchoolMarker.remove();
+    devSchoolMarker = null;
+  }
+
+  closeSchoolModal();
+}
+
+/**
+ * Maneja clic en mapa para colocar escuela
+ */
+function handleSchoolMapClick(e) {
+  if (e.originalEvent && e.originalEvent.target !== mlMap.getCanvas()) return;
+
+  const coords = e.lngLat;
+  devSchoolCoords = [coords.lng, coords.lat];
+
+  if (devSchoolMarker) {
+    devSchoolMarker.setLngLat(coords);
+  } else {
+    const el = document.createElement('div');
+    el.style.cssText = `
+      width: 28px; height: 28px;
+      background: #8b5cf6; border: 3px solid white; border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    `;
+    el.textContent = '🏔️';
+
+    devSchoolMarker = new maplibregl.Marker({ element: el, draggable: true })
+      .setLngLat(coords)
+      .addTo(mlMap);
+
+    devSchoolMarker.on('dragend', () => {
+      const lngLat = devSchoolMarker.getLngLat();
+      devSchoolCoords = [lngLat.lng, lngLat.lat];
+    });
+  }
+
+  showSchoolModal();
+}
+
+/**
+ * Muestra modal para completar datos de la escuela
+ */
+function showSchoolModal() {
+  closeSchoolModal();
+
+  const modal = document.createElement('div');
+  modal.id = 'dev-school-modal';
+  modal.className = 'dev-route-modal-overlay';
+  modal.innerHTML = `
+    <div class="dev-route-modal">
+      <div class="dev-route-modal-header">
+        <h3>Nueva Escuela</h3>
+        <button class="dev-modal-close" onclick="closeSchoolModal()">&times;</button>
+      </div>
+      <div class="dev-route-modal-body">
+        <div class="dev-form-group">
+          <label for="dev-school-name">Nombre de la escuela *</label>
+          <input type="text" id="dev-school-name" placeholder="Ej: Los Cahorros" required>
+        </div>
+        <div class="dev-form-group">
+          <label for="dev-school-desc">Descripcion (opcional)</label>
+          <input type="text" id="dev-school-desc" placeholder="Ej: Escuela de roca caliza...">
+        </div>
+      </div>
+      <div class="dev-route-modal-footer">
+        <button class="dev-btn-cancel" onclick="closeSchoolModal()">Cancelar</button>
+        <button class="dev-btn-save" onclick="saveSchool()">Guardar Escuela</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  setTimeout(() => document.getElementById('dev-school-name')?.focus(), 100);
+}
+
+function closeSchoolModal() {
+  const modal = document.getElementById('dev-school-modal');
+  if (modal) modal.remove();
+}
+
+/**
+ * Guarda la escuela en Firestore
+ */
+async function saveSchool() {
+  const name = document.getElementById('dev-school-name')?.value?.trim();
+  if (!name) {
+    showDevToast('El nombre de la escuela es obligatorio', 'error');
+    return;
+  }
+  if (!devSchoolCoords) {
+    showDevToast('No se ha definido la ubicacion', 'error');
+    return;
+  }
+
+  try {
+    const user = auth.currentUser;
+    const descripcion = document.getElementById('dev-school-desc')?.value?.trim() || null;
+
+    const schoolData = {
+      nombre: name,
+      descripcion: descripcion,
+      coordinates: devSchoolCoords,
+      createdBy: user.uid,
+      createdByEmail: user.email,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      status: 'pending'
+    };
+
+    await db.collection('pending_schools').add(schoolData);
+
+    showDevToast('Escuela propuesta correctamente', 'success');
+    deactivateSchoolMode();
+  } catch (error) {
+    console.error('[Spotter] Error guardando escuela:', error);
+    showDevToast('Error al guardar: ' + error.message, 'error');
+  }
+}
+
+// ============================================
+// MODO SECTOR (DIBUJO DE POLÍGONO)
+// ============================================
+
+/**
+ * Activa el modo de dibujo de sector
+ */
+function activateSectorMode() {
+  deactivateAllModes();
+  devSectorMode = true;
+  devSectorVertices = [];
+
+  const btn = document.getElementById('btn-dev-editor');
+  if (btn) {
+    btn.style.background = '#06b6d4';
+    btn.style.color = 'white';
+  }
+
+  showDevToast('Haz clic en el mapa para dibujar el contorno del sector. Doble clic para cerrar.', 'info');
+
+  if (mlMap) {
+    mlMap.on('click', handleSectorMapClick);
+    mlMap.on('dblclick', handleSectorMapDblClick);
+    mlMap.getCanvas().style.cursor = 'crosshair';
+
+    // Crear source y capas para preview
+    if (!mlMap.getSource(DEV_SECTOR_SOURCE)) {
+      mlMap.addSource(DEV_SECTOR_SOURCE, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+
+      mlMap.addLayer({
+        id: DEV_SECTOR_LINE_LAYER,
+        type: 'line',
+        source: DEV_SECTOR_SOURCE,
+        filter: ['==', '$type', 'LineString'],
+        paint: {
+          'line-color': '#06b6d4',
+          'line-width': 3,
+          'line-dasharray': [3, 2]
+        }
+      });
+
+      mlMap.addLayer({
+        id: DEV_SECTOR_VERTEX_LAYER,
+        type: 'circle',
+        source: DEV_SECTOR_SOURCE,
+        filter: ['==', '$type', 'Point'],
+        paint: {
+          'circle-radius': 6,
+          'circle-color': 'white',
+          'circle-stroke-color': '#06b6d4',
+          'circle-stroke-width': 2
+        }
+      });
+    }
+
+    showSectorToolbar();
+  }
+}
+
+/**
+ * Desactiva el modo sector
+ */
+function deactivateSectorMode() {
+  devSectorMode = false;
+  devSectorVertices = [];
+
+  const btn = document.getElementById('btn-dev-editor');
+  if (btn) {
+    btn.style.background = 'white';
+    btn.style.color = '#333';
+  }
+
+  if (mlMap) {
+    mlMap.off('click', handleSectorMapClick);
+    mlMap.off('dblclick', handleSectorMapDblClick);
+    mlMap.getCanvas().style.cursor = '';
+
+    // Limpiar capas
+    if (mlMap.getLayer(DEV_SECTOR_LINE_LAYER)) mlMap.removeLayer(DEV_SECTOR_LINE_LAYER);
+    if (mlMap.getLayer(DEV_SECTOR_VERTEX_LAYER)) mlMap.removeLayer(DEV_SECTOR_VERTEX_LAYER);
+    if (mlMap.getSource(DEV_SECTOR_SOURCE)) mlMap.removeSource(DEV_SECTOR_SOURCE);
+  }
+
+  hideSectorToolbar();
+  closeSectorModal();
+}
+
+/**
+ * Maneja clic para añadir vértice del sector
+ */
+function handleSectorMapClick(e) {
+  if (e.originalEvent && e.originalEvent.target !== mlMap.getCanvas()) return;
+
+  const coords = [e.lngLat.lng, e.lngLat.lat];
+  devSectorVertices.push(coords);
+  updateSectorDrawPreview();
+}
+
+/**
+ * Maneja doble clic para cerrar el polígono
+ */
+function handleSectorMapDblClick(e) {
+  e.preventDefault();
+  if (devSectorVertices.length < 3) {
+    showDevToast('Se necesitan al menos 3 puntos para cerrar el sector', 'warning');
+    return;
+  }
+  finishSectorDraw();
+}
+
+/**
+ * Actualiza la preview del contorno en el mapa
+ */
+function updateSectorDrawPreview() {
+  if (!mlMap || !mlMap.getSource(DEV_SECTOR_SOURCE)) return;
+
+  const features = [];
+
+  // Línea del contorno
+  if (devSectorVertices.length >= 2) {
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: devSectorVertices
+      },
+      properties: {}
+    });
+  }
+
+  // Puntos de vértices
+  devSectorVertices.forEach((v, i) => {
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: v },
+      properties: { index: i }
+    });
+  });
+
+  mlMap.getSource(DEV_SECTOR_SOURCE).setData({
+    type: 'FeatureCollection',
+    features: features
+  });
+}
+
+/**
+ * Cierra el polígono y muestra el formulario
+ */
+function finishSectorDraw() {
+  if (devSectorVertices.length < 3) return;
+
+  // Cerrar el polígono (conectar último con primero)
+  const closedVertices = [...devSectorVertices, devSectorVertices[0]];
+  mlMap.getSource(DEV_SECTOR_SOURCE).setData({
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: closedVertices },
+      properties: {}
+    }]
+  });
+
+  // Desactivar listeners de dibujo
+  mlMap.off('click', handleSectorMapClick);
+  mlMap.off('dblclick', handleSectorMapDblClick);
+  mlMap.getCanvas().style.cursor = '';
+
+  hideSectorToolbar();
+  showSectorModal();
+}
+
+/**
+ * Deshace el último vértice dibujado
+ */
+function undoSectorVertex() {
+  if (devSectorVertices.length > 0) {
+    devSectorVertices.pop();
+    updateSectorDrawPreview();
+  }
+}
+
+/**
+ * Muestra la toolbar flotante durante el dibujo del sector
+ */
+function showSectorToolbar() {
+  hideSectorToolbar();
+  const toolbar = document.createElement('div');
+  toolbar.id = 'dev-sector-toolbar';
+  toolbar.className = 'dev-sector-toolbar';
+  toolbar.innerHTML = `
+    <button onclick="undoSectorVertex()">Deshacer punto</button>
+    <button onclick="finishSectorDraw()">Cerrar poligono</button>
+    <button onclick="deactivateSectorMode()">Cancelar</button>
+  `;
+  document.getElementById('map').appendChild(toolbar);
+}
+
+function hideSectorToolbar() {
+  const toolbar = document.getElementById('dev-sector-toolbar');
+  if (toolbar) toolbar.remove();
+}
+
+/**
+ * Muestra modal para datos del sector
+ */
+function showSectorModal() {
+  closeSectorModal();
+
+  const modal = document.createElement('div');
+  modal.id = 'dev-sector-modal';
+  modal.className = 'dev-route-modal-overlay';
+  modal.innerHTML = `
+    <div class="dev-route-modal">
+      <div class="dev-route-modal-header">
+        <h3>Nuevo Sector</h3>
+        <button class="dev-modal-close" onclick="closeSectorModal()">&times;</button>
+      </div>
+      <div class="dev-route-modal-body">
+        <div class="dev-form-group">
+          <label for="dev-sector-name">Nombre del sector *</label>
+          <input type="text" id="dev-sector-name" placeholder="Ej: Sector Norte" required>
+        </div>
+        <div class="dev-form-row">
+          <div class="dev-form-group">
+            <label for="dev-sector-restr">Restriccion</label>
+            <select id="dev-sector-restr" onchange="toggleSectorDates()">
+              <option value="NO">NO</option>
+              <option value="SI">SI</option>
+            </select>
+          </div>
+          <div class="dev-form-group">
+            <label for="dev-sector-expo">Exposicion</label>
+            <select id="dev-sector-expo">
+              <option value="">Sin especificar</option>
+              <option value="Sol manana">Sol manana</option>
+              <option value="Sol tarde">Sol tarde</option>
+              <option value="Sombra">Sombra</option>
+              <option value="Mixto">Mixto</option>
+            </select>
+          </div>
+        </div>
+        <div class="dev-form-row" id="dev-sector-dates" style="display:none;">
+          <div class="dev-form-group">
+            <label for="dev-sector-date-start">Fecha inicio (DD-MM)</label>
+            <input type="text" id="dev-sector-date-start" placeholder="Ej: 01-02">
+          </div>
+          <div class="dev-form-group">
+            <label for="dev-sector-date-end">Fecha fin (DD-MM)</label>
+            <input type="text" id="dev-sector-date-end" placeholder="Ej: 30-06">
+          </div>
+        </div>
+      </div>
+      <div class="dev-route-modal-footer">
+        <button class="dev-btn-cancel" onclick="closeSectorModal()">Cancelar</button>
+        <button class="dev-btn-save" onclick="saveSector()">Guardar Sector</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  setTimeout(() => document.getElementById('dev-sector-name')?.focus(), 100);
+}
+
+function closeSectorModal() {
+  const modal = document.getElementById('dev-sector-modal');
+  if (modal) modal.remove();
+}
+
+/**
+ * Muestra/oculta campos de fechas según restricción
+ */
+function toggleSectorDates() {
+  const restr = document.getElementById('dev-sector-restr')?.value;
+  const dates = document.getElementById('dev-sector-dates');
+  if (dates) dates.style.display = restr === 'SI' ? 'grid' : 'none';
+}
+
+/**
+ * Guarda el sector en Firestore
+ */
+async function saveSector() {
+  const name = document.getElementById('dev-sector-name')?.value?.trim();
+  if (!name) {
+    showDevToast('El nombre del sector es obligatorio', 'error');
+    return;
+  }
+  if (devSectorVertices.length < 3) {
+    showDevToast('Se necesitan al menos 3 puntos para definir un sector', 'error');
+    return;
+  }
+
+  try {
+    const user = auth.currentUser;
+    const restr = document.getElementById('dev-sector-restr')?.value || 'NO';
+    const expo = document.getElementById('dev-sector-expo')?.value || null;
+    const dateStart = document.getElementById('dev-sector-date-start')?.value?.trim() || null;
+    const dateEnd = document.getElementById('dev-sector-date-end')?.value?.trim() || null;
+
+    // Cerrar polígono para MultiLineString
+    const closedCoords = [...devSectorVertices, devSectorVertices[0]];
+
+    const sectorData = {
+      nombre: name,
+      restr: restr,
+      exposicion: expo,
+      Fecha_inicio: restr === 'SI' ? dateStart : null,
+      Fecha_fin: restr === 'SI' ? dateEnd : null,
+      geometry: {
+        type: 'MultiLineString',
+        coordinates: [closedCoords]
+      },
+      schoolId: mlCurrentSchool || null,
+      createdBy: user.uid,
+      createdByEmail: user.email,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      status: 'pending'
+    };
+
+    await db.collection('pending_sectors').add(sectorData);
+
+    showDevToast('Sector propuesto correctamente', 'success');
+    deactivateSectorMode();
+  } catch (error) {
+    console.error('[Spotter] Error guardando sector:', error);
+    showDevToast('Error al guardar: ' + error.message, 'error');
+  }
+}
+
+// ============================================
 // UTILIDADES UI
 // ============================================
 
@@ -978,4 +1806,25 @@ window.saveDevRoute = saveDevRoute;
 window.exportPendingRoutesAsGeoJSON = exportPendingRoutesAsGeoJSON;
 window.loadPendingRoutesFromFirestore = loadPendingRoutesFromFirestore;
 
-console.log('[DevEditor] Módulo cargado');
+// Menú Spotter
+window.toggleSpotterMenu = toggleSpotterMenu;
+window.selectSpotterOption = selectSpotterOption;
+window.togglePOIAccordion = togglePOIAccordion;
+window.selectPOIType = selectPOIType;
+
+// Modo POI
+window.closePOIModal = closePOIModal;
+window.savePOI = savePOI;
+
+// Modo Escuela
+window.closeSchoolModal = closeSchoolModal;
+window.saveSchool = saveSchool;
+
+// Modo Sector
+window.closeSectorModal = closeSectorModal;
+window.saveSector = saveSector;
+window.undoSectorVertex = undoSectorVertex;
+window.finishSectorDraw = finishSectorDraw;
+window.toggleSectorDates = toggleSectorDates;
+
+console.log('[Spotter] Modulo cargado');
