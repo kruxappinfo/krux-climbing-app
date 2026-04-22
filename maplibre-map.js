@@ -2537,37 +2537,46 @@ function mlLoadVariantConnectorLayer(connectorGeoJSON) {
  * @param {string[]} gradeColors — array de colores hex; [0] = centro, [1..N] = anillos
  * @returns {string} SVG markup
  */
-function mlGenerateVariantMarkerSVG(gradeColors) {
-  const VB       = 100;          // viewBox size
-  const C        = VB / 2;       // center
-  const R        = C;            // outer radius
-  const STROKE_W = 5;            // white outer border (wide, like regular dots)
-  const INNER_R  = R - STROKE_W; // usable radius inside the white border
-  const N        = gradeColors.length - 1; // number of outer rings
-  const GAP      = N > 0 ? 4 : 0;         // white gap between elements
+/**
+ * @param {string[]} gradeColors — [0]=centro, [1..N]=anillos
+ * @param {number}   pixelDiameter — diámetro real del marcador en px
+ */
+function mlGenerateVariantMarkerSVG(gradeColors, pixelDiameter) {
+  const VB = 100;
+  const C  = VB / 2;
+  const R  = C;
+  const N  = gradeColors.length - 1;
 
-  // Center gets double weight so the main route dominates visually
+  // Convertir px reales → unidades de viewBox.
+  // El borde y los gaps tienen el MISMO grosor en px que circle-stroke-width
+  // de los puntos simples, así se ven idénticos a cualquier zoom.
+  const strokePx = isMobileDevice() ? 1 : 1.5;
+  const pxToVB   = VB / pixelDiameter;
+  const STROKE_W = strokePx * pxToVB;
+  const GAP      = N > 0 ? strokePx * pxToVB : 0;
+
+  const INNER_R = R - STROKE_W;
+
+  // Centro con doble peso para que la vía principal domine
   const CENTER_WEIGHT = 2;
   const totalWeight   = CENTER_WEIGHT + N;
   const unit          = (INNER_R - N * GAP) / totalWeight;
   const centerR       = unit * CENTER_WEIGHT;
-  const ringBand      = unit; // width of each ring stroke
+  const ringBand      = unit;
 
   let svg = `<svg viewBox="0 0 ${VB} ${VB}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">`;
 
-  // White outer border (same role as circle-stroke-color on regular dots)
+  // Borde blanco exterior
   svg += `<circle cx="${C}" cy="${C}" r="${R - STROKE_W / 2}" fill="none" stroke="white" stroke-width="${STROKE_W}"/>`;
 
-  // Center circle
+  // Círculo central
   svg += `<circle cx="${C}" cy="${C}" r="${centerR}" fill="${gradeColors[0]}"/>`;
 
-  // Concentric rings with white gaps
+  // Anillos concéntricos con gaps blancos
   for (let i = 0; i < N; i++) {
     const ringInner = centerR + (i + 1) * GAP + i * ringBand;
     const ringR     = ringInner + ringBand / 2;
-
-    // White gap separator
-    const gapR = ringInner - GAP / 2;
+    const gapR      = ringInner - GAP / 2;
     svg += `<circle cx="${C}" cy="${C}" r="${gapR}"  fill="none" stroke="white"              stroke-width="${GAP}"/>`;
     svg += `<circle cx="${C}" cy="${C}" r="${ringR}" fill="none" stroke="${gradeColors[i + 1]}" stroke-width="${ringBand}"/>`;
   }
@@ -2627,9 +2636,8 @@ function mlCreateVariantMarkers() {
       return getGradeColor(grade);
     });
 
-    // Crear elemento HTML con SVG inline
+    // Crear elemento HTML (SVG se regenera en updateMarkers)
     const el = document.createElement('div');
-    el.innerHTML = mlGenerateVariantMarkerSVG(gradeColors);
     el.style.cursor = 'pointer';
     el.className = 'variant-marker';
     el.dataset.groupKey = groupKey;
@@ -2659,28 +2667,31 @@ function mlCreateVariantMarkers() {
       }
     });
 
-    mlVariantMarkers.push(marker);
+    mlVariantMarkers.push({ marker, gradeColors });
   }
 
-  // Control de visibilidad y tamaño por zoom
+  // Control de visibilidad, tamaño y regeneración SVG por zoom
   if (mlVariantMarkers.length > 0) {
+    let lastDiameter = 0;
     const updateMarkers = () => {
       const school = mlCurrentSchool ? MAPLIBRE_SCHOOLS[mlCurrentSchool] : null;
       const minZoom = school ? school.zoomLevels.vias : 17;
-      const zoom = mlMap.getZoom();
-      const visible = zoom >= minZoom;
+      const visible = mlMap.getZoom() >= minZoom;
 
-      // Diámetro = 2*radio + 2*strokeWidth
-      // En MapLibre el circle-stroke se pinta FUERA del circle-radius,
-      // igual que en el SVG el borde blanco se pinta en el borde exterior.
-      const strokeW = isMobileDevice() ? 1 : 1.5;
+      const strokeW  = isMobileDevice() ? 1 : 1.5;
       const diameter = Math.round(mlGetViasRadius() * 2 + strokeW * 2);
+      const sizeChanged = diameter !== lastDiameter;
+      lastDiameter = diameter;
 
-      for (const m of mlVariantMarkers) {
-        const el = m.getElement();
+      for (const entry of mlVariantMarkers) {
+        const el = entry.marker.getElement();
         el.style.display = visible ? '' : 'none';
-        el.style.width  = diameter + 'px';
-        el.style.height = diameter + 'px';
+        el.style.width   = diameter + 'px';
+        el.style.height  = diameter + 'px';
+        // Regenerar SVG solo cuando cambia el diámetro en px
+        if (sizeChanged) {
+          el.innerHTML = mlGenerateVariantMarkerSVG(entry.gradeColors, diameter);
+        }
       }
     };
     mlMap.on('zoom', updateMarkers);
@@ -2694,7 +2705,7 @@ function mlCreateVariantMarkers() {
  * Elimina todos los marcadores HTML de variantes del mapa.
  */
 function mlClearVariantMarkers() {
-  for (const m of mlVariantMarkers) m.remove();
+  for (const entry of mlVariantMarkers) entry.marker.remove();
   mlVariantMarkers = [];
 }
 
