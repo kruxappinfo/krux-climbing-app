@@ -5006,9 +5006,10 @@ async function loadAdminPendingSchools() {
     let query = db.collection('pending_schools');
     if (statusFilter !== 'all') query = query.where('status', '==', statusFilter);
 
-    const snapshot = await query.orderBy('createdAt', 'desc').limit(50).get();
+    const snapshot = await query.limit(50).get();
     let items = [];
     snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+    items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
     if (items.length === 0) {
       listEl.innerHTML = '<div class="admin-empty-state"><p>No hay escuelas con este filtro</p></div>';
@@ -5053,9 +5054,10 @@ async function loadAdminPendingSectors() {
     let query = db.collection('pending_sectors');
     if (statusFilter !== 'all') query = query.where('status', '==', statusFilter);
 
-    const snapshot = await query.orderBy('createdAt', 'desc').limit(50).get();
+    const snapshot = await query.limit(50).get();
     let items = [];
     snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+    items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
     if (items.length === 0) {
       listEl.innerHTML = '<div class="admin-empty-state"><p>No hay sectores con este filtro</p></div>';
@@ -5063,7 +5065,7 @@ async function loadAdminPendingSectors() {
     }
 
     listEl.innerHTML = items.map(item => {
-      const vertexCount = item.geometry?.coordinates?.[0]?.length || 0;
+      const vertexCount = item.vertices?.length || item.geometry?.coordinates?.[0]?.length || 0;
       return `
         <div class="admin-route-card" data-id="${item.id}">
           <div class="admin-route-name">${item.nombre || 'Sin nombre'}</div>
@@ -5104,9 +5106,10 @@ async function loadAdminPendingPOI() {
     let query = db.collection('pending_poi');
     if (statusFilter !== 'all') query = query.where('status', '==', statusFilter);
 
-    const snapshot = await query.orderBy('createdAt', 'desc').limit(50).get();
+    const snapshot = await query.limit(50).get();
     let items = [];
     snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+    items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
     if (items.length === 0) {
       listEl.innerHTML = '<div class="admin-empty-state"><p>No hay puntos de interes con este filtro</p></div>';
