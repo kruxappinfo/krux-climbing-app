@@ -58,6 +58,15 @@ const SECTOR_COLORS = [
 ];
 
 /**
+ * Convierte un color hex a componentes "r, g, b" (sin el rgba wrapper).
+ * Útil para construir strings rgba() con opacidad variable.
+ */
+function hexToRgbComponents(hex) {
+  const num = parseInt(hex.replace('#', ''), 16);
+  return `${(num >> 16) & 0xFF}, ${(num >> 8) & 0xFF}, ${num & 0xFF}`;
+}
+
+/**
  * Oscurece un color hex para crear el casing
  */
 function darkenColor(hex, amount = 0.4) {
@@ -3013,14 +3022,17 @@ function mlBuildVariantBadgesHTML(groupFeatures, activeIndex, isTrinomial, navFn
       ? (gf.props._displayGrado || gf.props.grado1 || '?')
       : (gf.props.grado1 || '?');
     const color = getGradeColor(grade);
+    const rgb   = hexToRgbComponents(color);
     const isActive = i === activeIndex;
-    // Active: grade color bg + white text. Inactive: transparent bg + muted grade color.
+    // Active: solid grade color bg + white text + subtle shadow.
+    // Inactive: grade color tinted bg (15% opacity) + grade color text (60% opacity).
     const style = isActive
-      ? `background:${color};color:#fff;`
-      : `background:transparent;color:${color};opacity:0.55;`;
+      ? `background:${color};color:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.15);`
+      : `background:rgba(${rgb},0.15);color:rgba(${rgb},0.6);`;
     html += `<button class="ml-variant-badge${isActive ? ' active' : ''}"
                style="${style}"
                data-color="${color}"
+               data-rgb="${rgb}"
                onclick="${navFn}(${i})">${grade}</button>`;
   }
   html += '</div>';
@@ -3138,11 +3150,10 @@ async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
   const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 
   return `
-    <!-- Header: Check + Nombre + Grado -->
+    <!-- Header: Check + Nombre (grado ya indicado en segmented control) -->
     <div class="ml-route-header">
       ${ascentCheckHTML}
       <span class="ml-route-name">${routeName}</span>
-      <span class="ml-route-grade" style="background-color: ${gradeColor}">${grade}</span>
     </div>
 
     <!-- Info items -->
@@ -3240,10 +3251,11 @@ async function mlVariantGoTo(index) {
     badgeBar.querySelectorAll('.ml-variant-badge').forEach((b, i) => {
       const isActive = i === index;
       const color = b.dataset.color || '#888';
+      const rgb   = b.dataset.rgb   || '136, 136, 136';
       b.classList.toggle('active', isActive);
-      b.style.background = isActive ? color : 'transparent';
-      b.style.color       = isActive ? '#fff' : color;
-      b.style.opacity     = isActive ? '1' : '0.55';
+      b.style.background  = isActive ? color : `rgba(${rgb},0.15)`;
+      b.style.color        = isActive ? '#fff' : `rgba(${rgb},0.6)`;
+      b.style.boxShadow    = isActive ? '0 1px 4px rgba(0,0,0,0.15)' : 'none';
     });
   }
 
@@ -3355,10 +3367,11 @@ async function mlVariantGoToBottomSheet(index) {
     badgeBar.querySelectorAll('.ml-variant-badge').forEach((b, i) => {
       const isActive = i === index;
       const color = b.dataset.color || '#888';
+      const rgb   = b.dataset.rgb   || '136, 136, 136';
       b.classList.toggle('active', isActive);
-      b.style.background = isActive ? color : 'transparent';
-      b.style.color       = isActive ? '#fff' : color;
-      b.style.opacity     = isActive ? '1' : '0.55';
+      b.style.background  = isActive ? color : `rgba(${rgb},0.15)`;
+      b.style.color        = isActive ? '#fff' : `rgba(${rgb},0.6)`;
+      b.style.boxShadow    = isActive ? '0 1px 4px rgba(0,0,0,0.15)' : 'none';
     });
   }
 
