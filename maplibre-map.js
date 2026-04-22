@@ -2548,12 +2548,13 @@ function mlGenerateVariantMarkerSVG(gradeColors, pixelDiameter) {
   const N  = gradeColors.length - 1;
 
   // Convertir px reales → unidades de viewBox.
-  // El borde y los gaps tienen el MISMO grosor en px que circle-stroke-width
-  // de los puntos simples, así se ven idénticos a cualquier zoom.
+  // Borde exterior = mismo grosor que circle-stroke-width de puntos simples.
+  // Gap entre anillos se reduce con más variantes para dejar más espacio al color.
   const strokePx = isMobileDevice() ? 1 : 1.5;
   const pxToVB   = VB / pixelDiameter;
   const STROKE_W = strokePx * pxToVB;
-  const GAP      = N > 0 ? strokePx * pxToVB : 0;
+  const gapFactor = N <= 1 ? 1.0 : N === 2 ? 0.6 : 0.4;
+  const GAP       = N > 0 ? strokePx * gapFactor * pxToVB : 0;
 
   const INNER_R = R - STROKE_W;
 
@@ -2678,19 +2679,24 @@ function mlCreateVariantMarkers() {
       const minZoom = school ? school.zoomLevels.vias : 17;
       const visible = mlMap.getZoom() >= minZoom;
 
-      const strokeW  = isMobileDevice() ? 1 : 1.5;
-      const diameter = Math.round(mlGetViasRadius() * 2 + strokeW * 2);
-      const sizeChanged = diameter !== lastDiameter;
-      lastDiameter = diameter;
+      const strokeW      = isMobileDevice() ? 1 : 1.5;
+      const baseDiameter = Math.round(mlGetViasRadius() * 2 + strokeW * 2);
+      const sizeChanged  = baseDiameter !== lastDiameter;
+      lastDiameter = baseDiameter;
 
       for (const entry of mlVariantMarkers) {
+        const N  = entry.gradeColors.length - 1;
+        // Marcadores con 3+ variantes: ligeramente más grandes para que
+        // los anillos finos sean legibles
+        const scale = N >= 3 ? 1.25 : N >= 2 ? 1.15 : 1.0;
+        const d  = Math.round(baseDiameter * scale);
         const el = entry.marker.getElement();
         el.style.display = visible ? '' : 'none';
-        el.style.width   = diameter + 'px';
-        el.style.height  = diameter + 'px';
-        // Regenerar SVG solo cuando cambia el diámetro en px
+        el.style.width   = d + 'px';
+        el.style.height  = d + 'px';
+        // Regenerar SVG solo cuando cambia el diámetro base en px
         if (sizeChanged) {
-          el.innerHTML = mlGenerateVariantMarkerSVG(entry.gradeColors, diameter);
+          el.innerHTML = mlGenerateVariantMarkerSVG(entry.gradeColors, d);
         }
       }
     };
