@@ -3259,13 +3259,18 @@ async function mlVariantGoTo(index) {
     });
   }
 
-  // Transición fade del contenido
+  // Transición fade del contenido — fijar altura para evitar colapso visual
   const contentEl = document.getElementById('ml-variant-content');
   if (contentEl) {
+    // Capturar altura actual y fijarla antes de vaciar el contenido
+    const currentH = contentEl.offsetHeight;
+    contentEl.style.minHeight = `${currentH}px`;
     contentEl.classList.add('fading');
     await new Promise(resolve => setTimeout(resolve, 150));
     contentEl.innerHTML = await mlBuildVariantSlideHTML(mlCurrentVariantGroup[index], isTrinomial);
     contentEl.classList.remove('fading');
+    // Liberar la altura fijada para que el nuevo contenido respire
+    contentEl.style.minHeight = '';
     mlLoadVariantSlideAsyncData(mlCurrentVariantGroup[index], isTrinomial);
   }
 
