@@ -17935,7 +17935,7 @@ body.pwa-standalone .feed-header {
 
 /* Segmented control pill for variant navigation */
 .ml-variant-badge-bar {
-  display: flex;
+  display: inline-flex;
   align-items: stretch;
   gap: 4px;
   background: #ffffff;
@@ -17946,8 +17946,7 @@ body.pwa-standalone .feed-header {
 }
 
 .ml-variant-badge {
-  flex: 1;
-  padding: 4px 8px;
+  padding: 4px 12px;
   border-radius: 9px;
   font-size: 12px;
   font-weight: 500;
@@ -17977,7 +17976,7 @@ body.pwa-standalone .feed-header {
 
 /* Mobile bottom sheet variant badge bar — same segmented control */
 .rbs-variant-badge-bar {
-  display: flex;
+  display: inline-flex;
   align-items: stretch;
   gap: 4px;
   background: #ffffff;
