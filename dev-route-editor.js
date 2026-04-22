@@ -1702,8 +1702,10 @@ async function saveSector() {
     const dateStart = document.getElementById('dev-sector-date-start')?.value?.trim() || null;
     const dateEnd = document.getElementById('dev-sector-date-end')?.value?.trim() || null;
 
-    // Cerrar polígono para MultiLineString
-    const closedCoords = [...devSectorVertices, devSectorVertices[0]];
+    // Cerrar polígono — guardar como array de objetos {lng, lat}
+    // (Firestore no soporta arrays anidados como [[[lng,lat],...]])
+    const closedVertices = [...devSectorVertices, devSectorVertices[0]]
+      .map(v => ({ lng: v[0], lat: v[1] }));
 
     const sectorData = {
       nombre: name,
@@ -1711,10 +1713,8 @@ async function saveSector() {
       exposicion: expo,
       Fecha_inicio: restr === 'SI' ? dateStart : null,
       Fecha_fin: restr === 'SI' ? dateEnd : null,
-      geometry: {
-        type: 'MultiLineString',
-        coordinates: [closedCoords]
-      },
+      geometryType: 'MultiLineString',
+      vertices: closedVertices,
       schoolId: mlCurrentSchool || null,
       createdBy: user.uid,
       createdByEmail: user.email,
