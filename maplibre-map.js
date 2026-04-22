@@ -2531,37 +2531,68 @@ function mlLoadVariantConnectorLayer(connectorGeoJSON) {
 
 /**
  * Genera SVG inline para un marcador de variantes con anillos concéntricos.
+ * El marcador se inscribe en un viewBox de 100×100 y se escala vía CSS
+ * para coincidir con el radio de los puntos simples a cualquier zoom.
+ *
  * @param {string[]} gradeColors — array de colores hex; [0] = centro, [1..N] = anillos
  * @returns {string} SVG markup
  */
 function mlGenerateVariantMarkerSVG(gradeColors) {
-  const CENTER_R    = 8;
-  const RING_STROKE = 4;
-  const GAP         = 2;
-  const PADDING     = 1;
+  const VB      = 100;          // viewBox size
+  const C       = VB / 2;       // center
+  const R       = C;            // outer radius
+  const STROKE_W = 2;           // white outer border (matches circle-stroke-width)
+  const INNER_R = R - STROKE_W; // usable radius inside the white border
+  const N       = gradeColors.length - 1; // number of outer rings
+  const GAP     = N > 0 ? 2 : 0;         // white gap between elements (viewBox units)
 
-  const N      = gradeColors.length - 1; // number of outer rings
-  const outerR = CENTER_R + Math.max(0, N) * (GAP + RING_STROKE);
-  const totalR = outerR + PADDING;
-  const size   = totalR * 2;
-  const cx     = totalR;
-  const cy     = totalR;
+  // Equal band width for center circle and each ring
+  const bandWidth = (INNER_R - N * GAP) / (N + 1);
 
-  let svg = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">`;
+  let svg = `<svg viewBox="0 0 ${VB} ${VB}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">`;
+
+  // White outer border (same role as circle-stroke-color on regular dots)
+  svg += `<circle cx="${C}" cy="${C}" r="${R - STROKE_W / 2}" fill="none" stroke="white" stroke-width="${STROKE_W}"/>`;
 
   // Center circle
-  svg += `<circle cx="${cx}" cy="${cy}" r="${CENTER_R}" fill="${gradeColors[0]}"/>`;
+  svg += `<circle cx="${C}" cy="${C}" r="${bandWidth}" fill="${gradeColors[0]}"/>`;
 
   // Concentric rings with white gaps
   for (let i = 0; i < N; i++) {
-    const gapR  = CENTER_R + GAP / 2          + i * (GAP + RING_STROKE);
-    const ringR = CENTER_R + GAP + RING_STROKE / 2 + i * (GAP + RING_STROKE);
-    svg += `<circle cx="${cx}" cy="${cy}" r="${gapR}"  fill="none" stroke="white"          stroke-width="${GAP}"/>`;
-    svg += `<circle cx="${cx}" cy="${cy}" r="${ringR}" fill="none" stroke="${gradeColors[i + 1]}" stroke-width="${RING_STROKE}"/>`;
+    const ringInner = bandWidth + (i + 1) * GAP + i * bandWidth;
+    const ringR     = ringInner + bandWidth / 2;
+
+    // White gap separator
+    const gapR = ringInner - GAP / 2;
+    svg += `<circle cx="${C}" cy="${C}" r="${gapR}"  fill="none" stroke="white"              stroke-width="${GAP}"/>`;
+    svg += `<circle cx="${C}" cy="${C}" r="${ringR}" fill="none" stroke="${gradeColors[i + 1]}" stroke-width="${bandWidth}"/>`;
   }
 
   svg += '</svg>';
   return svg;
+}
+
+/**
+ * Calcula el radio de los puntos de vías (px) para el zoom actual,
+ * replicando la interpolación lineal de vias-layer circle-radius.
+ */
+function mlGetViasRadius() {
+  const zoom = mlMap.getZoom();
+  const mobile = isMobileDevice();
+  const stops = mobile
+    ? [[14, 2], [16, 3.5], [18, 5.5], [20, 9]]
+    : [[14, 3], [16, 5],   [18, 8],   [20, 14]];
+
+  if (zoom <= stops[0][0]) return stops[0][1];
+  if (zoom >= stops[stops.length - 1][0]) return stops[stops.length - 1][1];
+
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (zoom <= stops[i + 1][0]) {
+      const t = (zoom - stops[i][0]) / (stops[i + 1][0] - stops[i][0]);
+      return stops[i][1] + t * (stops[i + 1][1] - stops[i][1]);
+    }
+  }
+  return stops[stops.length - 1][1];
 }
 
 /**
@@ -2627,18 +2658,27 @@ function mlCreateVariantMarkers() {
     mlVariantMarkers.push(marker);
   }
 
-  // Control de visibilidad por zoom (misma regla que vias-layer)
+  // Control de visibilidad y tamaño por zoom
   if (mlVariantMarkers.length > 0) {
-    const updateVisibility = () => {
+    const updateMarkers = () => {
       const school = mlCurrentSchool ? MAPLIBRE_SCHOOLS[mlCurrentSchool] : null;
       const minZoom = school ? school.zoomLevels.vias : 17;
-      const visible = mlMap.getZoom() >= minZoom;
+      const zoom = mlMap.getZoom();
+      const visible = zoom >= minZoom;
+
+      // Diámetro = 2 * radio + stroke (mismo tamaño visual que los puntos simples)
+      const strokeW = isMobileDevice() ? 1 : 1.5;
+      const diameter = Math.round((mlGetViasRadius() + strokeW / 2) * 2);
+
       for (const m of mlVariantMarkers) {
-        m.getElement().style.display = visible ? '' : 'none';
+        const el = m.getElement();
+        el.style.display = visible ? '' : 'none';
+        el.style.width  = diameter + 'px';
+        el.style.height = diameter + 'px';
       }
     };
-    mlMap.on('zoom', updateVisibility);
-    updateVisibility(); // estado inicial
+    mlMap.on('zoom', updateMarkers);
+    updateMarkers(); // estado inicial
   }
 
   console.log(`Variant markers created: ${mlVariantMarkers.length} concentric markers`);
