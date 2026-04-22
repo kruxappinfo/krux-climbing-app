@@ -17937,8 +17937,10 @@ body.pwa-standalone .feed-header {
 .ml-variant-badge-bar {
   display: flex;
   align-items: stretch;
-  background: rgba(0, 0, 0, 0.07);
-  border-radius: 20px;
+  gap: 4px;
+  background: #ffffff;
+  border: 0.5px solid var(--color-border-tertiary, rgba(0, 0, 0, 0.12));
+  border-radius: 12px;
   padding: 3px;
   margin-bottom: 12px;
 }
@@ -17946,9 +17948,9 @@ body.pwa-standalone .feed-header {
 .ml-variant-badge {
   flex: 1;
   padding: 4px 8px;
-  border-radius: 17px;
+  border-radius: 9px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   border: none;
   cursor: pointer;
   background: transparent;
@@ -17961,7 +17963,7 @@ body.pwa-standalone .feed-header {
 }
 
 .ml-variant-badge.active {
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 
 /* Content area that updates on variant change */
@@ -17977,8 +17979,10 @@ body.pwa-standalone .feed-header {
 .rbs-variant-badge-bar {
   display: flex;
   align-items: stretch;
-  background: rgba(0, 0, 0, 0.07);
-  border-radius: 20px;
+  gap: 4px;
+  background: #ffffff;
+  border: 0.5px solid var(--color-border-tertiary, rgba(0, 0, 0, 0.12));
+  border-radius: 12px;
   padding: 3px;
   margin: 10px 16px 10px;
 }
