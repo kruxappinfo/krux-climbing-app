@@ -2538,16 +2538,20 @@ function mlLoadVariantConnectorLayer(connectorGeoJSON) {
  * @returns {string} SVG markup
  */
 function mlGenerateVariantMarkerSVG(gradeColors) {
-  const VB      = 100;          // viewBox size
-  const C       = VB / 2;       // center
-  const R       = C;            // outer radius
-  const STROKE_W = 2;           // white outer border (matches circle-stroke-width)
-  const INNER_R = R - STROKE_W; // usable radius inside the white border
-  const N       = gradeColors.length - 1; // number of outer rings
-  const GAP     = N > 0 ? 2 : 0;         // white gap between elements (viewBox units)
+  const VB       = 100;          // viewBox size
+  const C        = VB / 2;       // center
+  const R        = C;            // outer radius
+  const STROKE_W = 5;            // white outer border (wide, like regular dots)
+  const INNER_R  = R - STROKE_W; // usable radius inside the white border
+  const N        = gradeColors.length - 1; // number of outer rings
+  const GAP      = N > 0 ? 4 : 0;         // white gap between elements
 
-  // Equal band width for center circle and each ring
-  const bandWidth = (INNER_R - N * GAP) / (N + 1);
+  // Center gets double weight so the main route dominates visually
+  const CENTER_WEIGHT = 2;
+  const totalWeight   = CENTER_WEIGHT + N;
+  const unit          = (INNER_R - N * GAP) / totalWeight;
+  const centerR       = unit * CENTER_WEIGHT;
+  const ringBand      = unit; // width of each ring stroke
 
   let svg = `<svg viewBox="0 0 ${VB} ${VB}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">`;
 
@@ -2555,17 +2559,17 @@ function mlGenerateVariantMarkerSVG(gradeColors) {
   svg += `<circle cx="${C}" cy="${C}" r="${R - STROKE_W / 2}" fill="none" stroke="white" stroke-width="${STROKE_W}"/>`;
 
   // Center circle
-  svg += `<circle cx="${C}" cy="${C}" r="${bandWidth}" fill="${gradeColors[0]}"/>`;
+  svg += `<circle cx="${C}" cy="${C}" r="${centerR}" fill="${gradeColors[0]}"/>`;
 
   // Concentric rings with white gaps
   for (let i = 0; i < N; i++) {
-    const ringInner = bandWidth + (i + 1) * GAP + i * bandWidth;
-    const ringR     = ringInner + bandWidth / 2;
+    const ringInner = centerR + (i + 1) * GAP + i * ringBand;
+    const ringR     = ringInner + ringBand / 2;
 
     // White gap separator
     const gapR = ringInner - GAP / 2;
     svg += `<circle cx="${C}" cy="${C}" r="${gapR}"  fill="none" stroke="white"              stroke-width="${GAP}"/>`;
-    svg += `<circle cx="${C}" cy="${C}" r="${ringR}" fill="none" stroke="${gradeColors[i + 1]}" stroke-width="${bandWidth}"/>`;
+    svg += `<circle cx="${C}" cy="${C}" r="${ringR}" fill="none" stroke="${gradeColors[i + 1]}" stroke-width="${ringBand}"/>`;
   }
 
   svg += '</svg>';
