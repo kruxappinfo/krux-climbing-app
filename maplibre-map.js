@@ -28,6 +28,7 @@ let mlVariantFeatureIndex = new Map(); // featureId → groupKey (reverse lookup
 let mlCurrentVariantGroup = null;      // Array of variant data for active carousel
 let mlCurrentVariantSlide = 0;         // Active slide index in carousel
 let mlVariantSwipeStartX = 0;         // Touch swipe tracking
+let mlVariantMarkers = [];            // HTML markers for concentric variant rings
 
 // ============================================
 // PALETA DE COLORES PARA SECTORES
@@ -1510,6 +1511,9 @@ async function mlLoadSchoolVectorTiles(school) {
         .then(geojson => {
           if (geojson && geojson.features) {
             mlBuildVariantGroupsIndex(geojson.features);
+            // Ocultar variantes del circle layer y crear marcadores concéntricos
+            applyGradeFilter(); // re-aplica filtro incluyendo exclusión de variantes
+            mlCreateVariantMarkers();
           }
         })
         .catch(e => console.warn('Error loading variant index for tiles path:', e));
@@ -2065,6 +2069,7 @@ function mlClearSchoolLayers() {
   const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source', 'vias-variant-connector-source'];
 
   // Limpiar estado de variantes
+  mlClearVariantMarkers();
   mlVariantGroups.clear();
   mlVariantFeatureIndex.clear();
   mlCurrentVariantGroup = null;
@@ -2520,16 +2525,191 @@ function mlLoadVariantConnectorLayer(connectorGeoJSON) {
   console.log(`Variant connector layer loaded: ${connectorGeoJSON.features.length} connectors`);
 }
 
+// ============================================
+// VARIANT CONCENTRIC RING MARKERS
+// ============================================
+
+/**
+ * Genera SVG inline para un marcador de variantes con anillos concéntricos.
+ * El marcador se inscribe en un viewBox de 100×100 y se escala vía CSS
+ * para coincidir con el radio de los puntos simples a cualquier zoom.
+ *
+ * @param {string[]} gradeColors — array de colores hex; [0] = centro, [1..N] = anillos
+ * @returns {string} SVG markup
+ */
+function mlGenerateVariantMarkerSVG(gradeColors) {
+  const VB      = 100;          // viewBox size
+  const C       = VB / 2;       // center
+  const R       = C;            // outer radius
+  const STROKE_W = 2;           // white outer border (matches circle-stroke-width)
+  const INNER_R = R - STROKE_W; // usable radius inside the white border
+  const N       = gradeColors.length - 1; // number of outer rings
+  const GAP     = N > 0 ? 2 : 0;         // white gap between elements (viewBox units)
+
+  // Equal band width for center circle and each ring
+  const bandWidth = (INNER_R - N * GAP) / (N + 1);
+
+  let svg = `<svg viewBox="0 0 ${VB} ${VB}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">`;
+
+  // White outer border (same role as circle-stroke-color on regular dots)
+  svg += `<circle cx="${C}" cy="${C}" r="${R - STROKE_W / 2}" fill="none" stroke="white" stroke-width="${STROKE_W}"/>`;
+
+  // Center circle
+  svg += `<circle cx="${C}" cy="${C}" r="${bandWidth}" fill="${gradeColors[0]}"/>`;
+
+  // Concentric rings with white gaps
+  for (let i = 0; i < N; i++) {
+    const ringInner = bandWidth + (i + 1) * GAP + i * bandWidth;
+    const ringR     = ringInner + bandWidth / 2;
+
+    // White gap separator
+    const gapR = ringInner - GAP / 2;
+    svg += `<circle cx="${C}" cy="${C}" r="${gapR}"  fill="none" stroke="white"              stroke-width="${GAP}"/>`;
+    svg += `<circle cx="${C}" cy="${C}" r="${ringR}" fill="none" stroke="${gradeColors[i + 1]}" stroke-width="${bandWidth}"/>`;
+  }
+
+  svg += '</svg>';
+  return svg;
+}
+
+/**
+ * Calcula el radio de los puntos de vías (px) para el zoom actual,
+ * replicando la interpolación lineal de vias-layer circle-radius.
+ */
+function mlGetViasRadius() {
+  const zoom = mlMap.getZoom();
+  const mobile = isMobileDevice();
+  const stops = mobile
+    ? [[14, 2], [16, 3.5], [18, 5.5], [20, 9]]
+    : [[14, 3], [16, 5],   [18, 8],   [20, 14]];
+
+  if (zoom <= stops[0][0]) return stops[0][1];
+  if (zoom >= stops[stops.length - 1][0]) return stops[stops.length - 1][1];
+
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (zoom <= stops[i + 1][0]) {
+      const t = (zoom - stops[i][0]) / (stops[i + 1][0] - stops[i][0]);
+      return stops[i][1] + t * (stops[i + 1][1] - stops[i][1]);
+    }
+  }
+  return stops[stops.length - 1][1];
+}
+
+/**
+ * Crea marcadores HTML con anillos concéntricos para cada grupo de variantes.
+ * Cada marcador se posiciona en el centroide del grupo.
+ */
+function mlCreateVariantMarkers() {
+  mlClearVariantMarkers();
+
+  for (const [groupKey, group] of mlVariantGroups) {
+    if (group.length < 2) continue;
+
+    // Calcular centroide del grupo
+    let sumLng = 0, sumLat = 0, count = 0;
+    for (const gf of group) {
+      if (gf.coords) {
+        sumLng += gf.coords[0];
+        sumLat += gf.coords[1];
+        count++;
+      }
+    }
+    if (count === 0) continue;
+    const centroid = [sumLng / count, sumLat / count];
+
+    // Array de colores: centro = primer route, anillos = variantes
+    const gradeColors = group.map(gf => {
+      const grade = gf.props._displayGrado || gf.props.grado1 || '?';
+      return getGradeColor(grade);
+    });
+
+    // Crear elemento HTML con SVG inline
+    const el = document.createElement('div');
+    el.innerHTML = mlGenerateVariantMarkerSVG(gradeColors);
+    el.style.cursor = 'pointer';
+    el.className = 'variant-marker';
+    el.dataset.groupKey = groupKey;
+
+    // Crear marcador MapLibre
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat(centroid)
+      .addTo(mlMap);
+
+    // Click handler → abre carrusel de variantes
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const coords = { lng: centroid[0], lat: centroid[1] };
+
+      if (isMobileDevice()) {
+        adaptiveMapPanForBottomSheet(coords);
+        mlShowVariantGroupBottomSheet(group, 0, coords);
+      } else {
+        mlMap.flyTo({
+          center: centroid,
+          zoom: mlMap.getZoom(),
+          speed: 0.8,
+          curve: 1,
+          padding: { top: 450, bottom: 0, left: 0, right: 0 }
+        });
+        mlShowVariantGroupPopup(group, 0, coords);
+      }
+    });
+
+    mlVariantMarkers.push(marker);
+  }
+
+  // Control de visibilidad y tamaño por zoom
+  if (mlVariantMarkers.length > 0) {
+    const updateMarkers = () => {
+      const school = mlCurrentSchool ? MAPLIBRE_SCHOOLS[mlCurrentSchool] : null;
+      const minZoom = school ? school.zoomLevels.vias : 17;
+      const zoom = mlMap.getZoom();
+      const visible = zoom >= minZoom;
+
+      // Diámetro = 2 * radio + stroke (mismo tamaño visual que los puntos simples)
+      const strokeW = isMobileDevice() ? 1 : 1.5;
+      const diameter = Math.round((mlGetViasRadius() + strokeW / 2) * 2);
+
+      for (const m of mlVariantMarkers) {
+        const el = m.getElement();
+        el.style.display = visible ? '' : 'none';
+        el.style.width  = diameter + 'px';
+        el.style.height = diameter + 'px';
+      }
+    };
+    mlMap.on('zoom', updateMarkers);
+    updateMarkers(); // estado inicial
+  }
+
+  console.log(`Variant markers created: ${mlVariantMarkers.length} concentric markers`);
+}
+
+/**
+ * Elimina todos los marcadores HTML de variantes del mapa.
+ */
+function mlClearVariantMarkers() {
+  for (const m of mlVariantMarkers) m.remove();
+  mlVariantMarkers = [];
+}
+
 /**
  * Procesa variantes tras cargar un GeoJSON de vías:
- * construye índice, aplica offsets y carga capa de conectores.
+ * construye índice, elimina features de variantes del GeoJSON y
+ * crea marcadores concéntricos.
  */
 function mlProcessVariantsForGeoJSON(geojson) {
   if (!geojson || !geojson.features) return;
   mlBuildVariantGroupsIndex(geojson.features);
-  mlApplyLateralOffsets(geojson.features);
-  const connectorGeoJSON = mlBuildVariantConnectorGeoJSON(geojson.features);
-  mlLoadVariantConnectorLayer(connectorGeoJSON);
+
+  // Eliminar features de variantes del GeoJSON para que no se pinten
+  // como puntos individuales en vias-layer
+  geojson.features = geojson.features.filter(f => {
+    const id = Number(f.properties.id);
+    return !mlVariantFeatureIndex.has(id);
+  });
+
+  // Crear marcadores concéntricos para los grupos
+  mlCreateVariantMarkers();
 }
 
 // ============================================
@@ -8175,13 +8355,23 @@ function applyGradeFilter() {
   }
 
   // Combinar con filtro de grado
-  if (!gradeExpr && !routeSetExpr) {
-    mlMap.setFilter('vias-layer', null);
-  } else if (gradeExpr && routeSetExpr) {
-    mlMap.setFilter('vias-layer', ['all', gradeExpr, routeSetExpr]);
+  let combinedFilter = null;
+  if (gradeExpr && routeSetExpr) {
+    combinedFilter = ['all', gradeExpr, routeSetExpr];
   } else {
-    mlMap.setFilter('vias-layer', gradeExpr || routeSetExpr);
+    combinedFilter = gradeExpr || routeSetExpr || null;
   }
+
+  // Excluir variantes que se muestran como marcadores concéntricos
+  if (mlVariantFeatureIndex.size > 0) {
+    const variantIds = [...mlVariantFeatureIndex.keys()];
+    const excludeExpr = ['!', ['in', ['get', 'id'], ['literal', variantIds]]];
+    combinedFilter = combinedFilter
+      ? ['all', combinedFilter, excludeExpr]
+      : excludeExpr;
+  }
+
+  mlMap.setFilter('vias-layer', combinedFilter);
 
   // Sincronizar ticks con filtros:
   // - El filtro "Solo vías hechas" no restringe los ticks (ya son vías hechas por construcción).
