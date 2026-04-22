@@ -2670,9 +2670,11 @@ function mlCreateVariantMarkers() {
       const zoom = mlMap.getZoom();
       const visible = zoom >= minZoom;
 
-      // Diámetro = 2 * radio + stroke (mismo tamaño visual que los puntos simples)
+      // Diámetro = 2*radio + 2*strokeWidth
+      // En MapLibre el circle-stroke se pinta FUERA del circle-radius,
+      // igual que en el SVG el borde blanco se pinta en el borde exterior.
       const strokeW = isMobileDevice() ? 1 : 1.5;
-      const diameter = Math.round((mlGetViasRadius() + strokeW / 2) * 2);
+      const diameter = Math.round(mlGetViasRadius() * 2 + strokeW * 2);
 
       for (const m of mlVariantMarkers) {
         const el = m.getElement();
