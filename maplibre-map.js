@@ -3024,11 +3024,11 @@ function mlBuildVariantBadgesHTML(groupFeatures, activeIndex, isTrinomial, navFn
     const color = getGradeColor(grade);
     const rgb   = hexToRgbComponents(color);
     const isActive = i === activeIndex;
-    // Active: solid grade color bg + white text + subtle shadow.
-    // Inactive: grade color tinted bg (15% opacity) + grade color text (60% opacity).
+    // Active: solid grade color bg + white text + shadow (matches .ml-route-grade).
+    // Inactive: same color at 35% opacity bg + white text at 80% — readable but subdued.
     const style = isActive
-      ? `background:${color};color:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.15);`
-      : `background:rgba(${rgb},0.15);color:rgba(${rgb},0.6);`;
+      ? `background:${color};color:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.25);`
+      : `background:rgba(${rgb},0.35);color:rgba(255,255,255,0.8);`;
     html += `<button class="ml-variant-badge${isActive ? ' active' : ''}"
                style="${style}"
                data-color="${color}"
@@ -3245,7 +3245,7 @@ async function mlVariantGoTo(index) {
   mlCurrentVariantSlide = index;
   const isTrinomial = mlCurrentVariantGroup[0].props._isTrinomialGroup;
 
-  // Actualizar estado visual de los badges (segmented control)
+  // Actualizar estado visual de los badges
   const badgeBar = document.getElementById('ml-variant-badge-bar');
   if (badgeBar) {
     badgeBar.querySelectorAll('.ml-variant-badge').forEach((b, i) => {
@@ -3253,9 +3253,9 @@ async function mlVariantGoTo(index) {
       const color = b.dataset.color || '#888';
       const rgb   = b.dataset.rgb   || '136, 136, 136';
       b.classList.toggle('active', isActive);
-      b.style.background  = isActive ? color : `rgba(${rgb},0.15)`;
-      b.style.color        = isActive ? '#fff' : `rgba(${rgb},0.6)`;
-      b.style.boxShadow    = isActive ? '0 1px 4px rgba(0,0,0,0.15)' : 'none';
+      b.style.background  = isActive ? color : `rgba(${rgb},0.35)`;
+      b.style.color        = isActive ? '#fff' : 'rgba(255,255,255,0.8)';
+      b.style.boxShadow    = isActive ? '0 2px 6px rgba(0,0,0,0.25)' : 'none';
     });
   }
 
@@ -3361,7 +3361,7 @@ async function mlVariantGoToBottomSheet(index) {
   const isTrinomial = mlCurrentVariantGroup[0].props._isTrinomialGroup;
   const currentVariant = mlCurrentVariantGroup[index];
 
-  // Actualizar estado visual de los badges (segmented control)
+  // Actualizar estado visual de los badges
   const badgeBar = document.getElementById('rbs-variant-badge-bar');
   if (badgeBar) {
     badgeBar.querySelectorAll('.ml-variant-badge').forEach((b, i) => {
@@ -3369,9 +3369,9 @@ async function mlVariantGoToBottomSheet(index) {
       const color = b.dataset.color || '#888';
       const rgb   = b.dataset.rgb   || '136, 136, 136';
       b.classList.toggle('active', isActive);
-      b.style.background  = isActive ? color : `rgba(${rgb},0.15)`;
-      b.style.color        = isActive ? '#fff' : `rgba(${rgb},0.6)`;
-      b.style.boxShadow    = isActive ? '0 1px 4px rgba(0,0,0,0.15)' : 'none';
+      b.style.background  = isActive ? color : `rgba(${rgb},0.35)`;
+      b.style.color        = isActive ? '#fff' : 'rgba(255,255,255,0.8)';
+      b.style.boxShadow    = isActive ? '0 2px 6px rgba(0,0,0,0.25)' : 'none';
     });
   }
 
