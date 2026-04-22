@@ -2998,7 +2998,31 @@ async function showRoutePopup(props, coords) {
 // ============================================
 
 /**
- * Muestra un popup con carrusel de variantes (desktop).
+ * Construye la fila de badges de grado para navegar entre variantes.
+ * @param {Array}  groupFeatures — array de { props, coords }
+ * @param {number} activeIndex   — índice activo
+ * @param {boolean} isTrinomial
+ * @param {string} navFn        — nombre de la función JS a llamar al hacer click
+ * @param {string} barId        — id del contenedor de badges
+ */
+function mlBuildVariantBadgesHTML(groupFeatures, activeIndex, isTrinomial, navFn, barId) {
+  let html = `<div class="ml-variant-badge-bar" id="${barId}">`;
+  for (let i = 0; i < groupFeatures.length; i++) {
+    const gf    = groupFeatures[i];
+    const grade = isTrinomial
+      ? (gf.props._displayGrado || gf.props.grado1 || '?')
+      : (gf.props.grado1 || '?');
+    const color = getGradeColor(grade);
+    html += `<button class="ml-variant-badge${i === activeIndex ? ' active' : ''}"
+               style="background-color:${color}"
+               onclick="${navFn}(${i})">${grade}</button>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Muestra un popup con badges de variante (desktop).
  * @param {Array} groupFeatures - Array de { props, coords } del grupo
  * @param {number} startIndex - Índice de la variante clickeada
  * @param {Object} coords - lngLat del click
@@ -3007,28 +3031,14 @@ async function mlShowVariantGroupPopup(groupFeatures, startIndex, coords) {
   mlCurrentVariantGroup = groupFeatures;
   mlCurrentVariantSlide = startIndex >= 0 ? startIndex : 0;
 
-  const n = groupFeatures.length;
   const isTrinomial = groupFeatures[0].props._isTrinomialGroup;
 
-  // Generar dots
-  let dotsHTML = '';
-  for (let i = 0; i < n; i++) {
-    dotsHTML += `<span class="ml-variant-dot${i === mlCurrentVariantSlide ? ' active' : ''}"></span>`;
-  }
-
-  // Generar contenido del slide actual
-  const slideHTML = await mlBuildVariantSlideHTML(groupFeatures[mlCurrentVariantSlide], isTrinomial);
+  const badgesHTML = mlBuildVariantBadgesHTML(groupFeatures, mlCurrentVariantSlide, isTrinomial, 'mlVariantGoTo', 'ml-variant-badge-bar');
+  const slideHTML  = await mlBuildVariantSlideHTML(groupFeatures[mlCurrentVariantSlide], isTrinomial);
 
   const html = `
     <div class="ml-route-popup-new ml-variant-popup">
-      <div class="ml-variant-nav-bar">
-        <button class="ml-variant-nav-btn" onclick="mlVariantNav(-1)">&#8249;</button>
-        <span class="ml-variant-indicator" id="ml-variant-indicator">
-          ${isTrinomial ? 'Variante' : ''} ${mlCurrentVariantSlide + 1} de ${n}
-        </span>
-        <button class="ml-variant-nav-btn" onclick="mlVariantNav(1)">&#8250;</button>
-      </div>
-      <div class="ml-variant-dots-bar" id="ml-variant-dots">${dotsHTML}</div>
+      ${badgesHTML}
       <div id="ml-variant-content">${slideHTML}</div>
     </div>
   `;
@@ -3207,28 +3217,22 @@ function mlLoadVariantSlideAsyncData(variantData, isTrinomial) {
 }
 
 /**
- * Navega entre slides del carrusel de variantes.
- * @param {number} direction - -1 para anterior, +1 para siguiente
+ * Navega directamente a una variante por índice (popup desktop).
+ * Llamada por onclick de los badges y por swipe.
+ * @param {number} index — índice destino
  */
-async function mlVariantNav(direction) {
+async function mlVariantGoTo(index) {
   if (!mlCurrentVariantGroup || mlCurrentVariantGroup.length === 0) return;
+  if (index === mlCurrentVariantSlide) return;
 
-  const n = mlCurrentVariantGroup.length;
-  mlCurrentVariantSlide = (mlCurrentVariantSlide + direction + n) % n;
+  mlCurrentVariantSlide = index;
   const isTrinomial = mlCurrentVariantGroup[0].props._isTrinomialGroup;
 
-  // Actualizar indicador
-  const indicator = document.getElementById('ml-variant-indicator');
-  if (indicator) {
-    indicator.textContent = `${isTrinomial ? 'Variante ' : ''}${mlCurrentVariantSlide + 1} de ${n}`;
-  }
-
-  // Actualizar dots
-  const dotsContainer = document.getElementById('ml-variant-dots');
-  if (dotsContainer) {
-    const dots = dotsContainer.querySelectorAll('.ml-variant-dot');
-    dots.forEach((dot, i) => {
-      dot.classList.toggle('active', i === mlCurrentVariantSlide);
+  // Actualizar estado visual de los badges
+  const badgeBar = document.getElementById('ml-variant-badge-bar');
+  if (badgeBar) {
+    badgeBar.querySelectorAll('.ml-variant-badge').forEach((b, i) => {
+      b.classList.toggle('active', i === index);
     });
   }
 
@@ -3237,21 +3241,26 @@ async function mlVariantNav(direction) {
   if (contentEl) {
     contentEl.classList.add('fading');
     await new Promise(resolve => setTimeout(resolve, 150));
-
-    const slideHTML = await mlBuildVariantSlideHTML(mlCurrentVariantGroup[mlCurrentVariantSlide], isTrinomial);
-    contentEl.innerHTML = slideHTML;
+    contentEl.innerHTML = await mlBuildVariantSlideHTML(mlCurrentVariantGroup[index], isTrinomial);
     contentEl.classList.remove('fading');
-
-    // Cargar datos asíncronos del nuevo slide
-    mlLoadVariantSlideAsyncData(mlCurrentVariantGroup[mlCurrentVariantSlide], isTrinomial);
+    mlLoadVariantSlideAsyncData(mlCurrentVariantGroup[index], isTrinomial);
   }
 
-  // Actualizar estado global de ruta para funciones externas
-  const currentProps = mlCurrentVariantGroup[mlCurrentVariantSlide].props;
-  mlCurrentRouteGrade = isTrinomial ? (currentProps._displayGrado || currentProps.grado1) : currentProps.grado1;
-  mlCurrentRouteSector = currentProps.sector || '';
-  mlCurrentRouteId = Number(currentProps.id);
-  mlCurrentRouteName = currentProps.nombre || 'Sin nombre';
+  // Actualizar estado global de ruta
+  const props = mlCurrentVariantGroup[index].props;
+  mlCurrentRouteGrade = isTrinomial ? (props._displayGrado || props.grado1) : props.grado1;
+  mlCurrentRouteSector = props.sector || '';
+  mlCurrentRouteId = Number(props.id);
+  mlCurrentRouteName = props.nombre || 'Sin nombre';
+}
+
+/**
+ * Wrapper para swipe (dirección relativa → índice absoluto).
+ */
+async function mlVariantNav(direction) {
+  if (!mlCurrentVariantGroup) return;
+  const n = mlCurrentVariantGroup.length;
+  await mlVariantGoTo((mlCurrentVariantSlide + direction + n) % n);
 }
 
 // ============================================
@@ -3285,38 +3294,18 @@ async function mlShowVariantGroupBottomSheet(groupFeatures, startIndex, coords) 
   if (!sheet) return;
 
   // Eliminar barra de variantes previa si existe
-  const existingNav = sheet.querySelector('.rbs-variant-nav-bar');
-  if (existingNav) existingNav.remove();
-  const existingDots = sheet.querySelector('.rbs-variant-dots-bar');
-  if (existingDots) existingDots.remove();
+  const existingBadges = sheet.querySelector('.rbs-variant-badge-bar');
+  if (existingBadges) existingBadges.remove();
 
-  const n = groupFeatures.length;
-
-  // Generar dots
-  let dotsHTML = '';
-  for (let i = 0; i < n; i++) {
-    dotsHTML += `<span class="ml-variant-dot${i === mlCurrentVariantSlide ? ' active' : ''}"></span>`;
-  }
-
-  // Insertar barra de navegación después del handle del bottom sheet
+  // Insertar badges de grado después del handle del bottom sheet
   const handle = sheet.querySelector('.rbs-handle') || sheet.firstElementChild;
   if (handle) {
-    const navBar = document.createElement('div');
-    navBar.className = 'rbs-variant-nav-bar';
-    navBar.innerHTML = `
-      <button class="ml-variant-nav-btn" onclick="mlVariantNavBottomSheet(-1)">&#8249;</button>
-      <span class="ml-variant-indicator" id="rbs-variant-indicator">
-        ${isTrinomial ? 'Variante ' : ''}${mlCurrentVariantSlide + 1} de ${n}
-      </span>
-      <button class="ml-variant-nav-btn" onclick="mlVariantNavBottomSheet(1)">&#8250;</button>
-    `;
-    handle.insertAdjacentElement('afterend', navBar);
-
-    const dotsBar = document.createElement('div');
-    dotsBar.className = 'rbs-variant-dots-bar';
-    dotsBar.id = 'rbs-variant-dots';
-    dotsBar.innerHTML = dotsHTML;
-    navBar.insertAdjacentElement('afterend', dotsBar);
+    const badgeBar = document.createElement('div');
+    badgeBar.innerHTML = mlBuildVariantBadgesHTML(
+      groupFeatures, mlCurrentVariantSlide, isTrinomial,
+      'mlVariantGoToBottomSheet', 'rbs-variant-badge-bar'
+    ).replace('ml-variant-badge-bar', 'ml-variant-badge-bar rbs-variant-badge-bar');
+    handle.insertAdjacentElement('afterend', badgeBar.firstElementChild);
   }
 
   // Añadir swipe horizontal al contenido del bottom sheet
@@ -3332,34 +3321,28 @@ function mlBottomSheetSwipeStart(e) {
 function mlBottomSheetSwipeEnd(e) {
   const diff = mlVariantSwipeStartX - e.changedTouches[0].screenX;
   if (Math.abs(diff) > 50 && mlCurrentVariantGroup) {
-    mlVariantNavBottomSheet(diff > 0 ? 1 : -1);
+    const n = mlCurrentVariantGroup.length;
+    mlVariantGoToBottomSheet((mlCurrentVariantSlide + (diff > 0 ? 1 : -1) + n) % n);
   }
 }
 
 /**
- * Navega entre variantes en el bottom sheet móvil.
- * Recarga el contenido del bottom sheet con la nueva variante.
+ * Navega directamente a una variante por índice (bottom sheet móvil).
+ * @param {number} index — índice destino
  */
-async function mlVariantNavBottomSheet(direction) {
+async function mlVariantGoToBottomSheet(index) {
   if (!mlCurrentVariantGroup || mlCurrentVariantGroup.length === 0) return;
+  if (index === mlCurrentVariantSlide) return;
 
-  const n = mlCurrentVariantGroup.length;
-  mlCurrentVariantSlide = (mlCurrentVariantSlide + direction + n) % n;
+  mlCurrentVariantSlide = index;
   const isTrinomial = mlCurrentVariantGroup[0].props._isTrinomialGroup;
-  const currentVariant = mlCurrentVariantGroup[mlCurrentVariantSlide];
+  const currentVariant = mlCurrentVariantGroup[index];
 
-  // Actualizar indicador
-  const indicator = document.getElementById('rbs-variant-indicator');
-  if (indicator) {
-    indicator.textContent = `${isTrinomial ? 'Variante ' : ''}${mlCurrentVariantSlide + 1} de ${n}`;
-  }
-
-  // Actualizar dots
-  const dotsContainer = document.getElementById('rbs-variant-dots');
-  if (dotsContainer) {
-    const dots = dotsContainer.querySelectorAll('.ml-variant-dot');
-    dots.forEach((dot, i) => {
-      dot.classList.toggle('active', i === mlCurrentVariantSlide);
+  // Actualizar estado visual de los badges
+  const badgeBar = document.getElementById('rbs-variant-badge-bar');
+  if (badgeBar) {
+    badgeBar.querySelectorAll('.ml-variant-badge').forEach((b, i) => {
+      b.classList.toggle('active', i === index);
     });
   }
 
