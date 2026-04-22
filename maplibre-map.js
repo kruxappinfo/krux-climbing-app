@@ -3013,8 +3013,14 @@ function mlBuildVariantBadgesHTML(groupFeatures, activeIndex, isTrinomial, navFn
       ? (gf.props._displayGrado || gf.props.grado1 || '?')
       : (gf.props.grado1 || '?');
     const color = getGradeColor(grade);
-    html += `<button class="ml-variant-badge${i === activeIndex ? ' active' : ''}"
-               style="background-color:${color}"
+    const isActive = i === activeIndex;
+    // Active: grade color bg + white text. Inactive: transparent bg + muted grade color.
+    const style = isActive
+      ? `background:${color};color:#fff;`
+      : `background:transparent;color:${color};opacity:0.55;`;
+    html += `<button class="ml-variant-badge${isActive ? ' active' : ''}"
+               style="${style}"
+               data-color="${color}"
                onclick="${navFn}(${i})">${grade}</button>`;
   }
   html += '</div>';
@@ -3228,11 +3234,16 @@ async function mlVariantGoTo(index) {
   mlCurrentVariantSlide = index;
   const isTrinomial = mlCurrentVariantGroup[0].props._isTrinomialGroup;
 
-  // Actualizar estado visual de los badges
+  // Actualizar estado visual de los badges (segmented control)
   const badgeBar = document.getElementById('ml-variant-badge-bar');
   if (badgeBar) {
     badgeBar.querySelectorAll('.ml-variant-badge').forEach((b, i) => {
-      b.classList.toggle('active', i === index);
+      const isActive = i === index;
+      const color = b.dataset.color || '#888';
+      b.classList.toggle('active', isActive);
+      b.style.background = isActive ? color : 'transparent';
+      b.style.color       = isActive ? '#fff' : color;
+      b.style.opacity     = isActive ? '1' : '0.55';
     });
   }
 
@@ -3338,11 +3349,16 @@ async function mlVariantGoToBottomSheet(index) {
   const isTrinomial = mlCurrentVariantGroup[0].props._isTrinomialGroup;
   const currentVariant = mlCurrentVariantGroup[index];
 
-  // Actualizar estado visual de los badges
+  // Actualizar estado visual de los badges (segmented control)
   const badgeBar = document.getElementById('rbs-variant-badge-bar');
   if (badgeBar) {
     badgeBar.querySelectorAll('.ml-variant-badge').forEach((b, i) => {
-      b.classList.toggle('active', i === index);
+      const isActive = i === index;
+      const color = b.dataset.color || '#888';
+      b.classList.toggle('active', isActive);
+      b.style.background = isActive ? color : 'transparent';
+      b.style.color       = isActive ? '#fff' : color;
+      b.style.opacity     = isActive ? '1' : '0.55';
     });
   }
 
