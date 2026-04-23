@@ -7982,8 +7982,11 @@ async function showUserRoutePopup(props, coords) {
  */
 async function loadApprovedPOIFromFirestore(schoolId) {
   try {
-    if (typeof firebase === 'undefined' || !firebase.firestore) return;
-    console.log(`[ApprovedPOI] Buscando POI aprobados para schoolId=${schoolId}...`);
+    if (typeof firebase === 'undefined' || !firebase.firestore) {
+      console.warn('[ApprovedPOI] Firebase no disponible');
+      return;
+    }
+    console.log(`%c[ApprovedPOI] Buscando POI aprobados para schoolId=${schoolId}...`, 'color: #4CAF50; font-weight: bold');
 
     const db = firebase.firestore();
     let snapshot;
@@ -7991,30 +7994,47 @@ async function loadApprovedPOIFromFirestore(schoolId) {
       snapshot = await db.collection('pending_poi')
         .where('status', '==', 'approved')
         .get();
+      console.log(`[ApprovedPOI] Query exitosa, docs: ${snapshot.size}`);
     } catch (queryError) {
-      console.warn('[ApprovedPOI] Error en query con filtro status, intentando sin filtro:', queryError.message);
+      console.warn('[ApprovedPOI] Error en query con filtro status:', queryError.message);
       // Fallback: traer todos y filtrar client-side
-      const allSnap = await db.collection('pending_poi').get();
-      const approvedDocs = [];
-      allSnap.forEach(doc => {
-        if (doc.data().status === 'approved') approvedDocs.push(doc);
-      });
-      snapshot = { empty: approvedDocs.length === 0, forEach: (fn) => approvedDocs.forEach(fn) };
+      try {
+        const allSnap = await db.collection('pending_poi').get();
+        console.log(`[ApprovedPOI] Fallback: total docs en pending_poi: ${allSnap.size}`);
+        const approvedDocs = [];
+        allSnap.forEach(doc => {
+          const d = doc.data();
+          console.log(`[ApprovedPOI] Doc ${doc.id}: status=${d.status}`);
+          if (d.status === 'approved') approvedDocs.push(doc);
+        });
+        snapshot = { empty: approvedDocs.length === 0, size: approvedDocs.length, forEach: (fn) => approvedDocs.forEach(fn) };
+      } catch (fallbackError) {
+        console.error('[ApprovedPOI] Fallback tambien fallo:', fallbackError.message);
+        return;
+      }
     }
 
     if (snapshot.empty) {
-      console.log(`[ApprovedPOI] No hay POI aprobados`);
+      console.log(`%c[ApprovedPOI] No hay POI aprobados en Firestore`, 'color: #FF9800');
       return;
     }
 
     const features = [];
+    let skippedCoords = 0;
+    let skippedSchool = 0;
     snapshot.forEach(doc => {
       const data = doc.data();
-      console.log(`[ApprovedPOI] Doc ${doc.id}: schoolId=${data.schoolId}, coords=${JSON.stringify(data.coordinates)}, status=${data.status}`);
-      if (!data.coordinates || !Array.isArray(data.coordinates)) return;
+      if (!data.coordinates || !Array.isArray(data.coordinates)) {
+        console.warn(`[ApprovedPOI] Doc ${doc.id} sin coordenadas validas:`, data.coordinates);
+        skippedCoords++;
+        return;
+      }
       // Filtrar por escuela en el cliente
-      // Si el POI no tiene schoolId (null), se muestra en todas las escuelas
-      if (data.schoolId && data.schoolId !== schoolId) return;
+      // Si el POI no tiene schoolId (null/undefined), se muestra en todas las escuelas
+      if (data.schoolId && data.schoolId !== schoolId) {
+        skippedSchool++;
+        return;
+      }
 
       const desc = data.descripcio || '';
       const emoji = getPOIEmoji(desc);
@@ -8038,9 +8058,12 @@ async function loadApprovedPOIFromFirestore(schoolId) {
       });
     });
 
-    if (features.length === 0) return;
+    if (features.length === 0) {
+      console.log(`[ApprovedPOI] 0 features tras filtrado (skippedCoords=${skippedCoords}, skippedSchool=${skippedSchool})`);
+      return;
+    }
 
-    console.log(`[ApprovedPOI] Cargando ${features.length} POI aprobados para ${schoolId}`);
+    console.log(`%c[ApprovedPOI] Cargando ${features.length} POI aprobados para ${schoolId}`, 'color: #4CAF50; font-weight: bold');
 
     // Registrar emojis como imágenes si no existen
     const usedEmojis = new Set(features.map(f => f.properties._emoji));
@@ -8067,11 +8090,12 @@ async function loadApprovedPOIFromFirestore(schoolId) {
       id: layerId,
       type: 'symbol',
       source: sourceId,
-      minzoom: 14,
+      minzoom: 13,
       layout: {
         'icon-image': ['get', '_emojiIcon'],
         'icon-size': [
           'interpolate', ['linear'], ['zoom'],
+          13, 0.35,
           14, 0.45,
           16, 0.65,
           18, 0.85,
@@ -8112,7 +8136,7 @@ async function loadApprovedPOIFromFirestore(schoolId) {
         .addTo(mlMap);
     });
 
-    console.log(`[ApprovedPOI] ✅ Capa de POI de usuarios añadida para ${schoolId}`);
+    console.log(`%c[ApprovedPOI] Capa de POI de usuarios anadida con ${features.length} features`, 'color: #4CAF50; font-weight: bold');
   } catch (error) {
     console.error('[ApprovedPOI] Error cargando POI aprobados:', error);
   }
@@ -8124,8 +8148,11 @@ async function loadApprovedPOIFromFirestore(schoolId) {
  */
 async function loadApprovedSectorsFromFirestore(schoolId) {
   try {
-    if (typeof firebase === 'undefined' || !firebase.firestore) return;
-    console.log(`[ApprovedSectors] Buscando sectores aprobados para schoolId=${schoolId}...`);
+    if (typeof firebase === 'undefined' || !firebase.firestore) {
+      console.warn('[ApprovedSectors] Firebase no disponible');
+      return;
+    }
+    console.log(`%c[ApprovedSectors] Buscando sectores aprobados para schoolId=${schoolId}...`, 'color: #2196F3; font-weight: bold');
 
     const db = firebase.firestore();
     let snapshot;
@@ -8133,29 +8160,46 @@ async function loadApprovedSectorsFromFirestore(schoolId) {
       snapshot = await db.collection('pending_sectors')
         .where('status', '==', 'approved')
         .get();
+      console.log(`[ApprovedSectors] Query exitosa, docs: ${snapshot.size}`);
     } catch (queryError) {
-      console.warn('[ApprovedSectors] Error en query con filtro status, intentando sin filtro:', queryError.message);
-      const allSnap = await db.collection('pending_sectors').get();
-      const approvedDocs = [];
-      allSnap.forEach(doc => {
-        if (doc.data().status === 'approved') approvedDocs.push(doc);
-      });
-      snapshot = { empty: approvedDocs.length === 0, forEach: (fn) => approvedDocs.forEach(fn) };
+      console.warn('[ApprovedSectors] Error en query con filtro status:', queryError.message);
+      try {
+        const allSnap = await db.collection('pending_sectors').get();
+        console.log(`[ApprovedSectors] Fallback: total docs en pending_sectors: ${allSnap.size}`);
+        const approvedDocs = [];
+        allSnap.forEach(doc => {
+          const d = doc.data();
+          console.log(`[ApprovedSectors] Doc ${doc.id}: status=${d.status}`);
+          if (d.status === 'approved') approvedDocs.push(doc);
+        });
+        snapshot = { empty: approvedDocs.length === 0, size: approvedDocs.length, forEach: (fn) => approvedDocs.forEach(fn) };
+      } catch (fallbackError) {
+        console.error('[ApprovedSectors] Fallback tambien fallo:', fallbackError.message);
+        return;
+      }
     }
 
     if (snapshot.empty) {
-      console.log(`[ApprovedSectors] No hay sectores aprobados`);
+      console.log(`%c[ApprovedSectors] No hay sectores aprobados en Firestore`, 'color: #FF9800');
       return;
     }
 
     const features = [];
+    let skippedVertices = 0;
+    let skippedSchool = 0;
     snapshot.forEach(doc => {
       const data = doc.data();
-      console.log(`[ApprovedSectors] Doc ${doc.id}: schoolId=${data.schoolId}, vertices=${data.vertices?.length || 0}, status=${data.status}`);
       // Filtrar por escuela en el cliente
-      if (data.schoolId && data.schoolId !== schoolId) return;
+      if (data.schoolId && data.schoolId !== schoolId) {
+        skippedSchool++;
+        return;
+      }
       // Reconstruir coordenadas desde vertices [{lng, lat}, ...]
-      if (!data.vertices || !Array.isArray(data.vertices) || data.vertices.length < 3) return;
+      if (!data.vertices || !Array.isArray(data.vertices) || data.vertices.length < 3) {
+        console.warn(`[ApprovedSectors] Doc ${doc.id} sin vertices validos: ${data.vertices?.length || 0}`);
+        skippedVertices++;
+        return;
+      }
 
       const coords = data.vertices.map(v => [v.lng, v.lat]);
 
@@ -8186,9 +8230,12 @@ async function loadApprovedSectorsFromFirestore(schoolId) {
       });
     });
 
-    if (features.length === 0) return;
+    if (features.length === 0) {
+      console.log(`[ApprovedSectors] 0 features tras filtrado (skippedVertices=${skippedVertices}, skippedSchool=${skippedSchool})`);
+      return;
+    }
 
-    console.log(`[ApprovedSectors] Cargando ${features.length} sectores aprobados para ${schoolId}`);
+    console.log(`%c[ApprovedSectors] Cargando ${features.length} sectores aprobados para ${schoolId}`, 'color: #2196F3; font-weight: bold');
 
     const sourceId = 'sectores-usuarios-source';
     const casingLayerId = 'sectores-usuarios-casing-layer';
@@ -8203,18 +8250,22 @@ async function loadApprovedSectorsFromFirestore(schoolId) {
       data: { type: 'FeatureCollection', features }
     });
 
+    // Usar el mismo minzoom que los sectores oficiales de la escuela
+    const school = MAPLIBRE_SCHOOLS[schoolId];
+    const sectorMinZoom = school?.zoomLevels?.sectores || 12;
+
     // Capa de casing (borde oscuro)
     mlMap.addLayer({
       id: casingLayerId,
       type: 'line',
       source: sourceId,
-      minzoom: 14,
+      minzoom: sectorMinZoom,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': generateSectorCasingColorExpression(),
         'line-width': [
           'interpolate', ['linear'], ['zoom'],
-          14, 6, 16, 10, 18, 14, 20, 18
+          12, 4, 14, 6, 16, 10, 18, 14, 20, 18
         ],
         'line-opacity': 0.9
       }
@@ -8225,13 +8276,13 @@ async function loadApprovedSectorsFromFirestore(schoolId) {
       id: lineLayerId,
       type: 'line',
       source: sourceId,
-      minzoom: 14,
+      minzoom: sectorMinZoom,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': generateSectorColorExpression(),
         'line-width': [
           'interpolate', ['linear'], ['zoom'],
-          14, 4, 16, 7, 18, 10, 20, 14
+          12, 2, 14, 4, 16, 7, 18, 10, 20, 14
         ],
         'line-opacity': 1
       }
@@ -8262,7 +8313,7 @@ async function loadApprovedSectorsFromFirestore(schoolId) {
         .addTo(mlMap);
     });
 
-    console.log(`[ApprovedSectors] ✅ Capa de sectores de usuarios añadida para ${schoolId}`);
+    console.log(`%c[ApprovedSectors] Capa de sectores de usuarios anadida con ${features.length} features (minzoom=${sectorMinZoom})`, 'color: #2196F3; font-weight: bold');
   } catch (error) {
     console.error('[ApprovedSectors] Error cargando sectores aprobados:', error);
   }
@@ -8991,5 +9042,35 @@ window.loadApprovedPOIFromFirestore = loadApprovedPOIFromFirestore;
 window.loadApprovedSectorsFromFirestore = loadApprovedSectorsFromFirestore;
 window.loadApprovedSchoolsFromFirestore = loadApprovedSchoolsFromFirestore;
 window.updateAscentTicksLayer = updateAscentTicksLayer;
+
+// Debug: llamar desde la consola del navegador con debugApprovedItems()
+window.debugApprovedItems = async function() {
+  if (typeof firebase === 'undefined' || !firebase.firestore) {
+    console.error('Firebase no disponible');
+    return;
+  }
+  const db = firebase.firestore();
+  const collections = ['pending_poi', 'pending_sectors', 'pending_schools', 'pending_routes'];
+  for (const col of collections) {
+    try {
+      const snap = await db.collection(col).get();
+      console.log(`%c=== ${col} === (${snap.size} docs total)`, 'color: #E91E63; font-weight: bold; font-size: 14px');
+      snap.forEach(doc => {
+        const d = doc.data();
+        console.log(`  ${doc.id}: status=${d.status}, schoolId=${d.schoolId}, coords=${JSON.stringify(d.coordinates || d.vertices?.length + ' vertices')}`);
+      });
+    } catch (err) {
+      console.error(`  ${col}: ERROR - ${err.message}`);
+    }
+  }
+  console.log(`%cEscuela actual: ${mlCurrentSchool}`, 'color: #9C27B0; font-weight: bold');
+  console.log(`%cZoom actual: ${mlMap?.getZoom()?.toFixed(1)}`, 'color: #9C27B0; font-weight: bold');
+  // Listar capas de usuarios activas
+  if (mlMap) {
+    const userLayers = mlMap.getStyle().layers.filter(l => l.id.includes('usuario'));
+    console.log(`%cCapas de usuarios en el mapa: ${userLayers.length}`, 'color: #9C27B0; font-weight: bold');
+    userLayers.forEach(l => console.log(`  - ${l.id} (minzoom: ${l.minzoom || 'none'})`));
+  }
+};
 
 console.log('MapLibre Map JS cargado');
