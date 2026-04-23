@@ -139,6 +139,12 @@ function navigateTo(section, updateHash = true) {
         loadApprovedSpotters();
     } else if (section === 'suggestions') {
         loadSuggestions();
+    } else if (section === 'schools') {
+        loadPendingSchools();
+    } else if (section === 'sectors') {
+        loadPendingSectors();
+    } else if (section === 'poi') {
+        loadPendingPOI();
     }
 }
 
@@ -152,20 +158,40 @@ function toggleSidebar() {
 
 async function loadStats() {
     try {
-        // Stats de rutas
-        const routesSnapshot = await db.collection('pending_routes').get();
+        const collections = ['pending_routes', 'pending_schools', 'pending_sectors', 'pending_poi'];
         let pending = 0, approved = 0, rejected = 0;
+        let schoolsPending = 0, sectorsPending = 0, poiPending = 0;
 
-        routesSnapshot.forEach(doc => {
-            const status = doc.data().status || 'pending';
-            if (status === 'pending') pending++;
-            else if (status === 'approved') approved++;
-            else if (status === 'rejected') rejected++;
-        });
+        for (const col of collections) {
+            const snapshot = await db.collection(col).get();
+            snapshot.forEach(doc => {
+                const status = doc.data().status || 'pending';
+                if (status === 'pending') {
+                    pending++;
+                    if (col === 'pending_schools') schoolsPending++;
+                    if (col === 'pending_sectors') sectorsPending++;
+                    if (col === 'pending_poi') poiPending++;
+                }
+                else if (status === 'approved') approved++;
+                else if (status === 'rejected') rejected++;
+            });
+        }
 
         document.getElementById('statPending').textContent = pending;
         document.getElementById('statApproved').textContent = approved;
         document.getElementById('statRejected').textContent = rejected;
+
+        // Nav badges
+        const setBadge = (id, count) => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = count;
+                el.style.display = count > 0 ? 'inline' : 'none';
+            }
+        };
+        setBadge('schoolsBadge', schoolsPending);
+        setBadge('sectorsBadge', sectorsPending);
+        setBadge('poiBadge', poiPending);
 
         // Stats de usuarios
         const usersSnapshot = await db.collection('admins').get();
@@ -2651,6 +2677,330 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ============================================
+// GESTIÓN DE ESCUELAS PENDIENTES
+// ============================================
+
+async function loadPendingSchools() {
+    const listEl = document.getElementById('schoolsList');
+    listEl.innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando escuelas...</p></div>';
+
+    try {
+        const filterStatus = document.getElementById('filterSchoolStatus').value;
+        let query = db.collection('pending_schools');
+        if (filterStatus !== 'all') query = query.where('status', '==', filterStatus);
+
+        const snapshot = await query.get();
+        let items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+        if (items.length === 0) {
+            listEl.innerHTML = `
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>No hay escuelas que mostrar</p>
+                </div>`;
+            return;
+        }
+
+        listEl.innerHTML = items.map(item => {
+            const createdAt = item.createdAt ? new Date(item.createdAt.toDate()).toLocaleDateString('es-ES', {
+                year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            }) : 'Fecha desconocida';
+            const statusClass = item.status || 'pending';
+            const statusText = { 'pending': 'Pendiente', 'approved': 'Aprobada', 'rejected': 'Rechazada' }[statusClass] || 'Pendiente';
+            const badgeClass = { 'pending': 'badge-pending', 'approved': 'badge-approved', 'rejected': 'badge-rejected' }[statusClass];
+            const showActions = item.status === 'pending';
+            const coords = item.coordinates ? `[${item.coordinates[1]?.toFixed(5)}, ${item.coordinates[0]?.toFixed(5)}]` : 'Sin coordenadas';
+
+            return `
+                <div class="route-card ${statusClass}">
+                    <div class="route-header">
+                        <div>
+                            <div class="route-name">${escapeHtml(item.nombre || 'Sin nombre')}</div>
+                            <span class="badge ${badgeClass}">${statusText}</span>
+                        </div>
+                    </div>
+                    <div class="route-details">
+                        <div>
+                            <div class="route-detail-label">Descripcion</div>
+                            <div class="route-detail-value">${escapeHtml(item.descripcion || '-')}</div>
+                        </div>
+                        <div>
+                            <div class="route-detail-label">Coordenadas</div>
+                            <div class="route-detail-value">${coords}</div>
+                        </div>
+                    </div>
+                    <div class="route-meta">
+                        <span>Enviada por: ${escapeHtml(item.createdByEmail || 'Desconocido')}</span>
+                        <span>${createdAt}</span>
+                    </div>
+                    ${showActions ? `
+                    <div class="route-actions">
+                        <button class="btn btn-success btn-sm" onclick="approveItem('pending_schools', '${item.id}', loadPendingSchools)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Aprobar
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="rejectItem('pending_schools', '${item.id}', loadPendingSchools)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Rechazar
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>`;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading pending schools:', error);
+        listEl.innerHTML = '<div class="empty-state"><p>Error al cargar escuelas</p></div>';
+    }
+}
+
+// ============================================
+// GESTIÓN DE SECTORES PENDIENTES
+// ============================================
+
+async function loadPendingSectors() {
+    const listEl = document.getElementById('sectorsList');
+    listEl.innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando sectores...</p></div>';
+
+    try {
+        const filterStatus = document.getElementById('filterSectorStatus').value;
+        let query = db.collection('pending_sectors');
+        if (filterStatus !== 'all') query = query.where('status', '==', filterStatus);
+
+        const snapshot = await query.get();
+        let items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+        if (items.length === 0) {
+            listEl.innerHTML = `
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>No hay sectores que mostrar</p>
+                </div>`;
+            return;
+        }
+
+        listEl.innerHTML = items.map(item => {
+            const createdAt = item.createdAt ? new Date(item.createdAt.toDate()).toLocaleDateString('es-ES', {
+                year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            }) : 'Fecha desconocida';
+            const statusClass = item.status || 'pending';
+            const statusText = { 'pending': 'Pendiente', 'approved': 'Aprobado', 'rejected': 'Rechazado' }[statusClass] || 'Pendiente';
+            const badgeClass = { 'pending': 'badge-pending', 'approved': 'badge-approved', 'rejected': 'badge-rejected' }[statusClass];
+            const showActions = item.status === 'pending';
+            const vertexCount = item.vertices?.length || 0;
+
+            return `
+                <div class="route-card ${statusClass}">
+                    <div class="route-header">
+                        <div>
+                            <div class="route-name">${escapeHtml(item.nombre || 'Sin nombre')}</div>
+                            <span class="badge ${badgeClass}">${statusText}</span>
+                        </div>
+                    </div>
+                    <div class="route-details">
+                        <div>
+                            <div class="route-detail-label">Escuela</div>
+                            <div class="route-detail-value">${escapeHtml(item.schoolId || 'No asignada')}</div>
+                        </div>
+                        <div>
+                            <div class="route-detail-label">Restriccion</div>
+                            <div class="route-detail-value">${item.restr || 'NO'}${item.restr === 'SI' ? ` (${item.Fecha_inicio || '?'} - ${item.Fecha_fin || '?'})` : ''}</div>
+                        </div>
+                        <div>
+                            <div class="route-detail-label">Exposicion</div>
+                            <div class="route-detail-value">${escapeHtml(item.exposicion || '-')}</div>
+                        </div>
+                        <div>
+                            <div class="route-detail-label">Vertices</div>
+                            <div class="route-detail-value">${vertexCount} puntos</div>
+                        </div>
+                    </div>
+                    <div class="route-meta">
+                        <span>Enviado por: ${escapeHtml(item.createdByEmail || 'Desconocido')}</span>
+                        <span>${createdAt}</span>
+                    </div>
+                    ${showActions ? `
+                    <div class="route-actions">
+                        <button class="btn btn-success btn-sm" onclick="approveItem('pending_sectors', '${item.id}', loadPendingSectors)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Aprobar
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="rejectItem('pending_sectors', '${item.id}', loadPendingSectors)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Rechazar
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>`;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading pending sectors:', error);
+        listEl.innerHTML = '<div class="empty-state"><p>Error al cargar sectores</p></div>';
+    }
+}
+
+// ============================================
+// GESTIÓN DE POI PENDIENTES
+// ============================================
+
+const POI_EMOJIS = {
+    'fuente': '🚰', 'ducha': '🚿', 'hospital': '🏥', 'parking': '🅿️',
+    'refugio': '🏠', 'mirador': '👁️', 'cueva': '🕳️', 'bar': '🍺',
+    'restaurante': '🍽️', 'tienda': '🛒', 'farmacia': '💊', 'gasolinera': '⛽',
+    'camping': '⛺', 'wc': '🚻', 'escalera': '🪜', 'puente': '🌉',
+    'peligro': '⚠️', 'informacion': 'ℹ️', 'iglesia': '⛪', 'hotel': '🏨',
+    'supermercado': '🛒', 'albergue': '🛏️', 'merendero': '🧺'
+};
+
+function getAdminPOIEmoji(desc) {
+    if (!desc) return '📍';
+    return POI_EMOJIS[desc.toLowerCase().trim()] || '📍';
+}
+
+async function loadPendingPOI() {
+    const listEl = document.getElementById('poiList');
+    listEl.innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando puntos de interes...</p></div>';
+
+    try {
+        const filterStatus = document.getElementById('filterPOIStatus').value;
+        let query = db.collection('pending_poi');
+        if (filterStatus !== 'all') query = query.where('status', '==', filterStatus);
+
+        const snapshot = await query.get();
+        let items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+        if (items.length === 0) {
+            listEl.innerHTML = `
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>No hay puntos de interes que mostrar</p>
+                </div>`;
+            return;
+        }
+
+        listEl.innerHTML = items.map(item => {
+            const createdAt = item.createdAt ? new Date(item.createdAt.toDate()).toLocaleDateString('es-ES', {
+                year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            }) : 'Fecha desconocida';
+            const statusClass = item.status || 'pending';
+            const statusText = { 'pending': 'Pendiente', 'approved': 'Aprobado', 'rejected': 'Rechazado' }[statusClass] || 'Pendiente';
+            const badgeClass = { 'pending': 'badge-pending', 'approved': 'badge-approved', 'rejected': 'badge-rejected' }[statusClass];
+            const showActions = item.status === 'pending';
+            const emoji = getAdminPOIEmoji(item.descripcio);
+            const coords = item.coordinates ? `[${item.coordinates[1]?.toFixed(5)}, ${item.coordinates[0]?.toFixed(5)}]` : 'Sin coordenadas';
+
+            return `
+                <div class="route-card ${statusClass}">
+                    <div class="route-header">
+                        <div>
+                            <div class="route-name">${emoji} ${escapeHtml(item.descripcio || 'Sin tipo')} ${item.nombre ? '— ' + escapeHtml(item.nombre) : ''}</div>
+                            <span class="badge ${badgeClass}">${statusText}</span>
+                        </div>
+                    </div>
+                    <div class="route-details">
+                        <div>
+                            <div class="route-detail-label">Escuela</div>
+                            <div class="route-detail-value">${escapeHtml(item.schoolId || 'No asignada')}</div>
+                        </div>
+                        <div>
+                            <div class="route-detail-label">Coordenadas</div>
+                            <div class="route-detail-value">${coords}</div>
+                        </div>
+                        ${item.link ? `
+                        <div>
+                            <div class="route-detail-label">Enlace</div>
+                            <div class="route-detail-value"><a href="${escapeHtml(item.link)}" target="_blank" style="color:#667eea;">Ver enlace</a></div>
+                        </div>
+                        ` : ''}
+                    </div>
+                    <div class="route-meta">
+                        <span>Enviado por: ${escapeHtml(item.createdByEmail || 'Desconocido')}</span>
+                        <span>${createdAt}</span>
+                    </div>
+                    ${showActions ? `
+                    <div class="route-actions">
+                        <button class="btn btn-success btn-sm" onclick="approveItem('pending_poi', '${item.id}', loadPendingPOI)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Aprobar
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="rejectItem('pending_poi', '${item.id}', loadPendingPOI)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Rechazar
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>`;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading pending POI:', error);
+        listEl.innerHTML = '<div class="empty-state"><p>Error al cargar puntos de interes</p></div>';
+    }
+}
+
+// ============================================
+// APROBAR/RECHAZAR GENÉRICO (Escuelas, Sectores, POI)
+// ============================================
+
+async function approveItem(collection, docId, reloadFn) {
+    if (!confirm('¿Aprobar este elemento?')) return;
+    try {
+        await db.collection(collection).doc(docId).update({
+            status: 'approved',
+            approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            approvedBy: currentUser.email
+        });
+        showToast('Aprobado correctamente', 'success');
+        if (typeof reloadFn === 'function') reloadFn();
+        loadStats();
+    } catch (error) {
+        console.error('Error approving item:', error);
+        showToast('Error al aprobar', 'error');
+    }
+}
+
+async function rejectItem(collection, docId, reloadFn) {
+    const reason = prompt('Motivo del rechazo (opcional):');
+    if (reason === null) return; // Canceló el prompt
+    try {
+        await db.collection(collection).doc(docId).update({
+            status: 'rejected',
+            rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            rejectedBy: currentUser.email,
+            rejectionReason: reason || ''
+        });
+        showToast('Rechazado correctamente', 'info');
+        if (typeof reloadFn === 'function') reloadFn();
+        loadStats();
+    } catch (error) {
+        console.error('Error rejecting item:', error);
+        showToast('Error al rechazar', 'error');
+    }
 }
 
 console.log('[Admin] Panel de administración cargado');
