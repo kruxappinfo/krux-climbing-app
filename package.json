@@ -1,5 +1,5 @@
 {
-  "name": "krux-climbing-app",
+  "name": "krux",
   "version": "1.0.0",
   "description": "KRUX - Descubre rutas de escalada, registra tus ascensos y conecta con la comunidad",
   "main": "index.html",
@@ -15,7 +15,8 @@
     "cap:run:android": "npx cap run android",
     "cap:build:ios": "npx cap build ios",
     "cap:build:android": "npx cap build android",
-    "icons:generate": "cd icons/pwa && ./generate-icons.sh"
+    "icons:generate": "cd icons/pwa && ./generate-icons.sh",
+    "geojson": "bash scripts/Personal/sync-geojson.sh"
   },
   "keywords": [
     "climbing",
