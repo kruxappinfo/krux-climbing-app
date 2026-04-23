@@ -2097,8 +2097,8 @@ async function mlLoadGeoJSONLayer(layerId, url, type, paint, minzoom = 0, layout
  * Limpia las capas de la escuela actual
  */
 function mlClearSchoolLayers() {
-  const layerIds = ['vias-ticks-circle-layer', 'vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer', 'vias-variant-connector-layer', 'vias-usuarios-layer', 'poi-usuarios-layer', 'sectores-usuarios-layer', 'sectores-usuarios-casing-layer'];
-  const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source', 'vias-variant-connector-source', 'vias-usuarios-source', 'poi-usuarios-source', 'sectores-usuarios-source'];
+  const layerIds = ['vias-ticks-circle-layer', 'vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer', 'vias-variant-connector-layer', 'vias-usuarios-layer', 'poi-usuarios-layer', 'sectores-usuarios-layer', 'sectores-usuarios-casing-layer', 'escuelas-usuarios-layer', 'escuelas-usuarios-labels-layer'];
+  const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source', 'vias-variant-connector-source', 'vias-usuarios-source', 'poi-usuarios-source', 'sectores-usuarios-source', 'escuelas-usuarios-source'];
 
   // Limpiar estado de variantes
   mlClearVariantMarkers();
@@ -8240,7 +8240,8 @@ async function loadApprovedSectorsFromFirestore(schoolId) {
 
 /**
  * Carga escuelas aprobadas desde pending_schools en Firestore y las añade
- * como marcadores en el mapa (misma capa que las escuelas estáticas).
+ * como marcadores en el mapa con el mismo icono verde y popup/bottom-sheet
+ * que las escuelas estáticas.
  */
 async function loadApprovedSchoolsFromFirestore() {
   try {
@@ -8272,10 +8273,10 @@ async function loadApprovedSchoolsFromFirestore() {
           nombre: data.nombre || 'Sin nombre',
           zoom: 16,
           isOpen: true,
-          rockType: '',
-          isUserSchool: true,
-          descripcion: data.descripcion || '',
-          createdByEmail: data.createdByEmail || ''
+          rockType: data.rockType || '',
+          // coords como JSON string, igual que SCHOOL_MARKERS
+          coords: JSON.stringify(data.coordinates),
+          isUserSchool: true
         }
       });
     });
@@ -8286,29 +8287,15 @@ async function loadApprovedSchoolsFromFirestore() {
 
     const sourceId = 'escuelas-usuarios-source';
     const layerId = 'escuelas-usuarios-layer';
+    const labelLayerId = 'escuelas-usuarios-labels-layer';
 
+    if (mlMap.getLayer(labelLayerId)) mlMap.removeLayer(labelLayerId);
     if (mlMap.getLayer(layerId)) mlMap.removeLayer(layerId);
     if (mlMap.getSource(sourceId)) mlMap.removeSource(sourceId);
 
-    // Registrar icono si no existe
-    if (!mlMap.hasImage('school-icon-user')) {
-      const svgIcon = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
-          <circle cx="18" cy="18" r="16" fill="#FF6B35" stroke="#ffffff" stroke-width="2"/>
-          <text x="18" y="24" text-anchor="middle" fill="white" font-size="18" font-weight="bold">🧗</text>
-        </svg>
-      `;
-      const img = new Image(36, 36);
-      await new Promise((resolve) => {
-        img.onload = () => {
-          if (!mlMap.hasImage('school-icon-user')) {
-            mlMap.addImage('school-icon-user', img);
-          }
-          resolve();
-        };
-        img.onerror = resolve;
-        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgIcon);
-      });
+    // Esperar a que school-icon-green esté disponible (lo carga loadSchoolIcons)
+    if (!mlMap.hasImage('school-icon-green')) {
+      await loadSchoolIcons();
     }
 
     mlMap.addSource(sourceId, {
@@ -8316,6 +8303,7 @@ async function loadApprovedSchoolsFromFirestore() {
       data: { type: 'FeatureCollection', features }
     });
 
+    // Capa de iconos — mismo icono verde que las escuelas abiertas
     mlMap.addLayer({
       id: layerId,
       type: 'symbol',
@@ -8323,17 +8311,40 @@ async function loadApprovedSchoolsFromFirestore() {
       minzoom: 5,
       maxzoom: 12,
       layout: {
-        'icon-image': 'school-icon-user',
+        'icon-image': 'school-icon-green',
         'icon-size': [
           'interpolate', ['linear'], ['zoom'],
-          5, 0.5, 8, 0.7, 10, 0.9, 12, 1.0
+          5, 0.3, 8, 0.5, 10, 0.65, 12, 0.75
         ],
         'icon-allow-overlap': true,
-        'icon-ignore-placement': true
+        'icon-ignore-placement': true,
+        'icon-anchor': 'center'
       }
     });
 
-    // Interactividad
+    // Etiqueta de nombre debajo del icono (igual que school-labels-layer)
+    mlMap.addLayer({
+      id: labelLayerId,
+      type: 'symbol',
+      source: sourceId,
+      minzoom: 8,
+      maxzoom: 12,
+      layout: {
+        'text-field': ['get', 'nombre'],
+        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+        'text-size': 12,
+        'text-anchor': 'top',
+        'text-offset': [0, 1.2],
+        'text-allow-overlap': false
+      },
+      paint: {
+        'text-color': '#1a1a2e',
+        'text-halo-color': '#ffffff',
+        'text-halo-width': 2
+      }
+    });
+
+    // Interactividad: mismo comportamiento que school-markers-layer
     mlMap.on('mouseenter', layerId, () => {
       mlMap.getCanvas().style.cursor = 'pointer';
     });
@@ -8343,19 +8354,30 @@ async function loadApprovedSchoolsFromFirestore() {
     mlMap.on('click', layerId, (e) => {
       if (!e.features || e.features.length === 0) return;
       const props = e.features[0].properties;
-      const coords = e.features[0].geometry.coordinates.slice();
 
-      let popupHTML = `<div style="padding:8px;font-size:14px;">
-        <strong>🧗 ${props.nombre}</strong>
-        ${props.descripcion ? `<br>${props.descripcion}` : ''}
-        <br><small style="color:#999;">Aportado por ${props.createdByEmail || 'Spotter'}</small>
-        <br><small style="color:#666;">Pendiente de añadir datos (sectores, vías...)</small>
-      </div>`;
+      const school = {
+        id: props.id,
+        nombre: props.nombre,
+        coords: JSON.parse(props.coords),
+        zoom: props.zoom || 16,
+        isOpen: props.isOpen,
+        rockType: props.rockType || ''
+      };
 
-      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px' })
-        .setLngLat(coords)
-        .setHTML(popupHTML)
-        .addTo(mlMap);
+      if (isMobileDevice()) {
+        if (mlSchoolPopup) mlSchoolPopup.remove();
+        adaptiveMapPanForBottomSheet(school.coords);
+        showBottomSheet(school);
+      } else {
+        mlMap.flyTo({
+          center: school.coords,
+          zoom: mlMap.getZoom(),
+          speed: 0.8,
+          curve: 1,
+          padding: { top: 450, bottom: 0, left: 0, right: 0 }
+        });
+        showSchoolPopup(school, null);
+      }
     });
 
     console.log(`[ApprovedSchools] ✅ Capa de escuelas de usuarios añadida`);
