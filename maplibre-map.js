@@ -7983,12 +7983,24 @@ async function showUserRoutePopup(props, coords) {
 async function loadApprovedPOIFromFirestore(schoolId) {
   try {
     if (typeof firebase === 'undefined' || !firebase.firestore) return;
+    console.log(`[ApprovedPOI] Buscando POI aprobados para schoolId=${schoolId}...`);
 
     const db = firebase.firestore();
-    // Fetch all approved POIs and filter client-side to avoid composite index requirement
-    const snapshot = await db.collection('pending_poi')
-      .where('status', '==', 'approved')
-      .get();
+    let snapshot;
+    try {
+      snapshot = await db.collection('pending_poi')
+        .where('status', '==', 'approved')
+        .get();
+    } catch (queryError) {
+      console.warn('[ApprovedPOI] Error en query con filtro status, intentando sin filtro:', queryError.message);
+      // Fallback: traer todos y filtrar client-side
+      const allSnap = await db.collection('pending_poi').get();
+      const approvedDocs = [];
+      allSnap.forEach(doc => {
+        if (doc.data().status === 'approved') approvedDocs.push(doc);
+      });
+      snapshot = { empty: approvedDocs.length === 0, forEach: (fn) => approvedDocs.forEach(fn) };
+    }
 
     if (snapshot.empty) {
       console.log(`[ApprovedPOI] No hay POI aprobados`);
@@ -7998,8 +8010,10 @@ async function loadApprovedPOIFromFirestore(schoolId) {
     const features = [];
     snapshot.forEach(doc => {
       const data = doc.data();
+      console.log(`[ApprovedPOI] Doc ${doc.id}: schoolId=${data.schoolId}, coords=${JSON.stringify(data.coordinates)}, status=${data.status}`);
       if (!data.coordinates || !Array.isArray(data.coordinates)) return;
-      // Filtrar por escuela en el cliente (evita índice compuesto en Firestore)
+      // Filtrar por escuela en el cliente
+      // Si el POI no tiene schoolId (null), se muestra en todas las escuelas
       if (data.schoolId && data.schoolId !== schoolId) return;
 
       const desc = data.descripcio || '';
@@ -8111,12 +8125,23 @@ async function loadApprovedPOIFromFirestore(schoolId) {
 async function loadApprovedSectorsFromFirestore(schoolId) {
   try {
     if (typeof firebase === 'undefined' || !firebase.firestore) return;
+    console.log(`[ApprovedSectors] Buscando sectores aprobados para schoolId=${schoolId}...`);
 
     const db = firebase.firestore();
-    // Fetch all approved sectors and filter client-side to avoid composite index requirement
-    const snapshot = await db.collection('pending_sectors')
-      .where('status', '==', 'approved')
-      .get();
+    let snapshot;
+    try {
+      snapshot = await db.collection('pending_sectors')
+        .where('status', '==', 'approved')
+        .get();
+    } catch (queryError) {
+      console.warn('[ApprovedSectors] Error en query con filtro status, intentando sin filtro:', queryError.message);
+      const allSnap = await db.collection('pending_sectors').get();
+      const approvedDocs = [];
+      allSnap.forEach(doc => {
+        if (doc.data().status === 'approved') approvedDocs.push(doc);
+      });
+      snapshot = { empty: approvedDocs.length === 0, forEach: (fn) => approvedDocs.forEach(fn) };
+    }
 
     if (snapshot.empty) {
       console.log(`[ApprovedSectors] No hay sectores aprobados`);
@@ -8126,6 +8151,7 @@ async function loadApprovedSectorsFromFirestore(schoolId) {
     const features = [];
     snapshot.forEach(doc => {
       const data = doc.data();
+      console.log(`[ApprovedSectors] Doc ${doc.id}: schoolId=${data.schoolId}, vertices=${data.vertices?.length || 0}, status=${data.status}`);
       // Filtrar por escuela en el cliente
       if (data.schoolId && data.schoolId !== schoolId) return;
       // Reconstruir coordenadas desde vertices [{lng, lat}, ...]
