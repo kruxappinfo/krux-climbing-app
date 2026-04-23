@@ -998,6 +998,9 @@ function onMapLoad() {
   // Cargar markers de escuelas (vista general)
   loadSchoolMarkers();
 
+  // Cargar escuelas aprobadas desde Firestore (marcadores adicionales)
+  loadApprovedSchoolsFromFirestore();
+
   // NO cargar escuela por defecto - el usuario selecciona desde markers
   // mlLoadSchool('valeria');
 
@@ -1555,6 +1558,20 @@ async function mlLoadSchoolVectorTiles(school) {
     // Añadir interactividad a parkings
     setupParkingsInteraction();
   }
+
+  // Cargar puntos de interés desde GeoJSON estático
+  if (school.geojson && school.geojson.puntosInteres) {
+    await mlLoadPuntosInteres(school.geojson.puntosInteres);
+  }
+
+  // Cargar vías aprobadas desde Firestore
+  await loadApprovedRoutesFromFirestore(school.id, school.zoomLevels.vias);
+
+  // Cargar sectores aprobados desde Firestore
+  await loadApprovedSectorsFromFirestore(school.id);
+
+  // Cargar POIs aprobados desde Firestore
+  await loadApprovedPOIFromFirestore(school.id);
 }
 
 /**
@@ -1677,6 +1694,12 @@ async function mlLoadSchoolGeoJSON(school) {
     // Cargar vías aprobadas desde Firestore (usando el mismo minzoom que las vías oficiales)
     await loadApprovedRoutesFromFirestore(school.id, school.zoomLevels.vias);
   }
+
+  // Cargar sectores aprobados desde Firestore
+  await loadApprovedSectorsFromFirestore(school.id);
+
+  // Cargar POIs aprobados desde Firestore
+  await loadApprovedPOIFromFirestore(school.id);
 
   // Cargar parkings
   if (school.geojson.parkings) {
@@ -2074,8 +2097,8 @@ async function mlLoadGeoJSONLayer(layerId, url, type, paint, minzoom = 0, layout
  * Limpia las capas de la escuela actual
  */
 function mlClearSchoolLayers() {
-  const layerIds = ['vias-ticks-circle-layer', 'vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer', 'vias-variant-connector-layer'];
-  const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source', 'vias-variant-connector-source'];
+  const layerIds = ['vias-ticks-circle-layer', 'vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer', 'vias-variant-connector-layer', 'vias-usuarios-layer', 'poi-usuarios-layer', 'sectores-usuarios-layer', 'sectores-usuarios-casing-layer'];
+  const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source', 'vias-variant-connector-source', 'vias-usuarios-source', 'poi-usuarios-source', 'sectores-usuarios-source'];
 
   // Limpiar estado de variantes
   mlClearVariantMarkers();
@@ -7950,6 +7973,398 @@ async function showUserRoutePopup(props, coords) {
 }
 
 // ============================================
+// CARGA DE POI, SECTORES Y ESCUELAS APROBADOS DESDE FIRESTORE
+// ============================================
+
+/**
+ * Carga POIs aprobados desde pending_poi en Firestore y los muestra en el mapa
+ * como emojis (misma lógica que mlLoadPuntosInteres pero desde Firestore).
+ */
+async function loadApprovedPOIFromFirestore(schoolId) {
+  try {
+    if (typeof firebase === 'undefined' || !firebase.firestore) return;
+
+    const db = firebase.firestore();
+    const snapshot = await db.collection('pending_poi')
+      .where('schoolId', '==', schoolId)
+      .where('status', '==', 'approved')
+      .get();
+
+    if (snapshot.empty) {
+      console.log(`[ApprovedPOI] No hay POI aprobados para ${schoolId}`);
+      return;
+    }
+
+    const features = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (!data.coordinates || !Array.isArray(data.coordinates)) return;
+
+      const desc = data.descripcio || '';
+      const emoji = getPOIEmoji(desc);
+
+      features.push({
+        type: 'Feature',
+        properties: {
+          descripcio: desc,
+          nombre: data.nombre || '',
+          link: data.link || '',
+          _emoji: emoji,
+          _poiType: desc,
+          _emojiIcon: 'poi-emoji-' + emoji,
+          isUserPOI: true,
+          createdByEmail: data.createdByEmail || ''
+        },
+        geometry: {
+          type: 'Point',
+          coordinates: data.coordinates
+        }
+      });
+    });
+
+    if (features.length === 0) return;
+
+    console.log(`[ApprovedPOI] Cargando ${features.length} POI aprobados para ${schoolId}`);
+
+    // Registrar emojis como imágenes si no existen
+    const usedEmojis = new Set(features.map(f => f.properties._emoji));
+    for (const emoji of usedEmojis) {
+      const imgId = 'poi-emoji-' + emoji;
+      if (!mlMap.hasImage(imgId)) {
+        const img = createEmojiImage(emoji, 48);
+        mlMap.addImage(imgId, img, { sdf: false });
+      }
+    }
+
+    const sourceId = 'poi-usuarios-source';
+    const layerId = 'poi-usuarios-layer';
+
+    if (mlMap.getLayer(layerId)) mlMap.removeLayer(layerId);
+    if (mlMap.getSource(sourceId)) mlMap.removeSource(sourceId);
+
+    mlMap.addSource(sourceId, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features }
+    });
+
+    mlMap.addLayer({
+      id: layerId,
+      type: 'symbol',
+      source: sourceId,
+      minzoom: 14,
+      layout: {
+        'icon-image': ['get', '_emojiIcon'],
+        'icon-size': [
+          'interpolate', ['linear'], ['zoom'],
+          14, 0.45,
+          16, 0.65,
+          18, 0.85,
+          20, 1.0
+        ],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-anchor': 'center'
+      }
+    });
+
+    // Interactividad: popup al click
+    mlMap.on('mouseenter', layerId, () => {
+      mlMap.getCanvas().style.cursor = 'pointer';
+    });
+    mlMap.on('mouseleave', layerId, () => {
+      mlMap.getCanvas().style.cursor = '';
+    });
+    mlMap.on('click', layerId, (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const props = e.features[0].properties;
+      const coords = e.features[0].geometry.coordinates.slice();
+      const emoji = props._emoji || '📍';
+      const desc = props._poiType || 'Punto de interés';
+      const nombre = props.nombre || '';
+      const link = props.link || '';
+
+      let popupHTML = `<div style="padding:8px;font-size:14px;">
+        <strong>${emoji} ${desc}</strong>
+        ${nombre ? `<br>${nombre}` : ''}
+        ${link ? `<br><a href="${link}" target="_blank" style="color:#4285f4;">Ver enlace</a>` : ''}
+        <br><small style="color:#999;">Aportado por ${props.createdByEmail || 'Spotter'}</small>
+      </div>`;
+
+      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
+        .setLngLat(coords)
+        .setHTML(popupHTML)
+        .addTo(mlMap);
+    });
+
+    console.log(`[ApprovedPOI] ✅ Capa de POI de usuarios añadida para ${schoolId}`);
+  } catch (error) {
+    console.error('[ApprovedPOI] Error cargando POI aprobados:', error);
+  }
+}
+
+/**
+ * Carga sectores aprobados desde pending_sectors en Firestore y los dibuja en el mapa
+ * como líneas (misma lógica que los sectores estáticos de GeoJSON).
+ */
+async function loadApprovedSectorsFromFirestore(schoolId) {
+  try {
+    if (typeof firebase === 'undefined' || !firebase.firestore) return;
+
+    const db = firebase.firestore();
+    const snapshot = await db.collection('pending_sectors')
+      .where('schoolId', '==', schoolId)
+      .where('status', '==', 'approved')
+      .get();
+
+    if (snapshot.empty) {
+      console.log(`[ApprovedSectors] No hay sectores aprobados para ${schoolId}`);
+      return;
+    }
+
+    const features = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      // Reconstruir coordenadas desde vertices [{lng, lat}, ...]
+      if (!data.vertices || !Array.isArray(data.vertices) || data.vertices.length < 3) return;
+
+      const coords = data.vertices.map(v => [v.lng, v.lat]);
+
+      // Generar fid para coloreado dinámico
+      const name = data.nombre || `sector-${doc.id}`;
+      let hash = 0;
+      for (let j = 0; j < name.length; j++) {
+        hash = ((hash << 5) - hash) + name.charCodeAt(j);
+        hash |= 0;
+      }
+
+      features.push({
+        type: 'Feature',
+        properties: {
+          fid: Math.abs(hash),
+          nombre: data.nombre || 'Sin nombre',
+          restr: data.restr || 'NO',
+          exposicion: data.exposicion || '',
+          Fecha_inicio: data.Fecha_inicio || '',
+          Fecha_fin: data.Fecha_fin || '',
+          isUserSector: true,
+          createdByEmail: data.createdByEmail || ''
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: coords
+        }
+      });
+    });
+
+    if (features.length === 0) return;
+
+    console.log(`[ApprovedSectors] Cargando ${features.length} sectores aprobados para ${schoolId}`);
+
+    const sourceId = 'sectores-usuarios-source';
+    const casingLayerId = 'sectores-usuarios-casing-layer';
+    const lineLayerId = 'sectores-usuarios-layer';
+
+    if (mlMap.getLayer(lineLayerId)) mlMap.removeLayer(lineLayerId);
+    if (mlMap.getLayer(casingLayerId)) mlMap.removeLayer(casingLayerId);
+    if (mlMap.getSource(sourceId)) mlMap.removeSource(sourceId);
+
+    mlMap.addSource(sourceId, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features }
+    });
+
+    // Capa de casing (borde oscuro)
+    mlMap.addLayer({
+      id: casingLayerId,
+      type: 'line',
+      source: sourceId,
+      minzoom: 14,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': generateSectorCasingColorExpression(),
+        'line-width': [
+          'interpolate', ['linear'], ['zoom'],
+          14, 6, 16, 10, 18, 14, 20, 18
+        ],
+        'line-opacity': 0.9
+      }
+    });
+
+    // Capa principal
+    mlMap.addLayer({
+      id: lineLayerId,
+      type: 'line',
+      source: sourceId,
+      minzoom: 14,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': generateSectorColorExpression(),
+        'line-width': [
+          'interpolate', ['linear'], ['zoom'],
+          14, 4, 16, 7, 18, 10, 20, 14
+        ],
+        'line-opacity': 1
+      }
+    });
+
+    // Interactividad: popup al click con info del sector
+    mlMap.on('mouseenter', lineLayerId, () => {
+      mlMap.getCanvas().style.cursor = 'pointer';
+    });
+    mlMap.on('mouseleave', lineLayerId, () => {
+      mlMap.getCanvas().style.cursor = '';
+    });
+    mlMap.on('click', lineLayerId, (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const props = e.features[0].properties;
+      const coords = e.lngLat;
+
+      let popupHTML = `<div style="padding:8px;font-size:14px;">
+        <strong>${props.nombre}</strong>
+        ${props.restr === 'SI' ? `<br>⚠️ Restricción: ${props.Fecha_inicio || ''} - ${props.Fecha_fin || ''}` : ''}
+        ${props.exposicion ? `<br>☀️ ${props.exposicion}` : ''}
+        <br><small style="color:#999;">Aportado por ${props.createdByEmail || 'Spotter'}</small>
+      </div>`;
+
+      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
+        .setLngLat(coords)
+        .setHTML(popupHTML)
+        .addTo(mlMap);
+    });
+
+    console.log(`[ApprovedSectors] ✅ Capa de sectores de usuarios añadida para ${schoolId}`);
+  } catch (error) {
+    console.error('[ApprovedSectors] Error cargando sectores aprobados:', error);
+  }
+}
+
+/**
+ * Carga escuelas aprobadas desde pending_schools en Firestore y las añade
+ * como marcadores en el mapa (misma capa que las escuelas estáticas).
+ */
+async function loadApprovedSchoolsFromFirestore() {
+  try {
+    if (typeof firebase === 'undefined' || !firebase.firestore) return;
+
+    const db = firebase.firestore();
+    const snapshot = await db.collection('pending_schools')
+      .where('status', '==', 'approved')
+      .get();
+
+    if (snapshot.empty) {
+      console.log('[ApprovedSchools] No hay escuelas aprobadas pendientes');
+      return;
+    }
+
+    const features = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (!data.coordinates || !Array.isArray(data.coordinates)) return;
+
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: data.coordinates
+        },
+        properties: {
+          id: `user_${doc.id}`,
+          nombre: data.nombre || 'Sin nombre',
+          zoom: 16,
+          isOpen: true,
+          rockType: '',
+          isUserSchool: true,
+          descripcion: data.descripcion || '',
+          createdByEmail: data.createdByEmail || ''
+        }
+      });
+    });
+
+    if (features.length === 0) return;
+
+    console.log(`[ApprovedSchools] Cargando ${features.length} escuelas aprobadas`);
+
+    const sourceId = 'escuelas-usuarios-source';
+    const layerId = 'escuelas-usuarios-layer';
+
+    if (mlMap.getLayer(layerId)) mlMap.removeLayer(layerId);
+    if (mlMap.getSource(sourceId)) mlMap.removeSource(sourceId);
+
+    // Registrar icono si no existe
+    if (!mlMap.hasImage('school-icon-user')) {
+      const svgIcon = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="16" fill="#FF6B35" stroke="#ffffff" stroke-width="2"/>
+          <text x="18" y="24" text-anchor="middle" fill="white" font-size="18" font-weight="bold">🧗</text>
+        </svg>
+      `;
+      const img = new Image(36, 36);
+      await new Promise((resolve) => {
+        img.onload = () => {
+          if (!mlMap.hasImage('school-icon-user')) {
+            mlMap.addImage('school-icon-user', img);
+          }
+          resolve();
+        };
+        img.onerror = resolve;
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgIcon);
+      });
+    }
+
+    mlMap.addSource(sourceId, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features }
+    });
+
+    mlMap.addLayer({
+      id: layerId,
+      type: 'symbol',
+      source: sourceId,
+      minzoom: 5,
+      maxzoom: 12,
+      layout: {
+        'icon-image': 'school-icon-user',
+        'icon-size': [
+          'interpolate', ['linear'], ['zoom'],
+          5, 0.5, 8, 0.7, 10, 0.9, 12, 1.0
+        ],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true
+      }
+    });
+
+    // Interactividad
+    mlMap.on('mouseenter', layerId, () => {
+      mlMap.getCanvas().style.cursor = 'pointer';
+    });
+    mlMap.on('mouseleave', layerId, () => {
+      mlMap.getCanvas().style.cursor = '';
+    });
+    mlMap.on('click', layerId, (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const props = e.features[0].properties;
+      const coords = e.features[0].geometry.coordinates.slice();
+
+      let popupHTML = `<div style="padding:8px;font-size:14px;">
+        <strong>🧗 ${props.nombre}</strong>
+        ${props.descripcion ? `<br>${props.descripcion}` : ''}
+        <br><small style="color:#999;">Aportado por ${props.createdByEmail || 'Spotter'}</small>
+        <br><small style="color:#666;">Pendiente de añadir datos (sectores, vías...)</small>
+      </div>`;
+
+      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px' })
+        .setLngLat(coords)
+        .setHTML(popupHTML)
+        .addTo(mlMap);
+    });
+
+    console.log(`[ApprovedSchools] ✅ Capa de escuelas de usuarios añadida`);
+  } catch (error) {
+    console.error('[ApprovedSchools] Error cargando escuelas aprobadas:', error);
+  }
+}
+
+// ============================================
 // FILTRO DE GRADOS (RANGE SLIDER) Y LEYENDA
 // ============================================
 
@@ -8515,6 +8930,9 @@ window.openGradeLegendModal = openGradeLegendModal;
 
 // Exponer función para uso externo
 window.loadApprovedRoutesFromFirestore = loadApprovedRoutesFromFirestore;
+window.loadApprovedPOIFromFirestore = loadApprovedPOIFromFirestore;
+window.loadApprovedSectorsFromFirestore = loadApprovedSectorsFromFirestore;
+window.loadApprovedSchoolsFromFirestore = loadApprovedSchoolsFromFirestore;
 window.updateAscentTicksLayer = updateAscentTicksLayer;
 
 console.log('MapLibre Map JS cargado');
