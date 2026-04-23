@@ -7985,13 +7985,13 @@ async function loadApprovedPOIFromFirestore(schoolId) {
     if (typeof firebase === 'undefined' || !firebase.firestore) return;
 
     const db = firebase.firestore();
+    // Fetch all approved POIs and filter client-side to avoid composite index requirement
     const snapshot = await db.collection('pending_poi')
-      .where('schoolId', '==', schoolId)
       .where('status', '==', 'approved')
       .get();
 
     if (snapshot.empty) {
-      console.log(`[ApprovedPOI] No hay POI aprobados para ${schoolId}`);
+      console.log(`[ApprovedPOI] No hay POI aprobados`);
       return;
     }
 
@@ -7999,6 +7999,8 @@ async function loadApprovedPOIFromFirestore(schoolId) {
     snapshot.forEach(doc => {
       const data = doc.data();
       if (!data.coordinates || !Array.isArray(data.coordinates)) return;
+      // Filtrar por escuela en el cliente (evita índice compuesto en Firestore)
+      if (data.schoolId && data.schoolId !== schoolId) return;
 
       const desc = data.descripcio || '';
       const emoji = getPOIEmoji(desc);
@@ -8111,19 +8113,21 @@ async function loadApprovedSectorsFromFirestore(schoolId) {
     if (typeof firebase === 'undefined' || !firebase.firestore) return;
 
     const db = firebase.firestore();
+    // Fetch all approved sectors and filter client-side to avoid composite index requirement
     const snapshot = await db.collection('pending_sectors')
-      .where('schoolId', '==', schoolId)
       .where('status', '==', 'approved')
       .get();
 
     if (snapshot.empty) {
-      console.log(`[ApprovedSectors] No hay sectores aprobados para ${schoolId}`);
+      console.log(`[ApprovedSectors] No hay sectores aprobados`);
       return;
     }
 
     const features = [];
     snapshot.forEach(doc => {
       const data = doc.data();
+      // Filtrar por escuela en el cliente
+      if (data.schoolId && data.schoolId !== schoolId) return;
       // Reconstruir coordenadas desde vertices [{lng, lat}, ...]
       if (!data.vertices || !Array.isArray(data.vertices) || data.vertices.length < 3) return;
 
@@ -8327,20 +8331,25 @@ async function loadApprovedSchoolsFromFirestore() {
       id: labelLayerId,
       type: 'symbol',
       source: sourceId,
-      minzoom: 8,
+      minzoom: 7,
       maxzoom: 12,
       layout: {
         'text-field': ['get', 'nombre'],
-        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-        'text-size': 12,
+        'text-font': ['Noto Sans Bold'],
+        'text-size': [
+          'interpolate', ['linear'], ['zoom'],
+          7, 10, 10, 12, 12, 14
+        ],
+        'text-offset': [0, 2.2],
         'text-anchor': 'top',
-        'text-offset': [0, 1.2],
+        'text-max-width': 10,
         'text-allow-overlap': false
       },
       paint: {
-        'text-color': '#1a1a2e',
-        'text-halo-color': '#ffffff',
-        'text-halo-width': 2
+        'text-color': '#1f2937',
+        'text-halo-color': 'rgba(255, 255, 255, 0.95)',
+        'text-halo-width': 2,
+        'text-halo-blur': 0
       }
     });
 
