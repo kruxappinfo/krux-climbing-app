@@ -4717,7 +4717,7 @@ function initAdminPanelContent() {
       <div class="admin-filter-row">
         <select id="admin-filter-poi-status" onchange="loadAdminPendingPOI()">
           <option value="pending">Pendientes</option>
-          <option value="aprobados">Aprobados</option>
+          <option value="approved">Aprobados</option>
           <option value="rejected">Rechazados</option>
           <option value="all">Todos</option>
         </select>
