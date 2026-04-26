@@ -5,7 +5,7 @@ echo "   ACTUALIZAR Y ARRANCAR KRUX"
 echo "=========================================="
 
 REPO_URL="https://github.com/kruxappinfo/krux.git"
-REPO_DIR="$HOME/krux-climbing-app"
+REPO_DIR="$HOME/krux"
 BRANCH="dev"
 SCRIPTS_DIR="$(dirname "$0")"
 
@@ -52,4 +52,4 @@ if [ ! -f "$CLEAN_HOSTS" ]; then
     exit 1
 fi
 
-bash "$CLEAN_HOSTS"
+bash "$CLEAN_HOSTS" "$REPO_DIR"

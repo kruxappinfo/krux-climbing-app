@@ -3,7 +3,7 @@
 # Configuración
 HOSTS_FILE="/etc/hosts"
 NUEVA_ENTRADA="127.0.0.1       localhost"
-RUTA_APP="/Users/jaimelillo/krux-climbing-app"
+RUTA_APP="${1:-/Users/jaimelillo/krux}"
 PUERTO=8080
 
 echo "=========================================="
