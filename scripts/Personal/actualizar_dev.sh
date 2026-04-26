@@ -31,7 +31,15 @@ else
     echo "⚠️ No había cambios nuevos para guardar."
 fi
 
-# 5. Sincronización con rebase para evitar el error de ramas divergentes
+# 5. Guardar cambios residuales antes del rebase
+STASH_OUTPUT=$(git stash 2>&1)
+STASHED=false
+if echo "$STASH_OUTPUT" | grep -q "Saved working directory"; then
+    STASHED=true
+    echo "📦 Cambios residuales guardados temporalmente."
+fi
+
+# 6. Sincronización con rebase para evitar el error de ramas divergentes
 echo "🔄 Syncing con GitHub (dev)..."
 
 git pull --rebase origin dev || {
@@ -40,7 +48,12 @@ git pull --rebase origin dev || {
     exit 1;
 }
 
-# 6. Subir a dev
+# 7. Restaurar cambios residuales si los había
+if [ "$STASHED" = true ]; then
+    git stash pop || echo "⚠️ No se pudieron restaurar los cambios del stash."
+fi
+
+# 8. Subir a dev
 echo "⬆️ Subiendo cambios a dev..."
 if git push origin dev; then
     echo "✅ Rama dev actualizada en GitHub."
