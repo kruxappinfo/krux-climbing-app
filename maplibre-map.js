@@ -9057,7 +9057,7 @@ function openSymbolsLegendModal() {
   // SVG inline reutilizando los mismos estilos que renderiza el mapa
   const symbols = [
     {
-      title: 'Vía de escalada',
+      title: 'Vía deportiva',
       desc: 'Cada círculo es una vía. El color indica el grado de dificultad. Pulsa para ver detalles, fotos y croquis.',
       svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="9" fill="#22c55e" stroke="#fff" stroke-width="2"/></svg>`
     },
@@ -9067,14 +9067,9 @@ function openSymbolsLegendModal() {
       svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="#22c55e" stroke="#fff" stroke-width="2"/><polyline points="10,17 14,21 22,12" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`
     },
     {
-      title: 'Multipunto con variantes',
+      title: 'Vías con variantes',
       desc: 'Grupo de vías que comparten salida o pertenecen al mismo enlace. El círculo central es la vía principal y cada anillo es una variante con su grado. Pulsa para abrir el carrusel.',
       svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="16" cy="16" r="13" fill="none" stroke="#3b82f6" stroke-width="2.5"/><circle cx="16" cy="16" r="9.5" fill="none" stroke="#fff" stroke-width="1"/><circle cx="16" cy="16" r="8.5" fill="none" stroke="#f59e0b" stroke-width="2.5"/><circle cx="16" cy="16" r="5" fill="#ef4444"/></svg>`
-    },
-    {
-      title: 'Conector de variantes',
-      desc: 'Línea discontinua de color que une visualmente las vías de un mismo grupo de variantes.',
-      svg: `<svg viewBox="0 0 32 32"><circle cx="6" cy="16" r="3" fill="#ef4444" stroke="#fff" stroke-width="1"/><line x1="9" y1="16" x2="23" y2="16" stroke="#ef4444" stroke-width="2" stroke-dasharray="3 2" opacity="0.7"/><circle cx="26" cy="16" r="3" fill="#ef4444" stroke="#fff" stroke-width="1"/></svg>`
     },
     {
       title: 'Sector',
