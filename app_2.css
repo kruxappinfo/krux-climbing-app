@@ -17678,6 +17678,64 @@ body.pwa-standalone .feed-header {
   color: #374151;
 }
 
+/* ================ SYMBOLS LEGEND MODAL ================ */
+
+.symbols-legend-content {
+  max-width: 420px;
+}
+
+.symbols-legend-body {
+  padding: 8px 16px 16px;
+}
+
+.symbol-legend-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 8px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.symbol-legend-item:last-child {
+  border-bottom: none;
+}
+
+.symbol-legend-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.symbol-legend-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.symbol-legend-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.symbol-legend-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 2px;
+}
+
+.symbol-legend-desc {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #6b7280;
+}
+
 /* =============================================
    POI Popup - Puntos de Interés
    ============================================= */

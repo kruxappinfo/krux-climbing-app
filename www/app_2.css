@@ -12297,13 +12297,15 @@ img[loading="lazy"]:not([src=""]) {
 }
 
 .ml-route-action-btn.bookmark-active {
-  background: transparent !important;
-  color: #d97706;
-  box-shadow: none !important;
+  background: rgba(234, 179, 8, 0.15) !important;
+  color: #eab308;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12) !important;
+  transform: scale(0.96);
 }
 
 .ml-route-action-btn.bookmark-active svg {
-  fill: #d97706;
+  fill: #eab308;
+  stroke: #eab308;
 }
 
 /* Contador de comentarios (badge) */
@@ -15010,6 +15012,190 @@ body.pwa-standalone .feed-header {
 }
 
 /* ========================================
+   SPOTTER MENU & NEW CREATION MODES
+   ======================================== */
+
+/* Menú desplegable flotante */
+.dev-spotter-menu {
+  position: absolute;
+  bottom: 350px;
+  right: 10px;
+  min-width: 220px;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 14px;
+  padding: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+  z-index: 1100;
+  animation: spotterMenuIn 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes spotterMenuIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dev-spotter-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  background: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #1a1a2e;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 44px;
+}
+
+.dev-spotter-menu-item:hover,
+.dev-spotter-menu-item:active {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.dev-spotter-menu-icon {
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* POI chevron */
+.dev-spotter-menu-item-poi {
+  position: relative;
+}
+
+.dev-spotter-poi-chevron {
+  margin-left: auto;
+  font-size: 18px;
+  color: #999;
+  transition: transform 0.15s;
+}
+
+/* Acordeón de tipos POI */
+.dev-spotter-poi-submenu {
+  display: none;
+  flex-direction: column;
+  padding: 2px 0 2px 38px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.dev-spotter-poi-submenu.open {
+  display: flex;
+}
+
+.dev-spotter-poi-type {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #444;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 36px;
+}
+
+.dev-spotter-poi-type:hover,
+.dev-spotter-poi-type:active {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.dev-spotter-poi-emoji {
+  font-size: 16px;
+  width: 22px;
+  text-align: center;
+}
+
+/* Toolbar flotante para dibujo de sector */
+.dev-sector-toolbar {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 12px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 1100;
+  animation: spotterMenuIn 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dev-sector-toolbar button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+
+.dev-sector-toolbar button:first-child {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.dev-sector-toolbar button:first-child:hover {
+  background: #e5e7eb;
+}
+
+.dev-sector-toolbar button:nth-child(2) {
+  background: #06b6d4;
+  color: white;
+}
+
+.dev-sector-toolbar button:nth-child(2):hover {
+  background: #0891b2;
+}
+
+.dev-sector-toolbar button:last-child {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.dev-sector-toolbar button:last-child:hover {
+  background: #fecaca;
+}
+
+/* Mobile adjustments for spotter menu */
+@media (max-width: 480px) {
+  .dev-spotter-menu {
+    right: 10px;
+    left: 10px;
+    min-width: auto;
+    bottom: 300px;
+  }
+
+  .dev-sector-toolbar {
+    top: auto;
+    bottom: 120px;
+    left: 16px;
+    right: 16px;
+    transform: none;
+    justify-content: center;
+  }
+}
+
+/* ========================================
    SECTOR IMAGES VIEWER & UPLOAD STYLES
    ======================================== */
 
@@ -17316,6 +17502,60 @@ body.pwa-standalone .feed-header {
   background: #f3f4f6;
 }
 
+/* Fila "Solo mis vías" */
+.gfp-myvias-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.gfp-myvias-row:hover {
+  background: #f3f4f6;
+}
+
+.gfp-myvias-row input[type="checkbox"] {
+  display: none;
+}
+
+.gfp-myvias-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #d1d5db;
+  border-radius: 5px;
+  background: white;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.gfp-myvias-icon svg {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.gfp-myvias-row input[type="checkbox"]:checked ~ .gfp-myvias-icon {
+  border-color: #15803d;
+  background: #dcfce7;
+}
+
+.gfp-myvias-row input[type="checkbox"]:checked ~ .gfp-myvias-icon svg {
+  opacity: 1;
+}
+
+.gfp-myvias-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+}
+
 /* ================ LEGEND MODAL ================ */
 
 .grade-legend-overlay {
@@ -17436,6 +17676,64 @@ body.pwa-standalone .feed-header {
   font-size: 12px;
   font-weight: 600;
   color: #374151;
+}
+
+/* ================ SYMBOLS LEGEND MODAL ================ */
+
+.symbols-legend-content {
+  max-width: 420px;
+}
+
+.symbols-legend-body {
+  padding: 8px 16px 16px;
+}
+
+.symbol-legend-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 8px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.symbol-legend-item:last-child {
+  border-bottom: none;
+}
+
+.symbol-legend-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.symbol-legend-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.symbol-legend-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.symbol-legend-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 2px;
+}
+
+.symbol-legend-desc {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #6b7280;
 }
 
 /* =============================================
@@ -17877,79 +18175,40 @@ body.pwa-standalone .feed-header {
    VARIANT CAROUSEL - Popup/BottomSheet Navigation
    ================================================ */
 
-/* Navigation bar: ‹ Variante X de Y › */
-.ml-variant-nav-bar {
-  display: flex;
+/* Variant navigation badges — same shape as .ml-route-grade */
+.ml-variant-badge-bar {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.ml-variant-nav-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: var(--bg-secondary, #f3f4f6);
-  border-radius: 50%;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary, #374151);
-  cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.ml-variant-nav-btn:hover {
-  background: var(--bg-tertiary, #e5e7eb);
-}
-
-.ml-variant-nav-btn:active {
-  transform: scale(0.9);
-}
-
-.ml-variant-nav-btn:disabled {
-  opacity: 0.3;
-  cursor: default;
-  transform: none;
-}
-
-.ml-variant-indicator {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary, #6b7280);
-  white-space: nowrap;
-  letter-spacing: 0.02em;
-}
-
-/* Dots indicator bar */
-.ml-variant-dots-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   gap: 6px;
-  margin-bottom: 10px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin-bottom: 12px;
 }
 
-.ml-variant-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--bg-tertiary, #d1d5db);
-  transition: background 0.2s, transform 0.2s;
+.ml-variant-badge {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  outline: none;
+  transition: background 0.18s, color 0.18s, box-shadow 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
 }
 
-.ml-variant-dot.active {
-  background: var(--accent-primary, #6366f1);
-  transform: scale(1.25);
+.ml-variant-badge.active {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
-/* Content area that updates on slide change */
+/* Content area that updates on variant change */
 #ml-variant-content {
   transition: opacity 0.15s ease;
 }
@@ -17958,20 +18217,13 @@ body.pwa-standalone .feed-header {
   opacity: 0;
 }
 
-/* Mobile bottom sheet variant nav override */
-.rbs-variant-nav-bar {
-  display: flex;
+/* Mobile bottom sheet variant badge bar */
+.rbs-variant-badge-bar {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 8px 16px 10px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.rbs-variant-dots-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   gap: 6px;
-  padding-bottom: 8px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 10px 16px 10px;
 }
