@@ -44,9 +44,18 @@ let mlUserPOIInteractionAttached = false;
 let mlUserSectorsInteractionAttached = false;
 let mlMyPendingViasInteractionAttached = false;
 let mlMyPendingSectorsInteractionAttached = false;
+let mlAdminPendingRoutesUnsub = null;
+let mlAdminPendingPOIUnsub = null;
+let mlAdminPendingSectorsUnsub = null;
+let mlAdminPendingViasInteractionAttached = false;
+let mlAdminPendingPOIInteractionAttached = false;
+let mlAdminPendingSectorsInteractionAttached = false;
 
 // Cache de escuelas pendientes del usuario (docId → {nombre, coordinates})
 const mlPendingSchoolsCache = new Map();
+
+// Edit state for admin drag-to-edit geometry
+const mlEditState = { markers: [], docId: null, collection: null, type: null };
 
 function mlClearApprovedListeners() {
   if (mlApprovedRoutesUnsub) { try { mlApprovedRoutesUnsub(); } catch (e) {} mlApprovedRoutesUnsub = null; }
@@ -55,6 +64,9 @@ function mlClearApprovedListeners() {
   if (mlMyPendingRoutesUnsub) { try { mlMyPendingRoutesUnsub(); } catch (e) {} mlMyPendingRoutesUnsub = null; }
   if (mlMyPendingPOIUnsub) { try { mlMyPendingPOIUnsub(); } catch (e) {} mlMyPendingPOIUnsub = null; }
   if (mlMyPendingSectorsUnsub) { try { mlMyPendingSectorsUnsub(); } catch (e) {} mlMyPendingSectorsUnsub = null; }
+  if (mlAdminPendingRoutesUnsub) { try { mlAdminPendingRoutesUnsub(); } catch (e) {} mlAdminPendingRoutesUnsub = null; }
+  if (mlAdminPendingPOIUnsub) { try { mlAdminPendingPOIUnsub(); } catch (e) {} mlAdminPendingPOIUnsub = null; }
+  if (mlAdminPendingSectorsUnsub) { try { mlAdminPendingSectorsUnsub(); } catch (e) {} mlAdminPendingSectorsUnsub = null; }
 }
 
 // ============================================
@@ -763,6 +775,27 @@ async function checkIsAdmin() {
   }
 }
 
+let _cachedAdminRole = undefined;
+let _cachedAdminRoleTime = 0;
+
+async function checkAdminRole() {
+  const now = Date.now();
+  if (_cachedAdminRole !== undefined && (now - _cachedAdminRoleTime) < ADMIN_CACHE_DURATION) {
+    return _cachedAdminRole;
+  }
+  try {
+    if (typeof auth === 'undefined' || !auth.currentUser) {
+      _cachedAdminRole = null; _cachedAdminRoleTime = now; return null;
+    }
+    const doc = await db.collection('admins').doc(auth.currentUser.uid).get();
+    _cachedAdminRole = doc.exists ? (doc.data().role || null) : null;
+    _cachedAdminRoleTime = now;
+    return _cachedAdminRole;
+  } catch (e) {
+    _cachedAdminRole = null; _cachedAdminRoleTime = now; return null;
+  }
+}
+
 /**
  * Abre el editor de vías para el sector actualmente visible
  */
@@ -1028,8 +1061,14 @@ function onMapLoad() {
   // Cargar escuelas aprobadas desde Firestore (marcadores adicionales)
   loadApprovedSchoolsFromFirestore();
 
-  // Cargar escuelas pendientes del usuario actual (solo el autor las ve)
-  loadMyPendingSchoolsFromFirestore();
+  // Cargar escuelas pendientes: admin ve todas, spotter solo las propias
+  checkAdminRole().then(role => {
+    if (role === 'admin') {
+      loadAllPendingSchoolsForAdmin();
+    } else {
+      loadMyPendingSchoolsFromFirestore();
+    }
+  });
 
   // NO cargar escuela por defecto - el usuario selecciona desde markers
   // mlLoadSchool('valeria');
@@ -1609,10 +1648,16 @@ async function mlLoadSchoolVectorTiles(school) {
   // Cargar POIs aprobados desde Firestore
   await loadApprovedPOIFromFirestore(school.id);
 
-  // Cargar ítems pendientes del usuario actual
-  loadMyPendingRoutesFromFirestore(school.id, school.zoomLevels?.vias || 14);
-  loadMyPendingPOIFromFirestore(school.id);
-  loadMyPendingSectorsFromFirestore(school.id);
+  // Cargar ítems pendientes según rol
+  checkAdminRole().then(role => {
+    if (role === 'admin') {
+      loadAllPendingForAdmin(school.id, school.zoomLevels?.vias || 14);
+    } else {
+      loadMyPendingRoutesFromFirestore(school.id, school.zoomLevels?.vias || 14);
+      loadMyPendingPOIFromFirestore(school.id);
+      loadMyPendingSectorsFromFirestore(school.id);
+    }
+  });
 }
 
 /**
@@ -1742,10 +1787,16 @@ async function mlLoadSchoolGeoJSON(school) {
   // Cargar POIs aprobados desde Firestore
   await loadApprovedPOIFromFirestore(school.id);
 
-  // Cargar ítems pendientes del usuario actual
-  loadMyPendingRoutesFromFirestore(school.id, school.zoomLevels?.vias || 14);
-  loadMyPendingPOIFromFirestore(school.id);
-  loadMyPendingSectorsFromFirestore(school.id);
+  // Cargar ítems pendientes según rol
+  checkAdminRole().then(role => {
+    if (role === 'admin') {
+      loadAllPendingForAdmin(school.id, school.zoomLevels?.vias || 14);
+    } else {
+      loadMyPendingRoutesFromFirestore(school.id, school.zoomLevels?.vias || 14);
+      loadMyPendingPOIFromFirestore(school.id);
+      loadMyPendingSectorsFromFirestore(school.id);
+    }
+  });
 
   // Cargar parkings
   if (school.geojson.parkings) {
@@ -2143,8 +2194,8 @@ async function mlLoadGeoJSONLayer(layerId, url, type, paint, minzoom = 0, layout
  * Limpia las capas de la escuela actual
  */
 function mlClearSchoolLayers() {
-  const layerIds = ['vias-ticks-circle-layer', 'vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer', 'vias-variant-connector-layer', 'vias-usuarios-layer', 'poi-usuarios-layer', 'sectores-usuarios-layer', 'sectores-usuarios-casing-layer', 'escuelas-usuarios-layer', 'escuelas-usuarios-labels-layer', 'pending-my-routes-layer', 'pending-my-poi-layer', 'pending-my-sectors-layer', 'pending-my-sectors-casing-layer'];
-  const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source', 'vias-variant-connector-source', 'vias-usuarios-source', 'poi-usuarios-source', 'sectores-usuarios-source', 'escuelas-usuarios-source', 'pending-my-routes-source', 'pending-my-poi-source', 'pending-my-sectors-source'];
+  const layerIds = ['vias-ticks-circle-layer', 'vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer', 'vias-variant-connector-layer', 'vias-usuarios-layer', 'poi-usuarios-layer', 'sectores-usuarios-layer', 'sectores-usuarios-casing-layer', 'escuelas-usuarios-layer', 'escuelas-usuarios-labels-layer', 'pending-my-routes-layer', 'pending-my-poi-layer', 'pending-my-sectors-layer', 'pending-my-sectors-casing-layer', 'admin-pending-routes-layer', 'admin-pending-poi-layer', 'admin-pending-sectors-layer', 'admin-pending-sectors-casing-layer'];
+  const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source', 'vias-variant-connector-source', 'vias-usuarios-source', 'poi-usuarios-source', 'sectores-usuarios-source', 'escuelas-usuarios-source', 'pending-my-routes-source', 'pending-my-poi-source', 'pending-my-sectors-source', 'admin-pending-routes-source', 'admin-pending-poi-source', 'admin-pending-sectors-source'];
 
   // Cancelar listeners realtime antes de eliminar capas/sources
   mlClearApprovedListeners();
@@ -2155,6 +2206,12 @@ function mlClearSchoolLayers() {
   mlUserSectorsInteractionAttached = false;
   mlMyPendingViasInteractionAttached = false;
   mlMyPendingSectorsInteractionAttached = false;
+  mlAdminPendingViasInteractionAttached = false;
+  mlAdminPendingPOIInteractionAttached = false;
+  mlAdminPendingSectorsInteractionAttached = false;
+
+  // Cancel any active geometry edit
+  mlCancelPendingEdit();
 
   // Limpiar estado de variantes
   mlClearVariantMarkers();
@@ -8762,9 +8819,450 @@ async function mlLoadPendingSchool(schoolId, coordinates, skipFlyTo = false) {
     loadApprovedSectorsFromFirestore(schoolId),
     loadApprovedPOIFromFirestore(schoolId),
   ]);
-  loadMyPendingRoutesFromFirestore(schoolId);
-  loadMyPendingPOIFromFirestore(schoolId);
-  loadMyPendingSectorsFromFirestore(schoolId);
+  checkAdminRole().then(role => {
+    if (role === 'admin') {
+      loadAllPendingForAdmin(schoolId);
+    } else {
+      loadMyPendingRoutesFromFirestore(schoolId);
+      loadMyPendingPOIFromFirestore(schoolId);
+      loadMyPendingSectorsFromFirestore(schoolId);
+    }
+  });
+}
+
+// ============================================
+// ADMIN: ALL PENDING ITEMS OVERLAY
+// ============================================
+
+/**
+ * Carga TODOS los ítems pendientes de TODOS los Spotters (solo para admins).
+ * Estilo: línea/borde rojo punteado con botones de eliminar y editar en popup.
+ */
+async function loadAllPendingForAdmin(schoolId, minZoom = 14) {
+  if (typeof firebase === 'undefined' || !firebase.firestore) return;
+  if (!firebase.auth().currentUser) return;
+
+  if (mlAdminPendingRoutesUnsub) { try { mlAdminPendingRoutesUnsub(); } catch (e) {} mlAdminPendingRoutesUnsub = null; }
+  if (mlAdminPendingPOIUnsub) { try { mlAdminPendingPOIUnsub(); } catch (e) {} mlAdminPendingPOIUnsub = null; }
+  if (mlAdminPendingSectorsUnsub) { try { mlAdminPendingSectorsUnsub(); } catch (e) {} mlAdminPendingSectorsUnsub = null; }
+
+  const db = firebase.firestore();
+  const school = MAPLIBRE_SCHOOLS[schoolId];
+
+  // --- Pending Routes ---
+  const routeSourceId = 'admin-pending-routes-source';
+  const routeLayerId = 'admin-pending-routes-layer';
+
+  mlAdminPendingRoutesUnsub = db.collection('pending_routes')
+    .where('status', '==', 'pending')
+    .onSnapshot(snapshot => {
+      if (!mlMap || mlCurrentSchool !== schoolId) {
+        if (mlAdminPendingRoutesUnsub) { try { mlAdminPendingRoutesUnsub(); } catch (e) {} mlAdminPendingRoutesUnsub = null; }
+        return;
+      }
+      const features = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.schoolId !== schoolId) return;
+        let coords = data.coordinates;
+        if (!coords && data.geojsonFeature?.geometry?.coordinates) coords = data.geojsonFeature.geometry.coordinates;
+        if (!coords || !Array.isArray(coords)) return;
+        features.push({
+          type: 'Feature',
+          properties: {
+            docId: doc.id,
+            nombre: data.nombre || 'Sin nombre',
+            grado1: data.grado1 || '?',
+            sector: data.sector || '',
+            createdBy: data.createdBy || '',
+            lng: coords[0],
+            lat: coords[1]
+          },
+          geometry: { type: 'Point', coordinates: coords }
+        });
+      });
+      console.log(`[AdminPending] ${features.length} vías pendientes para ${schoolId}`);
+      const geojson = { type: 'FeatureCollection', features };
+      if (mlMap.getSource(routeSourceId)) {
+        mlMap.getSource(routeSourceId).setData(geojson);
+      } else {
+        mlMap.addSource(routeSourceId, { type: 'geojson', data: geojson });
+        mlMap.addLayer({
+          id: routeLayerId,
+          type: 'circle',
+          source: routeSourceId,
+          minzoom: minZoom,
+          paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, isMobileDevice() ? 3 : 4, 18, isMobileDevice() ? 7 : 10],
+            'circle-color': '#FEE2E2',
+            'circle-stroke-color': '#DC2626',
+            'circle-stroke-width': isMobileDevice() ? 2.5 : 3,
+            'circle-opacity': 0.9
+          }
+        });
+        if (!mlAdminPendingViasInteractionAttached) {
+          mlMap.on('click', routeLayerId, (e) => {
+            if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+            if (!e.features || !e.features.length) return;
+            const props = e.features[0].properties;
+            const coords = e.features[0].geometry.coordinates;
+            new maplibregl.Popup({ closeButton: true, maxWidth: '290px' })
+              .setLngLat(coords)
+              .setHTML(`<div style="padding:10px;font-size:13px;">
+                <strong style="color:#DC2626;">⏳ ${props.nombre}</strong><br>
+                Grado: ${props.grado1} · Sector: ${props.sector || '—'}<br>
+                <small style="color:#9ca3af;">Por: ${props.createdBy}</small><br><br>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button onclick="mlDeletePendingItem('pending_routes','${props.docId}');this.closest('.maplibregl-popup').remove();"
+                    style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                    🗑️ Eliminar
+                  </button>
+                  <button onclick="mlStartEditPending('pending_routes','${props.docId}','Point',[${props.lng},${props.lat}]);this.closest('.maplibregl-popup').remove();"
+                    style="flex:1;background:#2563EB;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                    ✏️ Editar
+                  </button>
+                </div>
+              </div>`)
+              .addTo(mlMap);
+          });
+          mlAdminPendingViasInteractionAttached = true;
+        }
+      }
+    }, err => console.error('[AdminPending] routes error:', err));
+
+  // --- Pending POIs ---
+  const poiSourceId = 'admin-pending-poi-source';
+  const poiLayerId = 'admin-pending-poi-layer';
+
+  mlAdminPendingPOIUnsub = db.collection('pending_poi')
+    .where('status', '==', 'pending')
+    .onSnapshot(snapshot => {
+      if (!mlMap || mlCurrentSchool !== schoolId) {
+        if (mlAdminPendingPOIUnsub) { try { mlAdminPendingPOIUnsub(); } catch (e) {} mlAdminPendingPOIUnsub = null; }
+        return;
+      }
+      const features = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.schoolId && data.schoolId !== schoolId) return;
+        if (!data.coordinates || !Array.isArray(data.coordinates)) return;
+        const desc = data.descripcio || '';
+        const emoji = getPOIEmoji(desc);
+        const imgId = 'poi-emoji-' + emoji;
+        if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, createEmojiImage(emoji, 48), { sdf: false });
+        features.push({
+          type: 'Feature',
+          properties: {
+            docId: doc.id,
+            _emoji: emoji, _emojiIcon: imgId, _poiType: desc,
+            nombre: data.nombre || '',
+            createdBy: data.createdBy || '',
+            lng: data.coordinates[0],
+            lat: data.coordinates[1]
+          },
+          geometry: { type: 'Point', coordinates: data.coordinates }
+        });
+      });
+      const geojson = { type: 'FeatureCollection', features };
+      if (mlMap.getSource(poiSourceId)) {
+        mlMap.getSource(poiSourceId).setData(geojson);
+      } else {
+        mlMap.addSource(poiSourceId, { type: 'geojson', data: geojson });
+        mlMap.addLayer({
+          id: poiLayerId,
+          type: 'symbol',
+          source: poiSourceId,
+          minzoom: 13,
+          paint: { 'icon-opacity': 0.8 },
+          layout: {
+            'icon-image': ['get', '_emojiIcon'],
+            'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.35, 16, 0.65, 20, 1.0],
+            'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-anchor': 'center'
+          }
+        });
+        if (!mlAdminPendingPOIInteractionAttached) {
+          mlMap.on('click', poiLayerId, (e) => {
+            if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+            if (!e.features || !e.features.length) return;
+            const props = e.features[0].properties;
+            const coords = e.features[0].geometry.coordinates.slice();
+            new maplibregl.Popup({ closeButton: true, maxWidth: '290px' })
+              .setLngLat(coords)
+              .setHTML(`<div style="padding:10px;font-size:13px;">
+                <strong style="color:#DC2626;">${props._emoji || '📍'} ${props._poiType}</strong>
+                ${props.nombre ? `<br>${props.nombre}` : ''}
+                <br><small style="color:#9ca3af;">Por: ${props.createdBy}</small><br><br>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button onclick="mlDeletePendingItem('pending_poi','${props.docId}');this.closest('.maplibregl-popup').remove();"
+                    style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                    🗑️ Eliminar
+                  </button>
+                  <button onclick="mlStartEditPending('pending_poi','${props.docId}','Point',[${props.lng},${props.lat}]);this.closest('.maplibregl-popup').remove();"
+                    style="flex:1;background:#2563EB;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                    ✏️ Editar
+                  </button>
+                </div>
+              </div>`)
+              .addTo(mlMap);
+          });
+          mlAdminPendingPOIInteractionAttached = true;
+        }
+      }
+    }, err => console.error('[AdminPending] POI error:', err));
+
+  // --- Pending Sectors ---
+  const sectorSourceId = 'admin-pending-sectors-source';
+  const sectorCasingId = 'admin-pending-sectors-casing-layer';
+  const sectorLineId = 'admin-pending-sectors-layer';
+  const sectorMinZoom = school?.zoomLevels?.sectores || 12;
+
+  mlAdminPendingSectorsUnsub = db.collection('pending_sectors')
+    .where('status', '==', 'pending')
+    .onSnapshot(snapshot => {
+      if (!mlMap || mlCurrentSchool !== schoolId) {
+        if (mlAdminPendingSectorsUnsub) { try { mlAdminPendingSectorsUnsub(); } catch (e) {} mlAdminPendingSectorsUnsub = null; }
+        return;
+      }
+      const features = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.schoolId && data.schoolId !== schoolId) return;
+        if (!data.vertices || data.vertices.length < 2) return;
+        const coords = data.vertices.map(v => [v.lng, v.lat]);
+        const verticesCoordsStr = '[' + coords.map(c => `[${c[0]},${c[1]}]`).join(',') + ']';
+        features.push({
+          type: 'Feature',
+          properties: {
+            docId: doc.id,
+            nombre: data.nombre || 'Sin nombre',
+            createdBy: data.createdBy || '',
+            verticesCoordsStr
+          },
+          geometry: { type: 'LineString', coordinates: coords }
+        });
+      });
+      const geojson = { type: 'FeatureCollection', features };
+      if (mlMap.getSource(sectorSourceId)) {
+        mlMap.getSource(sectorSourceId).setData(geojson);
+      } else {
+        mlMap.addSource(sectorSourceId, { type: 'geojson', data: geojson });
+        mlMap.addLayer({
+          id: sectorCasingId,
+          type: 'line', source: sectorSourceId, minzoom: sectorMinZoom,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': '#DC2626',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 12, 4, 14, 6, 16, 10],
+            'line-opacity': 0.35,
+            'line-dasharray': [3, 2]
+          }
+        });
+        mlMap.addLayer({
+          id: sectorLineId,
+          type: 'line', source: sectorSourceId, minzoom: sectorMinZoom,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': '#EF4444',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2, 14, 3, 16, 5],
+            'line-opacity': 0.9,
+            'line-dasharray': [4, 3]
+          }
+        });
+        if (!mlAdminPendingSectorsInteractionAttached) {
+          mlMap.on('click', sectorLineId, (e) => {
+            if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+            if (!e.features || !e.features.length) return;
+            const props = e.features[0].properties;
+            new maplibregl.Popup({ closeButton: true, maxWidth: '290px' })
+              .setLngLat(e.lngLat)
+              .setHTML(`<div style="padding:10px;font-size:13px;">
+                <strong style="color:#DC2626;">📐 ${props.nombre}</strong><br>
+                <small style="color:#9ca3af;">Por: ${props.createdBy}</small><br><br>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button onclick="mlDeletePendingItem('pending_sectors','${props.docId}');this.closest('.maplibregl-popup').remove();"
+                    style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                    🗑️ Eliminar
+                  </button>
+                  <button onclick="mlStartEditPending('pending_sectors','${props.docId}','LineString',${props.verticesCoordsStr});this.closest('.maplibregl-popup').remove();"
+                    style="flex:1;background:#2563EB;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                    ✏️ Editar
+                  </button>
+                </div>
+              </div>`)
+              .addTo(mlMap);
+          });
+          mlAdminPendingSectorsInteractionAttached = true;
+        }
+      }
+    }, err => console.error('[AdminPending] sectors error:', err));
+}
+
+/**
+ * Carga TODAS las escuelas pendientes en el mapa (solo para admins).
+ */
+async function loadAllPendingSchoolsForAdmin() {
+  if (typeof firebase === 'undefined' || !firebase.firestore) return;
+  try {
+    const db = firebase.firestore();
+    const snapshot = await db.collection('pending_schools')
+      .where('status', '==', 'pending')
+      .get();
+    if (snapshot.empty) return;
+
+    const features = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (!data.coordinates || !Array.isArray(data.coordinates)) return;
+      mlPendingSchoolsCache.set(doc.id, { nombre: data.nombre, coordinates: data.coordinates });
+      features.push({
+        type: 'Feature',
+        properties: {
+          id: doc.id,
+          nombre: data.nombre || 'Escuela pendiente',
+          createdBy: data.createdBy || '',
+          coords: JSON.stringify(data.coordinates)
+        },
+        geometry: { type: 'Point', coordinates: data.coordinates }
+      });
+    });
+    if (!features.length) return;
+
+    if (!mlMap.hasImage('school-icon-orange')) await loadSchoolIcons();
+
+    const sourceId = 'admin-pending-schools-source';
+    const layerId = 'admin-pending-schools-layer';
+    if (mlMap.getLayer(layerId)) mlMap.removeLayer(layerId);
+    if (mlMap.getSource(sourceId)) mlMap.removeSource(sourceId);
+
+    mlMap.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+    mlMap.addLayer({
+      id: layerId,
+      type: 'symbol',
+      source: sourceId,
+      minzoom: 5,
+      maxzoom: 12,
+      layout: {
+        'icon-image': 'school-icon-orange',
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.3, 8, 0.5, 10, 0.65, 12, 0.75],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'text-field': ['concat', ['get', 'nombre'], '\n⏳'],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 7, 10, 12, 13],
+        'text-offset': [0, 2.4],
+        'text-anchor': 'top'
+      },
+      paint: {
+        'text-color': '#DC2626',
+        'text-halo-color': 'rgba(255,255,255,0.95)',
+        'text-halo-width': 2
+      }
+    });
+
+    mlMap.on('mouseenter', layerId, () => { mlMap.getCanvas().style.cursor = 'pointer'; });
+    mlMap.on('mouseleave', layerId, () => { mlMap.getCanvas().style.cursor = ''; });
+    mlMap.on('click', layerId, (e) => {
+      if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+      if (!e.features || !e.features.length) return;
+      const props = e.features[0].properties;
+      const coords = JSON.parse(props.coords);
+      new maplibregl.Popup({ closeButton: true, maxWidth: '290px' })
+        .setLngLat(coords)
+        .setHTML(`<div style="padding:10px;font-size:13px;max-width:250px;">
+          <strong style="color:#DC2626;">${props.nombre}</strong><br>
+          <small style="color:#9ca3af;">Por: ${props.createdBy}</small><br>
+          <span style="color:#DC2626;font-weight:600;">⏳ Pendiente de aprobación</span><br><br>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button onclick="mlLoadSchool('${props.id}',true);this.closest('.maplibregl-popup').remove();"
+              style="background:#2563EB;color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:600;">
+              Gestionar sectores y vías
+            </button>
+            <button onclick="mlDeletePendingItem('pending_schools','${props.id}');this.closest('.maplibregl-popup').remove();"
+              style="background:#DC2626;color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:600;">
+              🗑️ Eliminar escuela
+            </button>
+          </div>
+        </div>`)
+        .addTo(mlMap);
+    });
+    console.log(`[AdminPendingSchools] ${features.length} escuelas pendientes cargadas`);
+  } catch (err) {
+    console.error('[AdminPendingSchools] Error:', err);
+  }
+}
+
+// ============================================
+// ADMIN: GEOMETRY EDITING (drag-to-reposition)
+// ============================================
+
+async function mlDeletePendingItem(collection, docId) {
+  try {
+    await firebase.firestore().collection(collection).doc(docId).delete();
+    if (typeof showRDToast === 'function') showRDToast('Propuesta eliminada', 'success');
+    else console.log(`[Admin] Eliminado ${collection}/${docId}`);
+  } catch (err) {
+    console.error('[Admin] Delete error:', err);
+    if (typeof showRDToast === 'function') showRDToast('Error al eliminar', 'error');
+  }
+}
+
+function mlStartEditPending(collection, docId, type, coords) {
+  mlCancelPendingEdit();
+
+  mlEditState.docId = docId;
+  mlEditState.collection = collection;
+  mlEditState.type = type;
+
+  if (type === 'Point') {
+    const el = document.createElement('div');
+    el.style.cssText = 'width:26px;height:26px;background:#DC2626;border:3px solid white;border-radius:50%;cursor:move;box-shadow:0 2px 8px rgba(0,0,0,0.45);';
+    const marker = new maplibregl.Marker({ element: el, draggable: true })
+      .setLngLat(coords)
+      .addTo(mlMap);
+    mlEditState.markers.push(marker);
+  } else if (type === 'LineString') {
+    coords.forEach(c => {
+      const el = document.createElement('div');
+      el.style.cssText = 'width:16px;height:16px;background:white;border:2.5px solid #DC2626;border-radius:50%;cursor:move;box-shadow:0 1px 5px rgba(0,0,0,0.4);';
+      const marker = new maplibregl.Marker({ element: el, draggable: true })
+        .setLngLat(c)
+        .addTo(mlMap);
+      mlEditState.markers.push(marker);
+    });
+  }
+
+  const toolbar = document.getElementById('admin-edit-toolbar');
+  if (toolbar) toolbar.classList.remove('hidden');
+}
+
+async function mlSavePendingEdit() {
+  if (!mlEditState.docId) return;
+  const { docId, collection, type, markers } = mlEditState;
+  try {
+    if (type === 'Point') {
+      const ll = markers[0].getLngLat();
+      await firebase.firestore().collection(collection).doc(docId).update({ coordinates: [ll.lng, ll.lat] });
+    } else if (type === 'LineString') {
+      const vertices = markers.map(m => { const ll = m.getLngLat(); return { lng: ll.lng, lat: ll.lat }; });
+      await firebase.firestore().collection(collection).doc(docId).update({ vertices });
+    }
+    if (typeof showRDToast === 'function') showRDToast('Geometría actualizada', 'success');
+    else console.log('[Admin] Geometría guardada');
+  } catch (err) {
+    console.error('[Admin] Save error:', err);
+    if (typeof showRDToast === 'function') showRDToast('Error al guardar', 'error');
+  }
+  mlCancelPendingEdit();
+}
+
+function mlCancelPendingEdit() {
+  mlEditState.markers.forEach(m => { try { m.remove(); } catch (e) {} });
+  mlEditState.markers = [];
+  mlEditState.docId = null;
+  mlEditState.collection = null;
+  mlEditState.type = null;
+  const toolbar = document.getElementById('admin-edit-toolbar');
+  if (toolbar) toolbar.classList.add('hidden');
 }
 
 async function loadApprovedSchoolsFromFirestore() {
@@ -9589,6 +10087,10 @@ window.loadApprovedPOIFromFirestore = loadApprovedPOIFromFirestore;
 window.loadApprovedSectorsFromFirestore = loadApprovedSectorsFromFirestore;
 window.loadApprovedSchoolsFromFirestore = loadApprovedSchoolsFromFirestore;
 window.updateAscentTicksLayer = updateAscentTicksLayer;
+window.mlDeletePendingItem = mlDeletePendingItem;
+window.mlStartEditPending = mlStartEditPending;
+window.mlSavePendingEdit = mlSavePendingEdit;
+window.mlCancelPendingEdit = mlCancelPendingEdit;
 
 // Debug: llamar desde la consola del navegador con debugApprovedItems()
 window.debugApprovedItems = async function() {
