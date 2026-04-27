@@ -7806,6 +7806,7 @@ async function loadApprovedRoutesFromFirestore(schoolId, minZoom = 14) {
               type: 'Feature',
               properties: {
                 fid: `user_${doc.id}`,
+                docId: doc.id,
                 nombre: data.nombre || data.geojsonFeature?.properties?.nombre || 'Sin nombre',
                 grado1: data.grado1 || data.geojsonFeature?.properties?.grado1 || '?',
                 sector: data.sector || data.geojsonFeature?.properties?.sector || '',
@@ -7816,7 +7817,9 @@ async function loadApprovedRoutesFromFirestore(schoolId, minZoom = 14) {
                 variante: data.variante || data.geojsonFeature?.properties?.variante || 'NO',
                 isUserRoute: true,
                 approvedBy: data.approvedBy || '',
-                createdByEmail: data.createdByEmail || ''
+                createdByEmail: data.createdByEmail || '',
+                lng: coordinates[0],
+                lat: coordinates[1]
               },
               geometry: { type: 'Point', coordinates }
             });
@@ -7960,6 +7963,20 @@ async function showUserRoutePopup(props, coords) {
   const hasExp = props.exp1;
   const hasLong = props.long1;
 
+  // Comprobar si el admin puede editar/eliminar esta vía
+  const adminRole = await checkAdminRole();
+  const adminRouteHTML = adminRole === 'admin' && props.docId ? `
+    <div style="display:flex;gap:8px;padding:8px 0 0;border-top:1px solid #e5e7eb;margin-top:4px;">
+      <button onclick="mlDeletePendingItem('pending_routes','${props.docId}');mlCloseRoutePopup();"
+        style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+        🗑️ Eliminar
+      </button>
+      <button onclick="mlStartEditPending('pending_routes','${props.docId}','Point',[${props.lng},${props.lat}]);mlCloseRoutePopup();"
+        style="flex:1;background:#2563EB;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+        ✏️ Mover
+      </button>
+    </div>` : '';
+
   // Obtener votaciones de aleje desde Firestore
   const alejeData = await getAlejeVotes(schoolId, routeId);
   const alejeHTML = generateAlejeBarHTML(routeId, schoolId, alejeData.avg, alejeData.userVote);
@@ -8058,6 +8075,9 @@ async function showUserRoutePopup(props, coords) {
           Subida por: ${props.createdByEmail}
         </div>
       ` : ''}
+
+      <!-- Acciones de admin (solo visible para admins) -->
+      ${adminRouteHTML}
     </div>
   `;
 
@@ -8089,7 +8109,7 @@ function setupUserPOIInteraction(layerId) {
   mlMap.on('mouseleave', layerId, () => {
     mlMap.getCanvas().style.cursor = '';
   });
-  mlMap.on('click', layerId, (e) => {
+  mlMap.on('click', layerId, async (e) => {
     if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
     const props = e.features[0].properties;
@@ -8099,14 +8119,28 @@ function setupUserPOIInteraction(layerId) {
     const nombre = props.nombre || '';
     const link = props.link || '';
 
+    const adminRole = await checkAdminRole();
+    const adminHTML = adminRole === 'admin' && props.docId ? `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <button onclick="mlDeletePendingItem('pending_poi','${props.docId}');this.closest('.maplibregl-popup').remove();"
+          style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+          🗑️ Eliminar
+        </button>
+        <button onclick="mlStartEditPending('pending_poi','${props.docId}','Point',[${props.lng},${props.lat}]);this.closest('.maplibregl-popup').remove();"
+          style="flex:1;background:#2563EB;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+          ✏️ Mover
+        </button>
+      </div>` : '';
+
     const popupHTML = `<div style="padding:8px;font-size:14px;">
       <strong>${emoji} ${desc}</strong>
       ${nombre ? `<br>${nombre}` : ''}
       ${link ? `<br><a href="${link}" target="_blank" style="color:#4285f4;">Ver enlace</a>` : ''}
       <br><small style="color:#999;">Aportado por ${props.createdByEmail || 'Spotter'}</small>
+      ${adminHTML}
     </div>`;
 
-    new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
+    new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px' })
       .setLngLat(coords)
       .setHTML(popupHTML)
       .addTo(mlMap);
@@ -8161,6 +8195,7 @@ async function loadApprovedPOIFromFirestore(schoolId) {
             features.push({
               type: 'Feature',
               properties: {
+                docId: doc.id,
                 descripcio: desc,
                 nombre: data.nombre || '',
                 link: data.link || '',
@@ -8168,7 +8203,9 @@ async function loadApprovedPOIFromFirestore(schoolId) {
                 _poiType: desc,
                 _emojiIcon: 'poi-emoji-' + emoji,
                 isUserPOI: true,
-                createdByEmail: data.createdByEmail || ''
+                createdByEmail: data.createdByEmail || '',
+                lng: data.coordinates[0],
+                lat: data.coordinates[1]
               },
               geometry: { type: 'Point', coordinates: data.coordinates }
             });
@@ -8239,20 +8276,34 @@ function setupUserSectorsInteraction(lineLayerId) {
   mlMap.on('mouseleave', lineLayerId, () => {
     mlMap.getCanvas().style.cursor = '';
   });
-  mlMap.on('click', lineLayerId, (e) => {
+  mlMap.on('click', lineLayerId, async (e) => {
     if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
     const props = e.features[0].properties;
     const coords = e.lngLat;
+
+    const adminRole = await checkAdminRole();
+    const adminHTML = adminRole === 'admin' && props.docId ? `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <button onclick="mlDeletePendingItem('pending_sectors','${props.docId}');this.closest('.maplibregl-popup').remove();"
+          style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+          🗑️ Eliminar
+        </button>
+        <button onclick="mlStartEditPending('pending_sectors','${props.docId}','LineString',${props.verticesCoordsStr});this.closest('.maplibregl-popup').remove();"
+          style="flex:1;background:#2563EB;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+          ✏️ Editar vértices
+        </button>
+      </div>` : '';
 
     const popupHTML = `<div style="padding:8px;font-size:14px;">
       <strong>${props.nombre}</strong>
       ${props.restr === 'SI' ? `<br>⚠️ Restricción: ${props.Fecha_inicio || ''} - ${props.Fecha_fin || ''}` : ''}
       ${props.exposicion ? `<br>☀️ ${props.exposicion}` : ''}
       <br><small style="color:#999;">Aportado por ${props.createdByEmail || 'Spotter'}</small>
+      ${adminHTML}
     </div>`;
 
-    new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
+    new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px' })
       .setLngLat(coords)
       .setHTML(popupHTML)
       .addTo(mlMap);
@@ -8314,13 +8365,15 @@ async function loadApprovedSectorsFromFirestore(schoolId) {
               type: 'Feature',
               properties: {
                 fid: Math.abs(hash),
+                docId: doc.id,
                 nombre: data.nombre || 'Sin nombre',
                 restr: data.restr || 'NO',
                 exposicion: data.exposicion || '',
                 Fecha_inicio: data.Fecha_inicio || '',
                 Fecha_fin: data.Fecha_fin || '',
                 isUserSector: true,
-                createdByEmail: data.createdByEmail || ''
+                createdByEmail: data.createdByEmail || '',
+                verticesCoordsStr: '[' + coords.map(c => `[${c[0]},${c[1]}]`).join(',') + ']'
               },
               geometry: { type: 'LineString', coordinates: coords }
             });
@@ -10087,6 +10140,7 @@ window.loadApprovedPOIFromFirestore = loadApprovedPOIFromFirestore;
 window.loadApprovedSectorsFromFirestore = loadApprovedSectorsFromFirestore;
 window.loadApprovedSchoolsFromFirestore = loadApprovedSchoolsFromFirestore;
 window.updateAscentTicksLayer = updateAscentTicksLayer;
+window.mlCloseRoutePopup = () => { if (mlRoutePopup) mlRoutePopup.remove(); };
 window.mlDeletePendingItem = mlDeletePendingItem;
 window.mlStartEditPending = mlStartEditPending;
 window.mlSavePendingEdit = mlSavePendingEdit;
