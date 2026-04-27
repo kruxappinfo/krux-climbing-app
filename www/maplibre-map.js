@@ -69,6 +69,23 @@ function mlClearApprovedListeners() {
   if (mlAdminPendingSectorsUnsub) { try { mlAdminPendingSectorsUnsub(); } catch (e) {} mlAdminPendingSectorsUnsub = null; }
 }
 
+// Cancels pending (user-specific) subscriptions and empties their map layers.
+// Called when the user logs out so stale personal data is not left on the map.
+function mlClearPendingItemsLayers() {
+  if (mlMyPendingRoutesUnsub) { try { mlMyPendingRoutesUnsub(); } catch (e) {} mlMyPendingRoutesUnsub = null; }
+  if (mlMyPendingPOIUnsub) { try { mlMyPendingPOIUnsub(); } catch (e) {} mlMyPendingPOIUnsub = null; }
+  if (mlMyPendingSectorsUnsub) { try { mlMyPendingSectorsUnsub(); } catch (e) {} mlMyPendingSectorsUnsub = null; }
+  if (mlAdminPendingRoutesUnsub) { try { mlAdminPendingRoutesUnsub(); } catch (e) {} mlAdminPendingRoutesUnsub = null; }
+  if (mlAdminPendingPOIUnsub) { try { mlAdminPendingPOIUnsub(); } catch (e) {} mlAdminPendingPOIUnsub = null; }
+  if (mlAdminPendingSectorsUnsub) { try { mlAdminPendingSectorsUnsub(); } catch (e) {} mlAdminPendingSectorsUnsub = null; }
+
+  if (!mlMap) return;
+  const empty = { type: 'FeatureCollection', features: [] };
+  ['pending-my-routes-source', 'pending-my-poi-source', 'pending-my-sectors-source',
+   'admin-pending-routes-source', 'admin-pending-poi-source', 'admin-pending-sectors-source']
+    .forEach(id => { try { if (mlMap.getSource(id)) mlMap.getSource(id).setData(empty); } catch (e) {} });
+}
+
 // ============================================
 // PALETA DE COLORES PARA SECTORES
 // ============================================
@@ -1072,6 +1089,46 @@ function onMapLoad() {
 
   // NO cargar escuela por defecto - el usuario selecciona desde markers
   // mlLoadSchool('valeria');
+
+  // Re-subscribe to approved items and update pending items on auth state change.
+  // onSnapshot connections are dropped when Firebase auth state changes; without this
+  // approved Spotter content disappears after logout/re-login.
+  // Fires immediately on registration — guarded by mlCurrentSchool check so it's a no-op at init.
+  if (typeof firebase !== 'undefined' && firebase.auth) {
+    firebase.auth().onAuthStateChanged(async (user) => {
+      // Invalidate cached roles so they are re-evaluated under the new auth state
+      _cachedIsAdmin = null;
+      _cachedAdminRole = undefined;
+      _cachedAdminRoleTime = 0;
+      _cachedAdminCheckTime = 0;
+
+      if (!mlMap || !mlCurrentSchool) return;
+      const schoolId = mlCurrentSchool;
+
+      // Approved items are public — always re-subscribe regardless of auth state
+      loadApprovedRoutesFromFirestore(schoolId);
+      loadApprovedSectorsFromFirestore(schoolId);
+      loadApprovedPOIFromFirestore(schoolId);
+
+      if (user) {
+        // Reload user-specific (pending) items based on new role
+        checkAdminRole().then(role => {
+          if (role === 'admin') {
+            loadAllPendingForAdmin(schoolId);
+            loadAllPendingSchoolsForAdmin();
+          } else {
+            loadMyPendingRoutesFromFirestore(schoolId);
+            loadMyPendingPOIFromFirestore(schoolId);
+            loadMyPendingSectorsFromFirestore(schoolId);
+            loadMyPendingSchoolsFromFirestore();
+          }
+        });
+      } else {
+        // Logged out: clear pending item layers (user-specific data must not persist)
+        mlClearPendingItemsLayers();
+      }
+    });
+  }
 
   // Activar botón de centrar mapa (Spain Reset)
   setupResetViewButton();
