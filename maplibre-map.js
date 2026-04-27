@@ -9171,9 +9171,12 @@ async function loadAllPendingSchoolsForAdmin() {
         type: 'Feature',
         properties: {
           id: doc.id,
+          docId: doc.id,
           nombre: data.nombre || 'Escuela pendiente',
           createdBy: data.createdBy || '',
-          coords: JSON.stringify(data.coordinates)
+          coords: JSON.stringify(data.coordinates),
+          lng: data.coordinates[0],
+          lat: data.coordinates[1]
         },
         geometry: { type: 'Point', coordinates: data.coordinates }
       });
@@ -9230,10 +9233,16 @@ async function loadAllPendingSchoolsForAdmin() {
               style="background:#2563EB;color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:600;">
               Gestionar sectores y vías
             </button>
-            <button onclick="mlDeletePendingItem('pending_schools','${props.id}');this.closest('.maplibregl-popup').remove();"
-              style="background:#DC2626;color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:600;">
-              🗑️ Eliminar escuela
-            </button>
+            <div style="display:flex;gap:8px;">
+              <button onclick="mlStartEditPending('pending_schools','${props.docId}','Point',[${props.lng},${props.lat}]);this.closest('.maplibregl-popup').remove();"
+                style="flex:1;background:#6b7280;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                ✏️ Mover
+              </button>
+              <button onclick="mlDeletePendingItem('pending_schools','${props.docId}');this.closest('.maplibregl-popup').remove();"
+                style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                🗑️ Eliminar
+              </button>
+            </div>
           </div>
         </div>`)
         .addTo(mlMap);
@@ -9337,6 +9346,8 @@ async function loadApprovedSchoolsFromFirestore() {
       const data = doc.data();
       if (!data.coordinates || !Array.isArray(data.coordinates)) return;
 
+      // Registrar en cache para que mlLoadSchool pueda cargarla como pending school
+      mlPendingSchoolsCache.set(doc.id, { nombre: data.nombre, coordinates: data.coordinates });
       features.push({
         type: 'Feature',
         geometry: {
@@ -9344,14 +9355,16 @@ async function loadApprovedSchoolsFromFirestore() {
           coordinates: data.coordinates
         },
         properties: {
-          id: `user_${doc.id}`,
+          id: doc.id,
+          docId: doc.id,
           nombre: data.nombre || 'Sin nombre',
           zoom: 16,
           isOpen: true,
           rockType: data.rockType || '',
-          // coords como JSON string, igual que SCHOOL_MARKERS
           coords: JSON.stringify(data.coordinates),
-          isUserSchool: true
+          isUserSchool: true,
+          lng: data.coordinates[0],
+          lat: data.coordinates[1]
         }
       });
     });
@@ -9431,7 +9444,7 @@ async function loadApprovedSchoolsFromFirestore() {
     mlMap.on('mouseleave', layerId, () => {
       mlMap.getCanvas().style.cursor = '';
     });
-    mlMap.on('click', layerId, (e) => {
+    mlMap.on('click', layerId, async (e) => {
       if (!e.features || e.features.length === 0) return;
       const props = e.features[0].properties;
 
@@ -9443,6 +9456,34 @@ async function loadApprovedSchoolsFromFirestore() {
         isOpen: props.isOpen,
         rockType: props.rockType || ''
       };
+
+      const adminRole = await checkAdminRole();
+      if (adminRole === 'admin') {
+        new maplibregl.Popup({ closeButton: true, maxWidth: '290px' })
+          .setLngLat(school.coords)
+          .setHTML(`<div style="padding:10px;font-size:13px;max-width:250px;">
+            <strong>${school.nombre}</strong><br>
+            <small style="color:#9ca3af;">Escuela aprobada</small><br><br>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <button onclick="mlLoadSchool('${props.id}',true);this.closest('.maplibregl-popup').remove();"
+                style="background:#2563EB;color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:600;">
+                Entrar a la escuela
+              </button>
+              <div style="display:flex;gap:8px;">
+                <button onclick="mlStartEditPending('pending_schools','${props.docId}','Point',[${props.lng},${props.lat}]);this.closest('.maplibregl-popup').remove();"
+                  style="flex:1;background:#6b7280;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                  ✏️ Mover
+                </button>
+                <button onclick="mlDeletePendingItem('pending_schools','${props.docId}');this.closest('.maplibregl-popup').remove();"
+                  style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                  🗑️ Eliminar
+                </button>
+              </div>
+            </div>
+          </div>`)
+          .addTo(mlMap);
+        return;
+      }
 
       if (isMobileDevice()) {
         if (mlSchoolPopup) mlSchoolPopup.remove();
