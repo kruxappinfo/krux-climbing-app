@@ -1016,7 +1016,9 @@ function renderRoutesListMandatory(pendingRouteName) {
  * Selecciona una vía para dibujar en modo obligatorio
  */
 function selectRouteForDrawingMandatory(routeId) {
-  const route = rdRoutesList.find(r => r.routeId === routeId);
+  // routeId puede ser un número (llamada desde el listado) o un nombre de vía
+  // (llamada inicial en modo obligatorio donde la ruta pendiente no tiene routeId)
+  const route = rdRoutesList.find(r => r.routeId === routeId || r.nombre === routeId);
 
   if (!route) return;
 
