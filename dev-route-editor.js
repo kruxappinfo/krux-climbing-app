@@ -413,7 +413,24 @@ async function loadSchoolSectors() {
     }
   }
 
-  // 2. Sectores propios pendientes de aprobación (solo los del usuario actual)
+  // 2. Sectores aprobados en Firestore para esta escuela
+  try {
+    const user = typeof firebase !== 'undefined' && firebase.auth?.().currentUser;
+    if (user && firebase.firestore) {
+      const snap = await firebase.firestore().collection('pending_sectors')
+        .where('schoolId', '==', mlCurrentSchool)
+        .where('status', '==', 'approved')
+        .get();
+      snap.forEach(doc => {
+        const nombre = doc.data().nombre?.trim();
+        if (nombre) sectorNames.add(nombre);
+      });
+    }
+  } catch (error) {
+    console.warn('[DevEditor] Error cargando sectores aprobados:', error);
+  }
+
+  // 3. Sectores propios pendientes de aprobación (solo los del usuario actual)
   devPendingSectorNames = new Set();
   try {
     const user = typeof firebase !== 'undefined' && firebase.auth?.().currentUser;
