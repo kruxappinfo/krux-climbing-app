@@ -21,6 +21,7 @@
 // --- Modo Vía (existente) ---
 let devModeActive = false;
 let devCurrentSchoolSectors = [];
+let devPendingSectorNames = new Set(); // Sectores propios aún pendientes de aprobación
 let devPendingRouteCoords = null;
 let devRouteMarker = null;
 let devPendingRouteDocId = null;
@@ -412,23 +413,30 @@ async function loadSchoolSectors() {
     }
   }
 
-  // 2. Sectores creados por Spotters (todos los estados)
+  // 2. Sectores propios pendientes de aprobación (solo los del usuario actual)
+  devPendingSectorNames = new Set();
   try {
-    if (typeof firebase !== 'undefined' && firebase.firestore) {
+    const user = typeof firebase !== 'undefined' && firebase.auth?.().currentUser;
+    if (user && firebase.firestore) {
       const snap = await firebase.firestore().collection('pending_sectors')
         .where('schoolId', '==', mlCurrentSchool)
+        .where('createdBy', '==', user.uid)
+        .where('status', '==', 'pending')
         .get();
       snap.forEach(doc => {
-        const nombre = doc.data().nombre;
-        if (nombre && nombre.trim() !== '') sectorNames.add(nombre.trim());
+        const nombre = doc.data().nombre?.trim();
+        if (nombre) {
+          devPendingSectorNames.add(nombre);
+          sectorNames.add(nombre);
+        }
       });
     }
   } catch (error) {
-    console.warn('[DevEditor] Error cargando sectores de Firestore:', error);
+    console.warn('[DevEditor] Error cargando sectores propios pendientes:', error);
   }
 
   devCurrentSchoolSectors = [...sectorNames].sort();
-  console.log('[DevEditor] Sectores cargados:', devCurrentSchoolSectors);
+  console.log('[DevEditor] Sectores cargados:', devCurrentSchoolSectors, '| Pendientes propios:', [...devPendingSectorNames]);
 }
 
 // ============================================
@@ -569,7 +577,7 @@ async function showDevRouteModal() {
             <label for="dev-route-sector">Sector *</label>
             <select id="dev-route-sector" required>
               <option value="">Seleccionar...</option>
-              ${devCurrentSchoolSectors.map(s => `<option value="${s}" ${s === detectedSector ? 'selected' : ''}>${s}</option>`).join('')}
+              ${devCurrentSchoolSectors.map(s => `<option value="${s}" ${s === detectedSector ? 'selected' : ''}>${s}${devPendingSectorNames.has(s) ? ' ⏳' : ''}</option>`).join('')}
             </select>
           </div>
         </div>
