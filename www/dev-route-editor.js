@@ -392,28 +392,43 @@ async function loadSchoolSectors() {
   }
 
   const school = MAPLIBRE_SCHOOLS[mlCurrentSchool];
-  if (!school || !school.geojson || !school.geojson.sectores) {
-    console.warn('[DevEditor] No se encontró configuración de sectores');
-    return;
-  }
+  const sectorNames = new Set();
 
-  try {
-    const response = await fetch(school.geojson.sectores + '?v=' + Date.now());
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const geojson = await response.json();
-
-    if (geojson.features) {
-      devCurrentSchoolSectors = geojson.features
-        .map(f => f.properties.nombre)
-        .filter(name => name && name.trim() !== '')
-        .sort();
+  // 1. Sectores del GeoJSON estático
+  if (school?.geojson?.sectores) {
+    try {
+      const response = await fetch(school.geojson.sectores + '?v=' + Date.now());
+      if (response.ok) {
+        const geojson = await response.json();
+        if (geojson.features) {
+          geojson.features
+            .map(f => f.properties.nombre)
+            .filter(name => name && name.trim() !== '')
+            .forEach(name => sectorNames.add(name));
+        }
+      }
+    } catch (error) {
+      console.warn('[DevEditor] Error cargando GeoJSON sectores:', error);
     }
-
-    console.log('[DevEditor] Sectores cargados:', devCurrentSchoolSectors);
-  } catch (error) {
-    console.error('[DevEditor] Error cargando sectores:', error);
   }
+
+  // 2. Sectores creados por Spotters (todos los estados)
+  try {
+    if (typeof firebase !== 'undefined' && firebase.firestore) {
+      const snap = await firebase.firestore().collection('pending_sectors')
+        .where('schoolId', '==', mlCurrentSchool)
+        .get();
+      snap.forEach(doc => {
+        const nombre = doc.data().nombre;
+        if (nombre && nombre.trim() !== '') sectorNames.add(nombre.trim());
+      });
+    }
+  } catch (error) {
+    console.warn('[DevEditor] Error cargando sectores de Firestore:', error);
+  }
+
+  devCurrentSchoolSectors = [...sectorNames].sort();
+  console.log('[DevEditor] Sectores cargados:', devCurrentSchoolSectors);
 }
 
 // ============================================
@@ -1556,13 +1571,11 @@ function updateSectorDrawPreview() {
 function finishSectorDraw() {
   if (devSectorVertices.length < 3) return;
 
-  // Cerrar el polígono (conectar último con primero)
-  const closedVertices = [...devSectorVertices, devSectorVertices[0]];
   mlMap.getSource(DEV_SECTOR_SOURCE).setData({
     type: 'FeatureCollection',
     features: [{
       type: 'Feature',
-      geometry: { type: 'LineString', coordinates: closedVertices },
+      geometry: { type: 'LineString', coordinates: devSectorVertices },
       properties: {}
     }]
   });
@@ -1702,9 +1715,9 @@ async function saveSector() {
     const dateStart = document.getElementById('dev-sector-date-start')?.value?.trim() || null;
     const dateEnd = document.getElementById('dev-sector-date-end')?.value?.trim() || null;
 
-    // Cerrar polígono — guardar como array de objetos {lng, lat}
+    // Guardar vértices como array de objetos {lng, lat}
     // (Firestore no soporta arrays anidados como [[[lng,lat],...]])
-    const closedVertices = [...devSectorVertices, devSectorVertices[0]]
+    const closedVertices = devSectorVertices
       .map(v => ({ lng: v[0], lat: v[1] }));
 
     const sectorData = {

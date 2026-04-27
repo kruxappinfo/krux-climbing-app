@@ -2796,6 +2796,7 @@ function mlProcessVariantsForGeoJSON(geojson) {
 function setupViasInteraction() {
   // Clic en vía
   mlMap.on('click', 'vias-layer', (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
 
     const feature = e.features[0];
@@ -4852,6 +4853,7 @@ function setupSectoresInteraction() {
 
   // Click en sector
   mlMap.on('click', 'sectores-layer', (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
 
     const feature = e.features[0];
@@ -4926,6 +4928,7 @@ function setupParkingsInteraction() {
 
   // Click en parking
   mlMap.on('click', 'parkings-layer', (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
 
     const feature = e.features[0];
@@ -5213,6 +5216,7 @@ function setupSchoolLayerInteraction() {
 
   // Click en marker de escuela
   mlMap.on('click', 'school-markers-layer', (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
 
     const feature = e.features[0];
@@ -7542,6 +7546,7 @@ setupSchoolLayerInteraction = function () {
 
   // Click en marker de escuela
   mlMap.on('click', 'school-markers-layer', (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
 
     const feature = e.features[0];
@@ -7782,6 +7787,7 @@ function setupUserViasInteraction() {
 
   // Click en vía de usuario
   mlMap.on('click', layerId, (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
 
     const feature = e.features[0];
@@ -7989,6 +7995,7 @@ function setupUserPOIInteraction(layerId) {
     mlMap.getCanvas().style.cursor = '';
   });
   mlMap.on('click', layerId, (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
     const props = e.features[0].properties;
     const coords = e.features[0].geometry.coordinates.slice();
@@ -8138,6 +8145,7 @@ function setupUserSectorsInteraction(lineLayerId) {
     mlMap.getCanvas().style.cursor = '';
   });
   mlMap.on('click', lineLayerId, (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
     const props = e.features[0].properties;
     const coords = e.lngLat;
