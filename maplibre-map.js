@@ -3035,13 +3035,8 @@ function getVariantLabel(props) {
     return `<small class="ml-route-variant-tag">(Variante ${idx})</small>`;
   }
 
-  // Grupo union: comparar id con primer elemento del grupo
-  const ids = String(union).split('_').map(s => s.trim());
-  const routeId = String(Math.round(Number(props.id)));
-  const idx = ids.indexOf(routeId);
-
-  if (idx <= 0) return ''; // Primera en el grupo → principal
-  return `<small class="ml-route-variant-tag">(Variante ${idx})</small>`;
+  // Grupo union (vías distintas con trayecto compartido) → sin etiqueta
+  return '';
 }
 
 async function showRoutePopup(props, coords) {
