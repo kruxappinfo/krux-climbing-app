@@ -3014,6 +3014,25 @@ function setupViasInteraction() {
 /**
  * Muestra popup de ruta con nuevo diseño
  */
+/**
+ * Devuelve el HTML del tag "(Variante N)" para rutas con variante=SI.
+ * - union=null → "(Variante)" (variante suelta sin grupo)
+ * - union="X_Y_Z" y el id de la ruta es el primero → "" (es la principal)
+ * - union="X_Y_Z" y el id es el segundo o posterior → "(Variante 1)", "(Variante 2)"...
+ */
+function getVariantLabel(props) {
+  if (props.variante !== 'SI') return '';
+  const union = props.union;
+  if (!union) return '<small class="ml-route-variant-tag">(Variante)</small>';
+
+  const ids = String(union).split('_').map(s => s.trim());
+  const routeId = String(Math.round(Number(props.id)));
+  const idx = ids.indexOf(routeId);
+
+  if (idx <= 0) return ''; // Primera en el grupo → principal, sin etiqueta
+  return `<small class="ml-route-variant-tag">(Variante ${idx})</small>`;
+}
+
 async function showRoutePopup(props, coords) {
   const grade = props.grado1 || '?';
   const gradeColor = getGradeColor(grade);
@@ -3091,12 +3110,14 @@ async function showRoutePopup(props, coords) {
   const estadoData = await getEstadoVotes(schoolId, routeId);
   const estadoHTML = generateEstadoStarsHTML(routeId, schoolId, estadoData.avg, estadoData.userVote);
 
+  const variantLabel = getVariantLabel(props);
+
   const html = `
     <div class="ml-route-popup-new">
       <!-- Header: Check + Nombre + Grado -->
       <div class="ml-route-header">
         ${ascentCheckHTML}
-        <span class="ml-route-name">${routeName}</span>
+        <span class="ml-route-name">${routeName}${variantLabel}</span>
         <span class="ml-route-grade" style="background-color: ${gradeColor}">${grade}</span>
       </div>
 
@@ -3605,7 +3626,7 @@ function mlUpdateBottomSheetContent(props, isTrinomial) {
 
   // --- Header ---
   const nameEl = document.getElementById('rbs-route-name');
-  if (nameEl) nameEl.textContent = routeName;
+  if (nameEl) nameEl.innerHTML = routeName + getVariantLabel(props);
 
   const gradeEl = document.getElementById('rbs-route-grade');
   if (gradeEl) {
@@ -6768,7 +6789,7 @@ async function showRouteBottomSheet(props, coords) {
 
   // --- Header ---
   const nameEl = document.getElementById('rbs-route-name');
-  if (nameEl) nameEl.textContent = routeName;
+  if (nameEl) nameEl.innerHTML = routeName + getVariantLabel(props);
 
   const gradeEl = document.getElementById('rbs-route-grade');
   if (gradeEl) {
