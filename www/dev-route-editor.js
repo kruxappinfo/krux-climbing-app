@@ -848,16 +848,27 @@ async function saveDevRoute() {
 
     console.log('[DevEditor] Vía guardada:', routeData);
 
-    // Abrir automáticamente el editor de dibujo para esta vía
-    showDevToast('Ahora dibuja la vía en la imagen del sector', 'info');
-
     // Desactivar modo dev temporalmente para evitar conflictos
     deactivateDevMode();
 
-    // Abrir editor de dibujo para vincular la vía con la imagen
-    setTimeout(() => {
-      openDrawingEditorForPendingRoute(routeData.nombre, routeData.sector, docRef.id);
-    }, 500);
+    const openDrawing = () => {
+      showDevToast('Ahora dibuja la vía en la imagen del sector', 'info');
+      setTimeout(() => {
+        openDrawingEditorForPendingRoute(routeData.nombre, routeData.sector, docRef.id);
+      }, 500);
+    };
+
+    // Verificar si el sector tiene foto; si no, preguntar antes de abrir el editor
+    const schoolId = mlCurrentSchool || routeData.schoolId;
+    const hasSectorPhoto = typeof window.sectorHasImage === 'function'
+      ? await window.sectorHasImage(schoolId, routeData.sector)
+      : true;
+
+    if (!hasSectorPhoto) {
+      promptSectorPhoto(schoolId, routeData.sector, openDrawing);
+    } else {
+      openDrawing();
+    }
 
   } catch (error) {
     console.error('[DevEditor] Error guardando vía:', error);
@@ -1764,10 +1775,86 @@ async function saveSector() {
 
     showDevToast('Sector propuesto correctamente', 'success');
     deactivateSectorMode();
+
+    // Preguntar si quiere añadir foto (sector nuevo → sin imagen seguro)
+    const schoolId = mlCurrentSchool || sectorData.schoolId;
+    promptSectorPhoto(schoolId, name, null);
+
   } catch (error) {
     console.error('[Spotter] Error guardando sector:', error);
     showDevToast('Error al guardar: ' + error.message, 'error');
   }
+}
+
+// ============================================
+// FOTO DEL SECTOR — PROMPT AL SPOTTER
+// ============================================
+
+/**
+ * Muestra un diálogo preguntando si el Spotter quiere añadir foto al sector.
+ * @param {string} schoolId
+ * @param {string} sectorName
+ * @param {Function|null} onNo  Callback ejecutado si el usuario dice No
+ */
+function promptSectorPhoto(schoolId, sectorName, onNo) {
+  const existing = document.getElementById('spotter-sector-photo-prompt');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'spotter-sector-photo-prompt';
+  overlay.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  `;
+
+  overlay.innerHTML = `
+    <div style="
+      background:#fff;border-radius:16px;padding:24px 20px;max-width:340px;width:100%;
+      box-shadow:0 8px 32px rgba(0,0,0,0.18);text-align:center;
+    ">
+      <div style="font-size:36px;margin-bottom:12px;">📷</div>
+      <h3 style="margin:0 0 8px;font-size:17px;font-weight:700;color:#111827;">
+        Este sector no tiene foto
+      </h3>
+      <p style="margin:0 0 20px;font-size:14px;color:#6b7280;line-height:1.5;">
+        ¿Quieres añadir una imagen para el sector <strong>${sectorName}</strong>?
+      </p>
+      <div style="display:flex;gap:10px;">
+        <button id="spotter-photo-no"
+          style="flex:1;padding:12px;border:1.5px solid #d1d5db;border-radius:10px;background:#fff;
+                 font-size:15px;font-weight:600;color:#374151;cursor:pointer;">
+          No, gracias
+        </button>
+        <button id="spotter-photo-yes"
+          style="flex:1;padding:12px;border:none;border-radius:10px;
+                 background:linear-gradient(135deg,#7c3aed,#a855f7);
+                 font-size:15px;font-weight:600;color:#fff;cursor:pointer;">
+          Sí, añadir
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+
+  overlay.querySelector('#spotter-photo-yes').addEventListener('click', () => {
+    close();
+    if (typeof window.showSectorUploadModal === 'function') {
+      window.showSectorUploadModal(schoolId, encodeURIComponent(sectorName));
+    }
+  });
+
+  overlay.querySelector('#spotter-photo-no').addEventListener('click', () => {
+    close();
+    if (typeof onNo === 'function') onNo();
+  });
+
+  // Cerrar al tocar fuera del card
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) { close(); if (typeof onNo === 'function') onNo(); }
+  });
 }
 
 // ============================================
