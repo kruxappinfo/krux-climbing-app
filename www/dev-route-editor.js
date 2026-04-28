@@ -79,17 +79,30 @@ async function isDevAdminOrSpotter() {
  * Se posiciona justo encima del botón 3D
  */
 async function addDevEditorButton() {
-  // Verificar si ya existe
+  // Si ya existe y sigue en el DOM, no recrear
   if (document.getElementById('btn-dev-editor')) return;
 
-  // Verificar permisos de admin o spotter
-  const hasAccess = await isDevAdminOrSpotter();
+  // Verificar permisos — con retry hasta 3 veces si Firestore falla (ej. inicio en frío)
+  let hasAccess = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      hasAccess = await isDevAdminOrSpotter();
+      if (hasAccess) break;
+      // Si devuelve false definitivamente (usuario sin rol), no reintentar
+      const user = typeof auth !== 'undefined' ? auth.currentUser : null;
+      if (!user) break;
+      const adminDoc = await db.collection('admins').doc(user.uid).get();
+      if (!adminDoc.exists) break; // No es admin/spotter — parar
+      break;
+    } catch (e) {
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+
   if (!hasAccess) {
     console.log('[DevEditor] Usuario no es admin ni spotter, botón oculto');
     return;
   }
-
-  const isNative = window.Capacitor !== undefined;
 
   const btn = document.createElement('button');
   btn.id = 'btn-dev-editor';
@@ -107,10 +120,9 @@ async function addDevEditorButton() {
   </svg>`;
   btn.title = 'Herramienta de desarrollador: Añadir vías';
 
-  // Posición: encima del botón 3D (bottom: 250px + 46px de altura + 10px de espacio)
   btn.style.cssText = `
     position: absolute;
-    bottom: ${isNative ? '306px' : '306px'};
+    bottom: 306px;
     right: 10px;
     width: 36px;
     height: 36px;
@@ -123,7 +135,7 @@ async function addDevEditorButton() {
     color: #333;
     cursor: pointer;
     z-index: 1000;
-    display: none;
+    display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
@@ -133,14 +145,18 @@ async function addDevEditorButton() {
 
   btn.addEventListener('click', toggleDevMode);
 
-  document.getElementById('map').appendChild(btn);
+  const mapEl = document.getElementById('map');
+  if (!mapEl) {
+    console.warn('[DevEditor] #map no encontrado, reintentando...');
+    setTimeout(addDevEditorButton, 500);
+    return;
+  }
+  mapEl.appendChild(btn);
 
-  // Actualizar visibilidad con el botón 3D
   if (mlMap) {
     mlMap.on('zoom', updateDevButtonVisibility);
     mlMap.on('zoomend', updateDevButtonVisibility);
     mlMap.on('moveend', updateDevButtonVisibility);
-    updateDevButtonVisibility();
   }
 
   console.log('[DevEditor] Botón de desarrollador añadido');
@@ -1891,17 +1907,44 @@ function showDevToast(message, type = 'info') {
  * Se llama después de que el mapa esté listo
  */
 function initDevRouteEditor() {
-  // Esperar a que el usuario esté autenticado
-  if (typeof auth !== 'undefined') {
-    auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        await addDevEditorButton();
-      }
-    });
-  } else {
-    // Reintentar después
+  if (typeof auth === 'undefined') {
     setTimeout(initDevRouteEditor, 1000);
+    return;
   }
+
+  auth.onAuthStateChanged(async (user) => {
+    if (user) {
+      // Eliminar botón previo si existe pero el DOM cambió (p.ej. mapa reinicializado)
+      const existing = document.getElementById('btn-dev-editor');
+      if (existing && !document.getElementById('map')?.contains(existing)) {
+        existing.remove();
+      }
+      await addDevEditorButton();
+    } else {
+      // Logout: ocultar botón
+      const btn = document.getElementById('btn-dev-editor');
+      if (btn) btn.style.display = 'none';
+    }
+  });
+
+  // Re-añadir botón cuando el mapa se reinicializa (cambia de escuela, recarga)
+  window.addEventListener('maplibre:ready', async () => {
+    const existing = document.getElementById('btn-dev-editor');
+    if (existing) {
+      // Reasignar listeners al nuevo mlMap
+      if (mlMap) {
+        mlMap.on('zoom', updateDevButtonVisibility);
+        mlMap.on('zoomend', updateDevButtonVisibility);
+        mlMap.on('moveend', updateDevButtonVisibility);
+      }
+      updateDevButtonVisibility();
+      return;
+    }
+    // Si el botón desapareció (DOM reiniciado), recrearlo
+    if (typeof auth !== 'undefined' && auth.currentUser) {
+      await addDevEditorButton();
+    }
+  });
 }
 
 // Auto-inicializar cuando el DOM esté listo
