@@ -368,6 +368,33 @@
   background: linear-gradient(90deg, #111827 0%, #064e3b 100%);
 }
 
+.rd-route-variant-item {
+  margin-left: 16px;
+  border-left: 3px solid #6366f1;
+  background: #0f172a;
+}
+
+.rd-route-variant-item:hover {
+  border-color: #6366f1;
+}
+
+.rd-route-variant-item.rd-has-drawing {
+  border-color: #6366f1;
+  background: linear-gradient(90deg, #0f172a 0%, #1e1b4b 100%);
+}
+
+.rd-variant-label {
+  font-style: normal;
+  font-size: 0.7em;
+  color: #818cf8;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
 /* Iconos de estado de vía */
 .rd-route-status {
   flex-shrink: 0;
