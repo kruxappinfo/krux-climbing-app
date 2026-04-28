@@ -4883,7 +4883,7 @@ function renderGradeChart(containerId, gradeCounts) {
 /**
  * Muestra popup de sector
  */
-function showSectorPopup(props, coords) {
+function showSectorPopup(props, coords, extraHTML = '') {
   // Cerrar popup/bottom sheet de ruta si está abierto
   if (mlRoutePopup) mlRoutePopup.remove();
   hideRouteBottomSheet();
@@ -4952,6 +4952,8 @@ function showSectorPopup(props, coords) {
         </svg>
         Ver Sector
       </button>
+
+      ${extraHTML}
     </div>
   `;
 
@@ -6449,7 +6451,7 @@ function initSectorBottomSheet() {
 /**
  * Muestra el Sector Bottom Sheet con datos del sector
  */
-function showSectorBottomSheet(props, coords) {
+function showSectorBottomSheet(props, coords, extraHTML = '') {
   if (!isMobileDevice()) return false;
 
   const sheet = document.getElementById('sector-bottom-sheet');
@@ -6549,6 +6551,10 @@ function showSectorBottomSheet(props, coords) {
       container.innerHTML = generateSectorEstadoHTML(result.avg, result.ratedCount, result.totalCount);
     }
   });
+
+  // Admin actions
+  const adminActionsEl = document.getElementById('secbs-admin-actions');
+  if (adminActionsEl) adminActionsEl.innerHTML = extraHTML;
 
   return true;
 }
@@ -8192,29 +8198,45 @@ function setupUserPOIInteraction(layerId) {
 
     const adminRole = await checkAdminRole();
     const adminHTML = adminRole === 'admin' && props.docId ? `
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-        <button onclick="mlDeletePendingItem('pending_poi','${props.docId}');this.closest('.maplibregl-popup').remove();"
-          style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;padding:8px 0 0;">
+        <button onclick="mlDeletePendingItem('pending_poi','${props.docId}');document.querySelectorAll('.maplibregl-popup').forEach(p=>p.remove());"
+          style="flex:1;background:#DC2626;color:white;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;">
           🗑️ Eliminar
         </button>
-        <button onclick="mlStartEditPending('pending_poi','${props.docId}','Point',[${props.lng},${props.lat}]);this.closest('.maplibregl-popup').remove();"
-          style="flex:1;background:#2563EB;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+        <button onclick="mlStartEditPending('pending_poi','${props.docId}','Point',[${props.lng},${props.lat}]);document.querySelectorAll('.maplibregl-popup').forEach(p=>p.remove());"
+          style="flex:1;background:#2563EB;color:white;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;">
           ✏️ Mover
         </button>
       </div>` : '';
 
-    const popupHTML = `<div style="padding:8px;font-size:14px;">
-      <strong>${emoji} ${desc}</strong>
-      ${nombre ? `<br>${nombre}` : ''}
-      ${link ? `<br><a href="${link}" target="_blank" style="color:#4285f4;">Ver enlace</a>` : ''}
-      <br><small style="color:#999;">Aportado por ${props.createdByEmail || 'Spotter'}</small>
-      ${adminHTML}
-    </div>`;
+    const descCapitalized = desc.charAt(0).toUpperCase() + desc.slice(1);
+    const poiLat = coords[1];
+    const poiLng = coords[0];
+    const poiGmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${poiLat},${poiLng}`;
+    const poiBtnId = `poi-user-dir-${Date.now()}`;
 
-    new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px' })
+    const popupHTML = `
+      <div class="poi-popup-content">
+        <div class="poi-popup-icon">${emoji}</div>
+        <div class="poi-popup-info">
+          <div class="poi-popup-type">${descCapitalized}</div>
+          ${nombre ? `<div class="poi-popup-name">${nombre}</div>` : ''}
+          ${link ? `<div class="poi-popup-name"><a href="${link}" target="_blank" style="color:#4285f4;">Ver enlace</a></div>` : ''}
+        </div>
+      </div>
+      <button class="poi-popup-directions-btn" id="${poiBtnId}">🧭 ¿Cómo llegar?</button>
+      ${adminHTML}
+    `;
+
+    const userPoiPopup = new maplibregl.Popup({ offset: 18, closeButton: false, className: 'poi-popup' })
       .setLngLat(coords)
       .setHTML(popupHTML)
       .addTo(mlMap);
+
+    setTimeout(() => {
+      const btnDir = document.getElementById(poiBtnId);
+      if (btnDir) btnDir.onclick = () => window.open(poiGmapsUrl, '_blank');
+    }, 50);
   });
 }
 
@@ -8355,29 +8377,24 @@ function setupUserSectorsInteraction(lineLayerId) {
 
     const adminRole = await checkAdminRole();
     const adminHTML = adminRole === 'admin' && props.docId ? `
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-        <button onclick="mlDeletePendingItem('pending_sectors','${props.docId}');this.closest('.maplibregl-popup').remove();"
-          style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding:0 4px 4px;">
+        <button onclick="mlDeletePendingItem('pending_sectors','${props.docId}');document.querySelectorAll('.maplibregl-popup').forEach(p=>p.remove());"
+          style="flex:1;background:#DC2626;color:white;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;">
           🗑️ Eliminar
         </button>
-        <button onclick="mlStartEditPending('pending_sectors','${props.docId}','LineString',${props.verticesCoordsStr});this.closest('.maplibregl-popup').remove();"
-          style="flex:1;background:#2563EB;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px;font-weight:600;">
-          ✏️ Editar vértices
+        <button onclick="mlStartEditPending('pending_sectors','${props.docId}','LineString',${props.verticesCoordsStr});document.querySelectorAll('.maplibregl-popup').forEach(p=>p.remove());"
+          style="flex:1;background:#2563EB;color:white;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+          ✏️ Editar
         </button>
       </div>` : '';
 
-    const popupHTML = `<div style="padding:8px;font-size:14px;">
-      <strong>${props.nombre}</strong>
-      ${props.restr === 'SI' ? `<br>⚠️ Restricción: ${props.Fecha_inicio || ''} - ${props.Fecha_fin || ''}` : ''}
-      ${props.exposicion ? `<br>☀️ ${props.exposicion}` : ''}
-      <br><small style="color:#999;">Aportado por ${props.createdByEmail || 'Spotter'}</small>
-      ${adminHTML}
-    </div>`;
-
-    new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px' })
-      .setLngLat(coords)
-      .setHTML(popupHTML)
-      .addTo(mlMap);
+    if (isMobileDevice()) {
+      adaptiveMapPanForBottomSheet(coords);
+      showSectorBottomSheet(props, [coords.lng, coords.lat], adminHTML);
+    } else {
+      mlMap.flyTo({ center: coords, zoom: mlMap.getZoom(), speed: 0.8, curve: 1, padding: { top: 450, bottom: 0, left: 0, right: 0 } });
+      showSectorPopup(props, [coords.lng, coords.lat], adminHTML);
+    }
   });
 }
 
