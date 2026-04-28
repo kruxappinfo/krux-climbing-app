@@ -5705,7 +5705,7 @@ async function loadSchoolStats(schoolId, chartId) {
   try {
     const schoolConfig = MAPLIBRE_SCHOOLS[schoolId];
     if (schoolConfig && schoolConfig.geojson && schoolConfig.geojson.vias) {
-      const response = await fetch(schoolConfig.geojson.vias);
+      const response = await fetch(`${schoolConfig.geojson.vias}?v=${Date.now()}`);
       if (response.ok) {
         const geojson = await response.json();
 
@@ -7414,7 +7414,7 @@ async function loadBottomSheetStats(schoolId) {
       throw new Error('No hay ruta de vías configurada');
     }
 
-    const response = await fetch(viasPath);
+    const response = await fetch(`${viasPath}?v=${Date.now()}`);
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
