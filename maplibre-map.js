@@ -1078,11 +1078,11 @@ function onMapLoad() {
   // Cargar escuelas aprobadas desde Firestore (marcadores adicionales)
   loadApprovedSchoolsFromFirestore();
 
-  // Cargar escuelas pendientes: admin ve todas, spotter solo las propias
+  // Cargar escuelas pendientes: admin ve todas, spotter solo las propias, otros nada
   checkAdminRole().then(role => {
     if (role === 'admin') {
       loadAllPendingSchoolsForAdmin();
-    } else {
+    } else if (role === 'spotter') {
       loadMyPendingSchoolsFromFirestore();
     }
   });
@@ -1116,7 +1116,7 @@ function onMapLoad() {
           if (role === 'admin') {
             loadAllPendingForAdmin(schoolId);
             loadAllPendingSchoolsForAdmin();
-          } else {
+          } else if (role === 'spotter') {
             loadMyPendingRoutesFromFirestore(schoolId);
             loadMyPendingPOIFromFirestore(schoolId);
             loadMyPendingSectorsFromFirestore(schoolId);
@@ -1709,7 +1709,7 @@ async function mlLoadSchoolVectorTiles(school) {
   checkAdminRole().then(role => {
     if (role === 'admin') {
       loadAllPendingForAdmin(school.id, school.zoomLevels?.vias || 14);
-    } else {
+    } else if (role === 'spotter') {
       loadMyPendingRoutesFromFirestore(school.id, school.zoomLevels?.vias || 14);
       loadMyPendingPOIFromFirestore(school.id);
       loadMyPendingSectorsFromFirestore(school.id);
@@ -1848,7 +1848,7 @@ async function mlLoadSchoolGeoJSON(school) {
   checkAdminRole().then(role => {
     if (role === 'admin') {
       loadAllPendingForAdmin(school.id, school.zoomLevels?.vias || 14);
-    } else {
+    } else if (role === 'spotter') {
       loadMyPendingRoutesFromFirestore(school.id, school.zoomLevels?.vias || 14);
       loadMyPendingPOIFromFirestore(school.id);
       loadMyPendingSectorsFromFirestore(school.id);
@@ -5956,6 +5956,16 @@ function setupSchoolPopupEvents(school, gmapsUrl) {
         if (typeof currentSchoolName !== 'undefined') {
           window.currentSchoolName = school.nombre;
         }
+      } else if (mlPendingSchoolsCache.has(school.id)) {
+        // Escuela aprobada/pendiente solo en Firestore — cargar como pending school
+        mlMap.flyTo({
+          center: school.coords,
+          zoom: school.zoom || 16,
+          duration: 1500
+        });
+        mlLoadSchool(school.id, true);
+        if (typeof currentSchoolId !== 'undefined') window.currentSchoolId = school.id;
+        if (typeof currentSchoolName !== 'undefined') window.currentSchoolName = school.nombre;
       } else {
         // Fallback para escuelas no configuradas en MAPLIBRE_SCHOOLS
         mlMap.flyTo({
@@ -6339,7 +6349,9 @@ function initBottomSheet() {
         return;
       }
 
-      if (!MAPLIBRE_SCHOOLS[bsCurrentSchool.id]) {
+      const isFirestoreSchool = !MAPLIBRE_SCHOOLS[bsCurrentSchool.id] && mlPendingSchoolsCache.has(bsCurrentSchool.id);
+
+      if (!MAPLIBRE_SCHOOLS[bsCurrentSchool.id] && !isFirestoreSchool) {
         console.warn('Escuela no configurada en MAPLIBRE_SCHOOLS:', bsCurrentSchool.id);
         if (typeof showToast === 'function') {
           showToast('Esta escuela aún no está disponible', 'info');
@@ -6354,9 +6366,11 @@ function initBottomSheet() {
 
       hideBottomSheet();
 
+      const flyCenter = schoolConfig ? schoolConfig.center : bsCurrentSchool.coords;
+      const flyZoom = schoolConfig ? schoolConfig.zoom : (bsCurrentSchool.zoom || 16);
       mlMap.flyTo({
-        center: schoolConfig.center,
-        zoom: schoolConfig.zoom,
+        center: flyCenter,
+        zoom: flyZoom,
         duration: 1500
       });
 
@@ -8932,7 +8946,7 @@ async function mlLoadPendingSchool(schoolId, coordinates, skipFlyTo = false) {
   checkAdminRole().then(role => {
     if (role === 'admin') {
       loadAllPendingForAdmin(schoolId);
-    } else {
+    } else if (role === 'spotter') {
       loadMyPendingRoutesFromFirestore(schoolId);
       loadMyPendingPOIFromFirestore(schoolId);
       loadMyPendingSectorsFromFirestore(schoolId);
