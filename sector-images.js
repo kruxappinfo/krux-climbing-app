@@ -1763,12 +1763,13 @@ function initCanvasOverlayForGallery(img, container, imageIndex) {
 
   // Aplicar highlight pendiente si existe (svPendingHighlightRoute stores routeId)
   if (svPendingHighlightRoute) {
-    const drawing = svDrawings.find(d => d.routeId === svPendingHighlightRoute && (d.variantIndex || 0) === 0);
+    const _pvi = svPendingHighlightVariantIndex || 0;
+    const drawing = svDrawings.find(d => d.routeId === svPendingHighlightRoute && (d.variantIndex || 0) === _pvi);
     svHighlightedRoute = svPendingHighlightRoute;
-    svHighlightedVariantIndex = 0;
+    svHighlightedVariantIndex = _pvi;
     svLockedRoute = svPendingHighlightRoute;
-    svLockedVariantIndex = 0;
-    console.log('[SectorViewer] Aplicando highlight a routeId:', svHighlightedRoute);
+    svLockedVariantIndex = _pvi;
+    console.log('[SectorViewer] Aplicando highlight a routeId:', svHighlightedRoute, 'variantIndex:', _pvi);
 
     if (drawing) {
       const index = svDrawings.indexOf(drawing);
@@ -1778,6 +1779,7 @@ function initCanvasOverlayForGallery(img, container, imageIndex) {
     }
 
     svPendingHighlightRoute = null;
+    svPendingHighlightVariantIndex = null;
   }
 
   // Dibujar vías
@@ -2317,12 +2319,13 @@ function initCanvasOverlay(img) {
 
   // Aplicar highlight pendiente si existe (svPendingHighlightRoute stores routeId)
   if (svPendingHighlightRoute) {
-    const drawing = svDrawings.find(d => d.routeId === svPendingHighlightRoute && (d.variantIndex || 0) === 0);
+    const _pvi = svPendingHighlightVariantIndex || 0;
+    const drawing = svDrawings.find(d => d.routeId === svPendingHighlightRoute && (d.variantIndex || 0) === _pvi);
     svHighlightedRoute = svPendingHighlightRoute;
-    svHighlightedVariantIndex = 0;
+    svHighlightedVariantIndex = _pvi;
     svLockedRoute = svPendingHighlightRoute;
-    svLockedVariantIndex = 0;
-    console.log('[SectorViewer] Aplicando highlight a routeId:', svHighlightedRoute);
+    svLockedVariantIndex = _pvi;
+    console.log('[SectorViewer] Aplicando highlight a routeId:', svHighlightedRoute, 'variantIndex:', _pvi);
 
     // Buscar el dibujo para mostrar el popup
     if (drawing) {
@@ -2334,6 +2337,7 @@ function initCanvasOverlay(img) {
     }
 
     svPendingHighlightRoute = null;
+    svPendingHighlightVariantIndex = null;
   }
 
   // Dibujar vías
@@ -3377,6 +3381,7 @@ let svCurrentHoverRoute = null;
 let svHighlightedRoute = null; // routeId de la vía actualmente resaltada
 let svHighlightedVariantIndex = null; // variantIndex del dibujo resaltado
 let svPendingHighlightRoute = null; // routeId de la vía que debe resaltarse al abrir el visor
+let svPendingHighlightVariantIndex = null; // variantIndex de la vía que debe resaltarse al abrir el visor
 let svLockedRoute = null; // routeId de la vía bloqueada (seleccionada por click/tap)
 let svLockedVariantIndex = null; // variantIndex del dibujo bloqueado
 
@@ -4007,13 +4012,15 @@ function showViewerRouteInfo(drawing, number) {
  * @param {string} sectorName - Nombre del sector
  * @param {string} routeId - ID de la vía (GeoJSON properties.id)
  */
-async function openSectorImageViewerWithHighlight(schoolId, sectorName, routeId) {
+async function openSectorImageViewerWithHighlight(schoolId, sectorName, routeId, variantIndex = 0) {
   // Normalizar routeId a Number para consistencia entre plataformas
   routeId = Number(routeId);
-  console.log('[SectorViewer] Abriendo visor con vía resaltada, routeId:', routeId);
+  variantIndex = Number(variantIndex) || 0;
+  console.log('[SectorViewer] Abriendo visor con vía resaltada, routeId:', routeId, 'variantIndex:', variantIndex);
 
-  // Guardar el routeId a resaltar para cuando el canvas se configure
+  // Guardar el routeId y variantIndex a resaltar para cuando el canvas se configure
   svPendingHighlightRoute = routeId;
+  svPendingHighlightVariantIndex = variantIndex;
 
   // Buscar en qué imagen está dibujada la vía
   let startIndex = 0;
@@ -4026,7 +4033,8 @@ async function openSectorImageViewerWithHighlight(schoolId, sectorName, routeId)
     if (drawingsDoc.exists) {
       const data = drawingsDoc.data();
       const drawings = data.drawings || [];
-      const routeDrawing = drawings.find(d => Number(d.routeId) === routeId);
+      const routeDrawing = drawings.find(d => Number(d.routeId) === routeId && (d.variantIndex || 0) === variantIndex)
+        || drawings.find(d => Number(d.routeId) === routeId);
 
       if (routeDrawing && routeDrawing.imageId) {
         // Obtener las imágenes del sector para encontrar el índice

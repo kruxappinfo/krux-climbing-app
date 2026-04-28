@@ -3436,7 +3436,7 @@ async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
     <!-- Botón Ver vía (si tiene dibujo en la imagen del sector) -->
     ${hasDrawing ? `
       <div class="ml-route-view-section">
-        <button class="ml-route-view-btn" onclick="mlViewRouteInSector('${schoolId}', '${encodedSector}', ${routeId})">
+        <button class="ml-route-view-btn" onclick="mlViewRouteInSector('${schoolId}', '${encodedSector}', ${routeId}, ${isTrinomial ? (Number(props._variantIndex) || 0) : 0})">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
             <circle cx="12" cy="12" r="3"/>
@@ -3780,7 +3780,7 @@ function mlUpdateBottomSheetContent(props, isTrinomial) {
       if (viewSection && btnView) {
         if (hasDrawing) {
           viewSection.classList.remove('hidden');
-          btnView.onclick = () => { hideRouteBottomSheet(); mlViewRouteInSector(schoolId, encodedSector, routeId); };
+          btnView.onclick = () => { hideRouteBottomSheet(); mlViewRouteInSector(schoolId, encodedSector, routeId, isTrinomial ? (Number(props._variantIndex) || 0) : 0); };
         } else {
           viewSection.classList.add('hidden');
         }
@@ -4533,17 +4533,18 @@ function mlShareRoute(routeId, encodedName) {
 /**
  * Abre el visor del sector con la vía resaltada
  */
-function mlViewRouteInSector(schoolId, encodedSector, routeId) {
+function mlViewRouteInSector(schoolId, encodedSector, routeId, variantIndex = 0) {
   routeId = Number(routeId);
+  variantIndex = Number(variantIndex) || 0;
   const sectorName = decodeURIComponent(encodedSector);
-  console.log('Ver vía en sector:', routeId, 'en', sectorName);
+  console.log('Ver vía en sector:', routeId, 'variantIndex:', variantIndex, 'en', sectorName);
 
   // Cerrar popup
   if (mlRoutePopup) mlRoutePopup.remove();
 
   // Abrir el visor del sector con la vía resaltada
   if (typeof openSectorImageViewerWithHighlight === 'function') {
-    openSectorImageViewerWithHighlight(schoolId, sectorName, routeId);
+    openSectorImageViewerWithHighlight(schoolId, sectorName, routeId, variantIndex);
   } else {
     // Fallback: abrir visor sin highlight
     if (typeof openSectorImageViewer === 'function') {
