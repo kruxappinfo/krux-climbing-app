@@ -299,11 +299,45 @@
     async function handleAppleLogin() {
       console.log('[MobileAuth] Iniciando login con Apple...');
 
+      // En iOS nativo, signInWithPopup abre una ventana que WKWebView no puede
+      // manejar correctamente y cierra la app. Usamos el plugin nativo si está
+      // disponible, o mostramos un mensaje para usar email/Google.
+      const isNativeIOS = window.kruxPlatform && window.kruxPlatform.isNative && window.kruxPlatform.isIOS;
+
+      if (isNativeIOS) {
+        // Intentar con el plugin @capacitor-community/apple-sign-in si está disponible
+        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SignInWithApple) {
+          try {
+            const result = await window.Capacitor.Plugins.SignInWithApple.authorize({
+              clientId: 'es.kruxapp.app',
+              redirectURI: 'https://climbmaps-80cae.firebaseapp.com/__/auth/handler',
+              scopes: 'email name',
+            });
+            const provider = new firebase.auth.OAuthProvider('apple.com');
+            const credential = provider.credential({
+              idToken: result.response.identityToken,
+              rawNonce: result.response.authorizationCode,
+            });
+            await firebase.auth().signInWithCredential(credential);
+            onLoginSuccess();
+          } catch (error) {
+            console.error('[MobileAuth] Error en Apple login nativo:', error);
+            if (error.code !== 'SIGN_IN_CANCELLED') {
+              showError('Error al iniciar sesión con Apple');
+            }
+          }
+        } else {
+          // Plugin no disponible: informar al usuario
+          showError('Usa email/contraseña o Google para iniciar sesión en la app');
+        }
+        return;
+      }
+
+      // Web/Android: usar popup normalmente
       try {
         const provider = new firebase.auth.OAuthProvider('apple.com');
         provider.addScope('email');
         provider.addScope('name');
-
         await firebase.auth().signInWithPopup(provider);
         onLoginSuccess();
       } catch (error) {
@@ -314,6 +348,14 @@
 
     async function handleFacebookLogin() {
       console.log('[MobileAuth] Iniciando login con Facebook...');
+
+      // signInWithPopup cierra la app en iOS nativo (WKWebView no soporta ventanas emergentes).
+      // Facebook no tiene plugin nativo instalado, así que en iOS se muestra mensaje alternativo.
+      const isNative = window.kruxPlatform && window.kruxPlatform.isNative;
+      if (isNative) {
+        showError('Inicia sesión con email/contraseña o Google en la app');
+        return;
+      }
 
       try {
         const provider = new firebase.auth.FacebookAuthProvider();
