@@ -4771,43 +4771,35 @@ function getExposureIcon(exposicion) {
  * @returns {Object} Objeto con conteo por grado
  */
 function countRoutesByGradeForSector(sectorName) {
-  if (!mlMap || !mlMap.getSource('vias-source')) return {};
+  if (!mlMap) return {};
 
-  try {
-    const features = mlMap.querySourceFeatures('vias-source', {
-      sourceLayer: 'vias'
-    });
+  const gradeCounts = {};
+  const targetSector = sectorName.toLowerCase().trim();
 
-    // [FIX] Priorizar source._data (GeoJSON completo) sobre querySourceFeatures (solo visibles)
-    // para asegurar estadísticas completas independientemente del zoom/viewport
-    const source = mlMap.getSource('vias-source');
-    let routeFeatures = [];
-
-    if (source && source._data && source._data.features) {
-      routeFeatures = source._data.features;
-    } else {
-      routeFeatures = features.length > 0 ? features : [];
-    }
-
-    const gradeCounts = {};
-
-    routeFeatures.forEach(feature => {
-      const props = feature.properties;
-      // Normalizar nombre del sector para comparación
-      const routeSector = (props.sector || '').toLowerCase().trim();
-      const targetSector = sectorName.toLowerCase().trim();
-
-      if (routeSector === targetSector) {
-        const grade = props.grado1 || '?';
-        gradeCounts[grade] = (gradeCounts[grade] || 0) + 1;
+  const countFromSource = (sourceId, sourceLayer) => {
+    try {
+      const source = mlMap.getSource(sourceId);
+      if (!source) return;
+      let features = [];
+      if (source._data && source._data.features) {
+        features = source._data.features;
+      } else {
+        features = mlMap.querySourceFeatures(sourceId, sourceLayer ? { sourceLayer } : {});
       }
-    });
+      features.forEach(f => {
+        const props = f.properties;
+        if ((props.sector || '').toLowerCase().trim() === targetSector) {
+          const grade = props.grado1 || '?';
+          gradeCounts[grade] = (gradeCounts[grade] || 0) + 1;
+        }
+      });
+    } catch (e) { /* source may not exist */ }
+  };
 
-    return gradeCounts;
-  } catch (error) {
-    console.error('Error counting routes by grade:', error);
-    return {};
-  }
+  countFromSource('vias-source', 'vias');
+  countFromSource('vias-usuarios-source', null);
+
+  return gradeCounts;
 }
 
 /**
@@ -5700,6 +5692,24 @@ function renderWeatherForecast(schoolId, dailyData) {
 /**
  * Carga estadísticas de la escuela (Gráfico Donut SVG Interactivo)
  */
+/**
+ * Lee las vías aprobadas de Spotters (vias-usuarios-source) y devuelve { grado: count }
+ */
+function getSpotterGradeCounts() {
+  const counts = {};
+  if (!mlMap) return counts;
+  try {
+    const source = mlMap.getSource('vias-usuarios-source');
+    if (!source) return counts;
+    const features = source._data?.features || mlMap.querySourceFeatures('vias-usuarios-source');
+    features.forEach(f => {
+      const grade = (f.properties?.grado1 || '').toLowerCase().trim();
+      if (grade) counts[grade] = (counts[grade] || 0) + 1;
+    });
+  } catch (e) {}
+  return counts;
+}
+
 async function loadSchoolStats(schoolId, chartId) {
   const container = document.getElementById(chartId);
   if (!container) return;
@@ -5718,9 +5728,15 @@ async function loadSchoolStats(schoolId, chartId) {
         geojson.features.forEach(feature => {
           let grade = (feature.properties.grado1 || '').toLowerCase().trim();
           if (!grade) return;
-          // Normalizar grados si es necesario (ej: convertir '7a+' a '7a+')
           gradeCounts[grade] = (gradeCounts[grade] || 0) + 1;
           total++;
+        });
+
+        // Sumar vías aprobadas de Spotters
+        const spotterCounts = getSpotterGradeCounts();
+        Object.entries(spotterCounts).forEach(([grade, count]) => {
+          gradeCounts[grade] = (gradeCounts[grade] || 0) + count;
+          total += count;
         });
 
         if (total === 0) {
@@ -7446,6 +7462,13 @@ async function loadBottomSheetStats(schoolId) {
         gradeCount[normalizedGrade] = (gradeCount[normalizedGrade] || 0) + 1;
         totalVias++;
       }
+    });
+
+    // Sumar vías aprobadas de Spotters
+    const spotterCounts = getSpotterGradeCounts();
+    Object.entries(spotterCounts).forEach(([grade, count]) => {
+      gradeCount[grade] = (gradeCount[grade] || 0) + count;
+      totalVias += count;
     });
 
     // Guardar en cache
