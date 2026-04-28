@@ -2472,8 +2472,9 @@ function getScaledPathsMulti(drawing, canvasWidth, canvasHeight) {
  * Obtiene el color de una vía según su grado
  */
 function getRouteColor(drawing) {
+  const dvi = drawing.variantIndex || 0;
   const route = svRoutesList.find(r =>
-    (drawing.routeId !== undefined && r.routeId === drawing.routeId) ||
+    (drawing.routeId !== undefined && r.routeId === drawing.routeId && (r.variantIndex || 0) === dvi) ||
     (drawing.routeId === undefined && r.nombre === drawing.routeName)
   );
   return route && typeof getGradeColor === 'function'
@@ -3491,12 +3492,14 @@ function updateHoverPopupPosition(mouseX, mouseY) {
  * Muestra popup flotante con info de la vía al hacer hover
  */
 function showHoverRoutePopup(drawing, number, mouseX, mouseY) {
-  // Buscar datos completos de la vía (by routeId with fallback to routeName)
+  // Buscar datos completos de la vía (by routeId+variantIndex with fallback to routeName)
+  const dvi = drawing.variantIndex || 0;
   const route = svRoutesList.find(r =>
-    (drawing.routeId !== undefined && r.routeId === drawing.routeId) ||
+    (drawing.routeId !== undefined && r.routeId === drawing.routeId && (r.variantIndex || 0) === dvi) ||
     (drawing.routeId === undefined && r.nombre === drawing.routeName)
   );
-  const routeName = route?.nombre || drawing.routeName || 'Sin nombre';
+  const baseName = route?.nombre || drawing.routeName || 'Sin nombre';
+  const routeName = dvi > 0 ? `${baseName} (variante_${dvi})` : baseName;
   const grado = route?.grado || '?';
   const gradeColor = typeof getGradeColor === 'function' ? getGradeColor(grado) : '#10b981';
 
@@ -3658,12 +3661,14 @@ function handleOverlayTap(event) {
  * Posicionado cerca del punto de inicio de la vía
  */
 function showLockedRoutePopup(drawing, number) {
-  // Buscar datos completos de la vía (by routeId with fallback to routeName)
+  // Buscar datos completos de la vía (by routeId+variantIndex with fallback to routeName)
+  const dvi = drawing.variantIndex || 0;
   const route = svRoutesList.find(r =>
-    (drawing.routeId !== undefined && r.routeId === drawing.routeId) ||
+    (drawing.routeId !== undefined && r.routeId === drawing.routeId && (r.variantIndex || 0) === dvi) ||
     (drawing.routeId === undefined && r.nombre === drawing.routeName)
   );
-  const routeName = route?.nombre || drawing.routeName || 'Sin nombre';
+  const baseName = route?.nombre || drawing.routeName || 'Sin nombre';
+  const routeName = dvi > 0 ? `${baseName} (variante_${dvi})` : baseName;
   const grado = route?.grado || '?';
   const gradeColor = typeof getGradeColor === 'function' ? getGradeColor(grado) : '#10b981';
 
@@ -3799,14 +3804,22 @@ async function loadViewerSectorRoutes(schoolId, sectorName) {
         if (response.ok) {
           const geojson = await response.json();
           if (geojson.features) {
-            svRoutesList = geojson.features
+            const expanded = [];
+            geojson.features
               .filter(f => f.properties.sector === sectorName)
-              .map(f => ({
-                routeId: Number(f.properties.id),
-                nombre: f.properties.nombre,
-                grado: f.properties.grado1 || '?',
-                sector: f.properties.sector
-              }));
+              .forEach(f => {
+                const p = f.properties;
+                expanded.push({ routeId: Number(p.id), nombre: p.nombre, grado: p.grado1 || '?', sector: p.sector, variantIndex: 0 });
+                if (p.variante === 'SI' && !p.union) {
+                  for (let i = 2; i <= 5; i++) {
+                    const grado = p['grado' + i];
+                    if (grado != null && grado !== '') {
+                      expanded.push({ routeId: Number(p.id), nombre: p.nombre, grado, sector: p.sector, variantIndex: i - 1 });
+                    }
+                  }
+                }
+              });
+            svRoutesList = expanded;
           }
         }
       }
@@ -3925,11 +3938,13 @@ function distanceToLine(px, py, x1, y1, x2, y2) {
  * Muestra información de una vía tocada
  */
 function showViewerRouteInfo(drawing, number) {
+  const dvi = drawing.variantIndex || 0;
   const route = svRoutesList.find(r =>
-    (drawing.routeId !== undefined && r.routeId === drawing.routeId) ||
+    (drawing.routeId !== undefined && r.routeId === drawing.routeId && (r.variantIndex || 0) === dvi) ||
     (drawing.routeId === undefined && r.nombre === drawing.routeName)
   );
-  const routeName = route?.nombre || drawing.routeName || 'Sin nombre';
+  const baseName = route?.nombre || drawing.routeName || 'Sin nombre';
+  const routeName = dvi > 0 ? `${baseName} (variante_${dvi})` : baseName;
 
   // Crear mini popup
   const existing = document.querySelector('.sv-route-info');

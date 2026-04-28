@@ -1129,16 +1129,24 @@ async function loadSectorRoutes(schoolId, sectorName) {
     const geojson = await response.json();
 
     if (geojson.features) {
-      rdRoutesList = geojson.features
+      const expanded = [];
+      geojson.features
         .filter(f => f.properties.sector === sectorName)
-        .map(f => ({
-          routeId: Number(f.properties.id),
-          nombre: f.properties.nombre,
-          grado: f.properties.grado1 || '?',
-          sector: f.properties.sector,
-          coordinates: f.geometry.coordinates[0] || f.geometry.coordinates
-        }))
-        .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+        .sort((a, b) => (a.properties.nombre || '').localeCompare(b.properties.nombre || ''))
+        .forEach(f => {
+          const p = f.properties;
+          const coords = f.geometry.coordinates[0] || f.geometry.coordinates;
+          expanded.push({ routeId: Number(p.id), nombre: p.nombre, grado: p.grado1 || '?', sector: p.sector, coordinates: coords, variantIndex: 0 });
+          if (p.variante === 'SI' && !p.union) {
+            for (let i = 2; i <= 5; i++) {
+              const grado = p['grado' + i];
+              if (grado != null && grado !== '') {
+                expanded.push({ routeId: Number(p.id), nombre: p.nombre, grado, sector: p.sector, coordinates: coords, variantIndex: i - 1 });
+              }
+            }
+          }
+        });
+      rdRoutesList = expanded;
     }
 
     console.log('[RouteDrawing] Vías cargadas:', rdRoutesList.length);
@@ -1357,11 +1365,16 @@ function renderRoutesList() {
   }
 
   return rdRoutesList.map(route => {
-    const hasDrawing = rdRouteDrawings.find(d => d.routeId === route.routeId || (!d.routeId && d.routeName === route.nombre));
+    const vi = route.variantIndex || 0;
+    const hasDrawing = rdRouteDrawings.find(d => {
+      const idMatch = d.routeId === route.routeId || (!d.routeId && d.routeName === route.nombre);
+      return idMatch && (d.variantIndex || 0) === vi;
+    });
     const gradeColor = getGradeColor(route.grado);
+    const displayName = vi > 0 ? `${route.nombre || 'Sin nombre'} <em class="rd-variant-label">variante_${vi}</em>` : (route.nombre || 'Sin nombre');
 
     return `
-      <div class="rd-route-item ${hasDrawing ? 'rd-has-drawing' : ''}" onclick="selectRouteForDrawing(${route.routeId})">
+      <div class="rd-route-item ${hasDrawing ? 'rd-has-drawing' : ''} ${vi > 0 ? 'rd-route-variant-item' : ''}" onclick="selectRouteForDrawing(${route.routeId}, ${vi})">
         <div class="rd-route-status">
           ${hasDrawing ? `
             <span class="rd-status-icon rd-status-drawn" title="Dibujo completado">
@@ -1379,19 +1392,19 @@ function renderRoutesList() {
           `}
         </div>
         <div class="rd-route-info">
-          <span class="rd-route-name">${route.nombre || 'Sin nombre'}</span>
+          <span class="rd-route-name">${displayName}</span>
           <span class="rd-route-grade" style="background-color: ${gradeColor}">${route.grado}</span>
           ${hasDrawing && hasDrawing.branches && hasDrawing.branches.length > 0 ? `<span class="rd-branch-badge" title="${hasDrawing.branches.length} ramal(es)">${hasDrawing.branches.length}R</span>` : ''}
         </div>
         ${hasDrawing ? `
           <div class="rd-route-actions">
-            <button class="rd-btn-edit" onclick="event.stopPropagation(); editRouteDrawing(${route.routeId})" title="Editar dibujo">
+            <button class="rd-btn-edit" onclick="event.stopPropagation(); editRouteDrawing(${route.routeId}, ${vi})" title="Editar dibujo">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path d="M12 20h9"/>
                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
               </svg>
             </button>
-            <button class="rd-btn-delete" onclick="event.stopPropagation(); deleteRouteDrawing(${route.routeId})" title="Eliminar dibujo">
+            <button class="rd-btn-delete" onclick="event.stopPropagation(); deleteRouteDrawing(${route.routeId}, ${vi})" title="Eliminar dibujo">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <line x1="18" y1="6" x2="6" y2="18"/>
                 <line x1="6" y1="6" x2="18" y2="18"/>
@@ -1514,7 +1527,7 @@ function redrawCanvas() {
   // PASO 1: Dibujar TODAS las líneas primero
   rdRouteDrawings.forEach((drawing, index) => {
     const isSelected = rdCurrentRoute && (
-      (drawing.routeId !== undefined && drawing.routeId === rdCurrentRoute.routeId) ||
+      (drawing.routeId !== undefined && drawing.routeId === rdCurrentRoute.routeId && (drawing.variantIndex || 0) === (rdCurrentRoute.variantIndex || 0)) ||
       (drawing.routeId === undefined && drawing.routeName === rdCurrentRoute.nombre)
     );
     drawRouteLineOnly(drawing, isSelected);
@@ -1523,7 +1536,7 @@ function redrawCanvas() {
   // PASO 1.5: Dibujar TODAS las reuniones encima de las líneas
   rdRouteDrawings.forEach((drawing, index) => {
     const isSelected = rdCurrentRoute && (
-      (drawing.routeId !== undefined && drawing.routeId === rdCurrentRoute.routeId) ||
+      (drawing.routeId !== undefined && drawing.routeId === rdCurrentRoute.routeId && (drawing.variantIndex || 0) === (rdCurrentRoute.variantIndex || 0)) ||
       (drawing.routeId === undefined && drawing.routeName === rdCurrentRoute.nombre)
     );
     drawRouteAnchorOnly(drawing, isSelected);
@@ -1532,7 +1545,7 @@ function redrawCanvas() {
   // PASO 2: Dibujar TODOS los puntos encima (para que no queden tapados)
   rdRouteDrawings.forEach((drawing, index) => {
     const isSelected = rdCurrentRoute && (
-      (drawing.routeId !== undefined && drawing.routeId === rdCurrentRoute.routeId) ||
+      (drawing.routeId !== undefined && drawing.routeId === rdCurrentRoute.routeId && (drawing.variantIndex || 0) === (rdCurrentRoute.variantIndex || 0)) ||
       (drawing.routeId === undefined && drawing.routeName === rdCurrentRoute.nombre)
     );
     drawRoutePointOnly(drawing, isSelected);
@@ -1562,7 +1575,11 @@ function getRouteDrawingData(drawing, isSelected) {
   const scaleX = displayWidth / rdImage.width;
   const scaleY = displayHeight / rdImage.height;
 
-  const route = rdRoutesList.find(r => (drawing.routeId !== undefined && r.routeId === drawing.routeId) || (drawing.routeId === undefined && r.nombre === drawing.routeName));
+  const dvi = drawing.variantIndex || 0;
+  const route = rdRoutesList.find(r =>
+    ((drawing.routeId !== undefined && r.routeId === drawing.routeId && (r.variantIndex || 0) === dvi) ||
+    (drawing.routeId === undefined && r.nombre === drawing.routeName))
+  );
   const gradeColor = route && typeof getGradeColor === 'function'
     ? getGradeColor(route.grado)
     : RD_COLORS.normal;
@@ -3012,6 +3029,7 @@ async function selectAnchorType(anchorType) {
   const drawing = {
     routeId: rdCurrentRoute.routeId,
     routeName: rdCurrentRoute.nombre,
+    ...((rdCurrentRoute.variantIndex || 0) > 0 && { variantIndex: rdCurrentRoute.variantIndex }),
     points: rdDrawingPoints,
     anchorType: anchorType,
     createdAt: isEditing ? rdOriginalDrawing.createdAt : new Date().toISOString(),
@@ -3327,16 +3345,20 @@ function rdCancelDrawing() {
  * Inicia el modo de edición para un dibujo existente
  * @param {string} encodedName - Nombre de la vía codificado
  */
-function editRouteDrawing(routeId) {
-  const route = rdRoutesList.find(r => r.routeId === routeId);
+function editRouteDrawing(routeId, variantIndex = 0) {
+  const vi = variantIndex || 0;
+  const route = rdRoutesList.find(r => r.routeId === routeId && (r.variantIndex || 0) === vi);
 
   if (!route) {
     showRDToast('Vía no encontrada', 'error');
     return;
   }
 
-  // Buscar el dibujo existente
-  const existingDrawing = rdRouteDrawings.find(d => d.routeId === route.routeId || (!d.routeId && d.routeName === route.nombre));
+  // Buscar el dibujo existente para esta variante
+  const existingDrawing = rdRouteDrawings.find(d => {
+    const idMatch = d.routeId === route.routeId || (!d.routeId && d.routeName === route.nombre);
+    return idMatch && (d.variantIndex || 0) === vi;
+  });
   if (!existingDrawing) {
     showRDToast('Esta vía no tiene un dibujo para editar', 'warning');
     return;
@@ -3585,13 +3607,17 @@ function rdCancelEdit() {
 /**
  * Selecciona una vía para dibujar
  */
-function selectRouteForDrawing(routeId) {
-  const route = rdRoutesList.find(r => r.routeId === routeId);
+function selectRouteForDrawing(routeId, variantIndex = 0) {
+  const vi = variantIndex || 0;
+  const route = rdRoutesList.find(r => r.routeId === routeId && (r.variantIndex || 0) === vi);
 
   if (!route) return;
 
-  // Verificar si ya existe un dibujo
-  const existingDrawing = rdRouteDrawings.find(d => d.routeId === route.routeId || (!d.routeId && d.routeName === route.nombre));
+  // Verificar si ya existe un dibujo para esta variante
+  const existingDrawing = rdRouteDrawings.find(d => {
+    const idMatch = d.routeId === route.routeId || (!d.routeId && d.routeName === route.nombre);
+    return idMatch && (d.variantIndex || 0) === vi;
+  });
   if (existingDrawing) {
     // Mostrar modal con opciones: Editar / Bifurcar / Cancelar
     showRouteActionModal(route, existingDrawing);
@@ -3885,8 +3911,11 @@ async function saveRouteDrawing(drawing, isEditing = false) {
 
       if (isEditing) {
         // MODO EDICIÓN: Eliminar el dibujo original y añadir el editado
+        const dvi = drawing.variantIndex || 0;
         allDrawings = allDrawings.filter(d => {
-          if (d.routeId !== undefined && drawing.routeId !== undefined) return d.routeId !== drawing.routeId;
+          if (d.routeId !== undefined && drawing.routeId !== undefined) {
+            return !(d.routeId === drawing.routeId && (d.variantIndex || 0) === dvi);
+          }
           return d.routeName !== drawing.routeName;
         });
         // Añadir el dibujo editado
@@ -3940,19 +3969,23 @@ async function saveRouteDrawing(drawing, isEditing = false) {
 /**
  * Elimina un dibujo
  */
-async function deleteRouteDrawing(routeId) {
-  const route = rdRoutesList.find(r => r.routeId === routeId);
-  const displayName = route ? route.nombre : routeId;
+async function deleteRouteDrawing(routeId, variantIndex = 0) {
+  const vi = variantIndex || 0;
+  const route = rdRoutesList.find(r => r.routeId === routeId && (r.variantIndex || 0) === vi);
+  const baseName = route ? route.nombre : routeId;
+  const displayName = vi > 0 ? `${baseName} (variante_${vi})` : baseName;
 
   if (!confirm(`¿Eliminar dibujo de "${displayName}"?`)) return;
 
   try {
     const docId = `${rdCurrentSector.schoolId}_${normalizeSectorName(rdCurrentSector.sectorName)}`;
 
-    // Remover del array local
+    // Remover del array local solo el dibujo de esta variante
     rdRouteDrawings = rdRouteDrawings.filter(d => {
-      if (d.routeId !== undefined && routeId !== undefined) return d.routeId !== routeId;
-      return d.routeName !== displayName;
+      if (d.routeId !== undefined && routeId !== undefined) {
+        return !(d.routeId === routeId && (d.variantIndex || 0) === vi);
+      }
+      return d.routeName !== baseName;
     });
 
     // Actualizar Firestore
