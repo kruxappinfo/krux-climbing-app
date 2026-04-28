@@ -1733,10 +1733,10 @@ function showSectorModal() {
             <label for="dev-sector-expo">Exposicion</label>
             <select id="dev-sector-expo">
               <option value="">Sin especificar</option>
-              <option value="Sol manana">Sol manana</option>
+              <option value="Sol mañana">Sol mañana</option>
               <option value="Sol tarde">Sol tarde</option>
+              <option value="Sol total">Sol total</option>
               <option value="Sombra">Sombra</option>
-              <option value="Mixto">Mixto</option>
             </select>
           </div>
         </div>
