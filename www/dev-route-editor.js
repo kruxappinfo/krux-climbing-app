@@ -904,13 +904,13 @@ async function saveDevRoute() {
     };
 
     // Verificar si el sector tiene foto; si no, preguntar antes de abrir el editor
-    const schoolId = mlCurrentSchool || routeData.schoolId;
+    const photoSchoolId = schoolId || routeData.schoolId;
     const hasSectorPhoto = typeof window.sectorHasImage === 'function'
-      ? await window.sectorHasImage(schoolId, routeData.sector)
+      ? await window.sectorHasImage(photoSchoolId, routeData.sector)
       : true;
 
     if (!hasSectorPhoto) {
-      promptSectorPhoto(schoolId, routeData.sector, openDrawing);
+      promptSectorPhoto(photoSchoolId, routeData.sector, openDrawing);
     } else {
       openDrawing();
     }
