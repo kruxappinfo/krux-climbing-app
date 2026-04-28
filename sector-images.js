@@ -1763,11 +1763,13 @@ function initCanvasOverlayForGallery(img, container, imageIndex) {
 
   // Aplicar highlight pendiente si existe (svPendingHighlightRoute stores routeId)
   if (svPendingHighlightRoute) {
+    const drawing = svDrawings.find(d => d.routeId === svPendingHighlightRoute && (d.variantIndex || 0) === 0);
     svHighlightedRoute = svPendingHighlightRoute;
+    svHighlightedVariantIndex = 0;
     svLockedRoute = svPendingHighlightRoute;
+    svLockedVariantIndex = 0;
     console.log('[SectorViewer] Aplicando highlight a routeId:', svHighlightedRoute);
 
-    const drawing = svDrawings.find(d => d.routeId === svPendingHighlightRoute);
     if (drawing) {
       const index = svDrawings.indexOf(drawing);
       setTimeout(() => {
@@ -2315,12 +2317,14 @@ function initCanvasOverlay(img) {
 
   // Aplicar highlight pendiente si existe (svPendingHighlightRoute stores routeId)
   if (svPendingHighlightRoute) {
+    const drawing = svDrawings.find(d => d.routeId === svPendingHighlightRoute && (d.variantIndex || 0) === 0);
     svHighlightedRoute = svPendingHighlightRoute;
-    svLockedRoute = svPendingHighlightRoute; // Bloquear también
+    svHighlightedVariantIndex = 0;
+    svLockedRoute = svPendingHighlightRoute;
+    svLockedVariantIndex = 0;
     console.log('[SectorViewer] Aplicando highlight a routeId:', svHighlightedRoute);
 
     // Buscar el dibujo para mostrar el popup
-    const drawing = svDrawings.find(d => d.routeId === svPendingHighlightRoute);
     if (drawing) {
       const index = svDrawings.indexOf(drawing);
       // Mostrar popup después de un pequeño delay para que el canvas esté listo
@@ -2545,7 +2549,7 @@ function drawOverlayRouteLine(drawing, canvasWidth, canvasHeight) {
   if (paths.length === 0) return;
 
   const color = getRouteColor(drawing);
-  const isHighlighted = svHighlightedRoute === drawing.routeId;
+  const isHighlighted = svHighlightedRoute === drawing.routeId && (svHighlightedVariantIndex || 0) === (drawing.variantIndex || 0);
   const isZoomed = svZoomState.scale > 1;
 
   // Factor de escala para que las líneas se vean consistentes en diferentes tamaños de pantalla
@@ -3250,7 +3254,7 @@ function drawOverlayRoutePoint(drawing, canvasWidth, canvasHeight) {
   if (!scaledPoints) return;
 
   const color = getRouteColor(drawing);
-  const isHighlighted = svHighlightedRoute === drawing.routeId;
+  const isHighlighted = svHighlightedRoute === drawing.routeId && (svHighlightedVariantIndex || 0) === (drawing.variantIndex || 0);
   const isZoomed = svZoomState.scale > 1;
 
   // Factor de escala para consistencia entre móvil y desktop
@@ -3698,7 +3702,7 @@ function showLockedRoutePopup(drawing, number) {
     startPoint = drawing.startPoint;
   }
 
-  if (!startPoint || !svCanvas || !svImage) return;
+  if (!svCanvas || !svImage) return;
 
   // Calcular posición en pantalla usando dimensiones lógicas
   const rect = svCanvas.getBoundingClientRect();
@@ -3707,8 +3711,15 @@ function showLockedRoutePopup(drawing, number) {
   const scaleX = rect.width / displayWidth;
   const scaleY = rect.height / displayHeight;
 
-  const screenX = rect.left + (startPoint.x / svImage.naturalWidth) * displayWidth * scaleX;
-  const screenY = rect.top + (startPoint.y / svImage.naturalHeight) * displayHeight * scaleY;
+  let screenX, screenY;
+  if (startPoint) {
+    screenX = rect.left + (startPoint.x / svImage.naturalWidth) * displayWidth * scaleX;
+    screenY = rect.top + (startPoint.y / svImage.naturalHeight) * displayHeight * scaleY;
+  } else {
+    // Fallback: centro-inferior del canvas
+    screenX = rect.left + rect.width / 2;
+    screenY = rect.bottom - 80;
+  }
 
   const routeIdForBtn = drawing.routeId;
 
