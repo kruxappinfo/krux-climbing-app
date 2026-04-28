@@ -3014,6 +3014,36 @@ function setupViasInteraction() {
 /**
  * Muestra popup de ruta con nuevo diseño
  */
+/**
+ * Devuelve el HTML del tag "(Variante N)" para rutas con variante=SI.
+ *
+ * Caso A — union=null (trinomios: misma vía con varios grados):
+ *   Usa _trinomialIndex inyectado en props por el sistema de carrusel.
+ *   Index 0 → principal (sin etiqueta). Index 1 → "(Variante 1)", etc.
+ *
+ * Caso B — union="X_Y_Z" (vías distintas con trayecto compartido):
+ *   La primera ID del grupo → principal. Las siguientes → "(Variante N)".
+ */
+function getVariantLabel(props) {
+  if (props.variante !== 'SI') return '';
+  const union = props.union;
+
+  if (!union) {
+    // Trinomio: usar el índice del slide activo
+    const idx = Number(props._trinomialIndex) || 0;
+    if (idx === 0) return '';
+    return `<small class="ml-route-variant-tag">(Variante ${idx})</small>`;
+  }
+
+  // Grupo union: comparar id con primer elemento del grupo
+  const ids = String(union).split('_').map(s => s.trim());
+  const routeId = String(Math.round(Number(props.id)));
+  const idx = ids.indexOf(routeId);
+
+  if (idx <= 0) return ''; // Primera en el grupo → principal
+  return `<small class="ml-route-variant-tag">(Variante ${idx})</small>`;
+}
+
 async function showRoutePopup(props, coords) {
   const grade = props.grado1 || '?';
   const gradeColor = getGradeColor(grade);
@@ -3091,12 +3121,14 @@ async function showRoutePopup(props, coords) {
   const estadoData = await getEstadoVotes(schoolId, routeId);
   const estadoHTML = generateEstadoStarsHTML(routeId, schoolId, estadoData.avg, estadoData.userVote);
 
+  const variantLabel = getVariantLabel(props);
+
   const html = `
     <div class="ml-route-popup-new">
       <!-- Header: Check + Nombre + Grado -->
       <div class="ml-route-header">
         ${ascentCheckHTML}
-        <span class="ml-route-name">${routeName}</span>
+        <span class="ml-route-name">${routeName}${variantLabel}</span>
         <span class="ml-route-grade" style="background-color: ${gradeColor}">${grade}</span>
       </div>
 
@@ -3347,7 +3379,7 @@ async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
     <!-- Header: Check + Nombre (grado ya indicado en segmented control) -->
     <div class="ml-route-header">
       ${ascentCheckHTML}
-      <span class="ml-route-name">${routeName}</span>
+      <span class="ml-route-name">${routeName}${getVariantLabel(props)}</span>
     </div>
 
     <!-- Info items -->
@@ -3605,7 +3637,7 @@ function mlUpdateBottomSheetContent(props, isTrinomial) {
 
   // --- Header ---
   const nameEl = document.getElementById('rbs-route-name');
-  if (nameEl) nameEl.textContent = routeName;
+  if (nameEl) nameEl.innerHTML = routeName + getVariantLabel(props);
 
   const gradeEl = document.getElementById('rbs-route-grade');
   if (gradeEl) {
@@ -6768,7 +6800,7 @@ async function showRouteBottomSheet(props, coords) {
 
   // --- Header ---
   const nameEl = document.getElementById('rbs-route-name');
-  if (nameEl) nameEl.textContent = routeName;
+  if (nameEl) nameEl.innerHTML = routeName + getVariantLabel(props);
 
   const gradeEl = document.getElementById('rbs-route-grade');
   if (gradeEl) {

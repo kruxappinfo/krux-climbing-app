@@ -3016,20 +3016,31 @@ function setupViasInteraction() {
  */
 /**
  * Devuelve el HTML del tag "(Variante N)" para rutas con variante=SI.
- * - union=null → "(Variante)" (variante suelta sin grupo)
- * - union="X_Y_Z" y el id de la ruta es el primero → "" (es la principal)
- * - union="X_Y_Z" y el id es el segundo o posterior → "(Variante 1)", "(Variante 2)"...
+ *
+ * Caso A — union=null (trinomios: misma vía con varios grados):
+ *   Usa _trinomialIndex inyectado en props por el sistema de carrusel.
+ *   Index 0 → principal (sin etiqueta). Index 1 → "(Variante 1)", etc.
+ *
+ * Caso B — union="X_Y_Z" (vías distintas con trayecto compartido):
+ *   La primera ID del grupo → principal. Las siguientes → "(Variante N)".
  */
 function getVariantLabel(props) {
   if (props.variante !== 'SI') return '';
   const union = props.union;
-  if (!union) return '<small class="ml-route-variant-tag">(Variante)</small>';
 
+  if (!union) {
+    // Trinomio: usar el índice del slide activo
+    const idx = Number(props._trinomialIndex) || 0;
+    if (idx === 0) return '';
+    return `<small class="ml-route-variant-tag">(Variante ${idx})</small>`;
+  }
+
+  // Grupo union: comparar id con primer elemento del grupo
   const ids = String(union).split('_').map(s => s.trim());
   const routeId = String(Math.round(Number(props.id)));
   const idx = ids.indexOf(routeId);
 
-  if (idx <= 0) return ''; // Primera en el grupo → principal, sin etiqueta
+  if (idx <= 0) return ''; // Primera en el grupo → principal
   return `<small class="ml-route-variant-tag">(Variante ${idx})</small>`;
 }
 
@@ -3368,7 +3379,7 @@ async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
     <!-- Header: Check + Nombre (grado ya indicado en segmented control) -->
     <div class="ml-route-header">
       ${ascentCheckHTML}
-      <span class="ml-route-name">${routeName}</span>
+      <span class="ml-route-name">${routeName}${getVariantLabel(props)}</span>
     </div>
 
     <!-- Info items -->
