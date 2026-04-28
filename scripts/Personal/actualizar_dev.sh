@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 1. Navegar a la carpeta del proyecto
-cd /Users/jaimelillo/krux-climbing-app/scripts/Personal || { echo "❌ Error: No se encuentra la carpeta"; exit 1; }
+cd /Users/jaimelillo/krux/scripts/Personal || { echo "❌ Error: No se encuentra la carpeta"; exit 1; }
 
 # 2. Asegurarse de estar en la rama dev
 CURRENT_BRANCH=$(git branch --show-current)
@@ -12,41 +12,37 @@ fi
 
 echo "🌿 Rama activa: dev"
 
-# 3. Pedir al usuario el mensaje del commit
-echo "📦 ¿Qué cambios has hecho? (Escribe el mensaje del commit):"
-read message
+# 3. Fetch para tener el estado real del remoto
+echo "🔄 Obteniendo estado del remoto..."
+git fetch origin || { echo "❌ Error al conectar con GitHub"; exit 1; }
 
-if [ -z "$message" ]; then
-    message="Dev: actualización $(date +'%d/%m/%Y %H:%M')"
-fi
+# 4. Guardar cambios no commiteados si los hay
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "📦 ¿Qué cambios has hecho? (Escribe el mensaje del commit):"
+    read message
+    [ -z "$message" ] && message="Dev: actualización $(date +'%d/%m/%Y %H:%M')"
 
-# 4. Ejecutar el ciclo de Git
-echo "🚀 Iniciando actualización en dev..."
-
-git add .
-
-if git commit -m "$message"; then
+    git add .
+    git commit -m "$message" || { echo "❌ Error al hacer commit"; exit 1; }
     echo "✅ Cambios guardados localmente."
 else
-    echo "⚠️ No había cambios nuevos para guardar."
+    echo "ℹ️  No hay cambios nuevos para commitear."
 fi
 
-# 5. Sincronización con rebase para evitar el error de ramas divergentes
-echo "🔄 Syncing con GitHub (dev)..."
-
-git pull --rebase origin dev || {
-    echo "❌ CONFLICTO DETECTADO en dev.";
-    echo "   Resuelve los conflictos y luego ejecuta: git rebase --continue";
-    exit 1;
+# 5. Rebase contra origin/dev
+echo "🔄 Aplicando rebase contra origin/dev..."
+git rebase origin/dev || {
+    echo "❌ CONFLICTO DETECTADO. Resuélvelos y ejecuta: git rebase --continue"
+    exit 1
 }
 
 # 6. Subir a dev
-echo "⬆️ Subiendo cambios a dev..."
+echo "⬆️  Subiendo cambios a dev..."
 if git push origin dev; then
     echo "✅ Rama dev actualizada en GitHub."
     echo ""
     echo "👉 Cuando estés listo para producción, ejecuta: actualizar_prod.sh"
 else
-    echo "❌ Error al subir a GitHub."
+    echo "❌ Error al subir a GitHub. ¿Necesitas --force-with-lease?"
     exit 1
 fi

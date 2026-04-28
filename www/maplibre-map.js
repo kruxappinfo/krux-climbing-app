@@ -17,6 +17,8 @@ let mlIs3DEnabled = false;           // Estado del terreno 3D
 let mlFilterPanelOpen = false;        // Estado del panel de filtro
 let mlGradeRangeMin = 0;              // Índice mínimo del rango de grado (0 = primer grado)
 let mlGradeRangeMax = -1;             // Índice máximo del rango de grado (-1 = se inicializa al total)
+let mlShowOnlyMyRoutes = false;       // Mostrar solo vías realizadas por el usuario
+let mlShowOnlyProjects = false;       // Mostrar solo vías guardadas en proyectos
 
 // ============================================
 // VARIANT GROUPS STATE
@@ -26,6 +28,63 @@ let mlVariantFeatureIndex = new Map(); // featureId → groupKey (reverse lookup
 let mlCurrentVariantGroup = null;      // Array of variant data for active carousel
 let mlCurrentVariantSlide = 0;         // Active slide index in carousel
 let mlVariantSwipeStartX = 0;         // Touch swipe tracking
+let mlVariantMarkers = [];            // HTML markers for concentric variant rings
+
+// ============================================
+// REALTIME LISTENERS (Firestore onSnapshot)
+// ============================================
+let mlApprovedRoutesUnsub = null;     // Unsubscriber para vías aprobadas
+let mlApprovedPOIUnsub = null;        // Unsubscriber para POIs aprobados
+let mlApprovedSectorsUnsub = null;    // Unsubscriber para sectores aprobados
+let mlMyPendingRoutesUnsub = null;    // Unsubscriber para vías pendientes del usuario
+let mlMyPendingPOIUnsub = null;       // Unsubscriber para POIs pendientes del usuario
+let mlMyPendingSectorsUnsub = null;   // Unsubscriber para sectores pendientes del usuario
+let mlUserViasInteractionAttached = false;
+let mlUserPOIInteractionAttached = false;
+let mlUserSectorsInteractionAttached = false;
+let mlMyPendingViasInteractionAttached = false;
+let mlMyPendingSectorsInteractionAttached = false;
+let mlAdminPendingRoutesUnsub = null;
+let mlAdminPendingPOIUnsub = null;
+let mlAdminPendingSectorsUnsub = null;
+let mlAdminPendingViasInteractionAttached = false;
+let mlAdminPendingPOIInteractionAttached = false;
+let mlAdminPendingSectorsInteractionAttached = false;
+
+// Cache de escuelas pendientes del usuario (docId → {nombre, coordinates})
+const mlPendingSchoolsCache = new Map();
+
+// Edit state for admin drag-to-edit geometry
+const mlEditState = { markers: [], docId: null, collection: null, type: null };
+
+function mlClearApprovedListeners() {
+  if (mlApprovedRoutesUnsub) { try { mlApprovedRoutesUnsub(); } catch (e) {} mlApprovedRoutesUnsub = null; }
+  if (mlApprovedPOIUnsub) { try { mlApprovedPOIUnsub(); } catch (e) {} mlApprovedPOIUnsub = null; }
+  if (mlApprovedSectorsUnsub) { try { mlApprovedSectorsUnsub(); } catch (e) {} mlApprovedSectorsUnsub = null; }
+  if (mlMyPendingRoutesUnsub) { try { mlMyPendingRoutesUnsub(); } catch (e) {} mlMyPendingRoutesUnsub = null; }
+  if (mlMyPendingPOIUnsub) { try { mlMyPendingPOIUnsub(); } catch (e) {} mlMyPendingPOIUnsub = null; }
+  if (mlMyPendingSectorsUnsub) { try { mlMyPendingSectorsUnsub(); } catch (e) {} mlMyPendingSectorsUnsub = null; }
+  if (mlAdminPendingRoutesUnsub) { try { mlAdminPendingRoutesUnsub(); } catch (e) {} mlAdminPendingRoutesUnsub = null; }
+  if (mlAdminPendingPOIUnsub) { try { mlAdminPendingPOIUnsub(); } catch (e) {} mlAdminPendingPOIUnsub = null; }
+  if (mlAdminPendingSectorsUnsub) { try { mlAdminPendingSectorsUnsub(); } catch (e) {} mlAdminPendingSectorsUnsub = null; }
+}
+
+// Cancels pending (user-specific) subscriptions and empties their map layers.
+// Called when the user logs out so stale personal data is not left on the map.
+function mlClearPendingItemsLayers() {
+  if (mlMyPendingRoutesUnsub) { try { mlMyPendingRoutesUnsub(); } catch (e) {} mlMyPendingRoutesUnsub = null; }
+  if (mlMyPendingPOIUnsub) { try { mlMyPendingPOIUnsub(); } catch (e) {} mlMyPendingPOIUnsub = null; }
+  if (mlMyPendingSectorsUnsub) { try { mlMyPendingSectorsUnsub(); } catch (e) {} mlMyPendingSectorsUnsub = null; }
+  if (mlAdminPendingRoutesUnsub) { try { mlAdminPendingRoutesUnsub(); } catch (e) {} mlAdminPendingRoutesUnsub = null; }
+  if (mlAdminPendingPOIUnsub) { try { mlAdminPendingPOIUnsub(); } catch (e) {} mlAdminPendingPOIUnsub = null; }
+  if (mlAdminPendingSectorsUnsub) { try { mlAdminPendingSectorsUnsub(); } catch (e) {} mlAdminPendingSectorsUnsub = null; }
+
+  if (!mlMap) return;
+  const empty = { type: 'FeatureCollection', features: [] };
+  ['pending-my-routes-source', 'pending-my-poi-source', 'pending-my-sectors-source',
+   'admin-pending-routes-source', 'admin-pending-poi-source', 'admin-pending-sectors-source']
+    .forEach(id => { try { if (mlMap.getSource(id)) mlMap.getSource(id).setData(empty); } catch (e) {} });
+}
 
 // ============================================
 // PALETA DE COLORES PARA SECTORES
@@ -53,6 +112,15 @@ const SECTOR_COLORS = [
   '#F8B500',  // Dorado
   '#2ECC71'   // Esmeralda
 ];
+
+/**
+ * Convierte un color hex a componentes "r, g, b" (sin el rgba wrapper).
+ * Útil para construir strings rgba() con opacidad variable.
+ */
+function hexToRgbComponents(hex) {
+  const num = parseInt(hex.replace('#', ''), 16);
+  return `${(num >> 16) & 0xFF}, ${(num >> 8) & 0xFF}, ${num & 0xFF}`;
+}
 
 /**
  * Oscurece un color hex para crear el casing
@@ -724,6 +792,27 @@ async function checkIsAdmin() {
   }
 }
 
+let _cachedAdminRole = undefined;
+let _cachedAdminRoleTime = 0;
+
+async function checkAdminRole() {
+  const now = Date.now();
+  if (_cachedAdminRole !== undefined && (now - _cachedAdminRoleTime) < ADMIN_CACHE_DURATION) {
+    return _cachedAdminRole;
+  }
+  try {
+    if (typeof auth === 'undefined' || !auth.currentUser) {
+      _cachedAdminRole = null; _cachedAdminRoleTime = now; return null;
+    }
+    const doc = await db.collection('admins').doc(auth.currentUser.uid).get();
+    _cachedAdminRole = doc.exists ? (doc.data().role || null) : null;
+    _cachedAdminRoleTime = now;
+    return _cachedAdminRole;
+  } catch (e) {
+    _cachedAdminRole = null; _cachedAdminRoleTime = now; return null;
+  }
+}
+
 /**
  * Abre el editor de vías para el sector actualmente visible
  */
@@ -986,8 +1075,60 @@ function onMapLoad() {
   // Cargar markers de escuelas (vista general)
   loadSchoolMarkers();
 
+  // Cargar escuelas aprobadas desde Firestore (marcadores adicionales)
+  loadApprovedSchoolsFromFirestore();
+
+  // Cargar escuelas pendientes: admin ve todas, spotter solo las propias, otros nada
+  checkAdminRole().then(role => {
+    if (role === 'admin') {
+      loadAllPendingSchoolsForAdmin();
+    } else if (role === 'spotter') {
+      loadMyPendingSchoolsFromFirestore();
+    }
+  });
+
   // NO cargar escuela por defecto - el usuario selecciona desde markers
   // mlLoadSchool('valeria');
+
+  // Re-subscribe to approved items and update pending items on auth state change.
+  // onSnapshot connections are dropped when Firebase auth state changes; without this
+  // approved Spotter content disappears after logout/re-login.
+  // Fires immediately on registration — guarded by mlCurrentSchool check so it's a no-op at init.
+  if (typeof firebase !== 'undefined' && firebase.auth) {
+    firebase.auth().onAuthStateChanged(async (user) => {
+      // Invalidate cached roles so they are re-evaluated under the new auth state
+      _cachedIsAdmin = null;
+      _cachedAdminRole = undefined;
+      _cachedAdminRoleTime = 0;
+      _cachedAdminCheckTime = 0;
+
+      if (!mlMap || !mlCurrentSchool) return;
+      const schoolId = mlCurrentSchool;
+
+      // Approved items are public — always re-subscribe regardless of auth state
+      loadApprovedRoutesFromFirestore(schoolId);
+      loadApprovedSectorsFromFirestore(schoolId);
+      loadApprovedPOIFromFirestore(schoolId);
+
+      if (user) {
+        // Reload user-specific (pending) items based on new role
+        checkAdminRole().then(role => {
+          if (role === 'admin') {
+            loadAllPendingForAdmin(schoolId);
+            loadAllPendingSchoolsForAdmin();
+          } else if (role === 'spotter') {
+            loadMyPendingRoutesFromFirestore(schoolId);
+            loadMyPendingPOIFromFirestore(schoolId);
+            loadMyPendingSectorsFromFirestore(schoolId);
+            loadMyPendingSchoolsFromFirestore();
+          }
+        });
+      } else {
+        // Logged out: clear pending item layers (user-specific data must not persist)
+        mlClearPendingItemsLayers();
+      }
+    });
+  }
 
   // Activar botón de centrar mapa (Spain Reset)
   setupResetViewButton();
@@ -1355,6 +1496,12 @@ window.ml3DModeActive = () => ml3DModeActive;
 async function mlLoadSchool(schoolId, skipFlyTo = false) {
   const school = MAPLIBRE_SCHOOLS[schoolId];
   if (!school) {
+    // Puede ser una escuela pendiente creada por el Spotter
+    const pendingSchool = mlPendingSchoolsCache.get(schoolId);
+    if (pendingSchool) {
+      await mlLoadPendingSchool(schoolId, pendingSchool.coordinates, skipFlyTo);
+      return;
+    }
     console.error('Escuela no encontrada:', schoolId);
     return;
   }
@@ -1508,6 +1655,9 @@ async function mlLoadSchoolVectorTiles(school) {
         .then(geojson => {
           if (geojson && geojson.features) {
             mlBuildVariantGroupsIndex(geojson.features);
+            // Ocultar variantes del circle layer y crear marcadores concéntricos
+            applyGradeFilter(); // re-aplica filtro incluyendo exclusión de variantes
+            mlCreateVariantMarkers();
           }
         })
         .catch(e => console.warn('Error loading variant index for tiles path:', e));
@@ -1540,6 +1690,31 @@ async function mlLoadSchoolVectorTiles(school) {
     // Añadir interactividad a parkings
     setupParkingsInteraction();
   }
+
+  // Cargar puntos de interés desde GeoJSON estático
+  if (school.geojson && school.geojson.puntosInteres) {
+    await mlLoadPuntosInteres(school.geojson.puntosInteres);
+  }
+
+  // Cargar vías aprobadas desde Firestore
+  await loadApprovedRoutesFromFirestore(school.id, school.zoomLevels.vias);
+
+  // Cargar sectores aprobados desde Firestore
+  await loadApprovedSectorsFromFirestore(school.id);
+
+  // Cargar POIs aprobados desde Firestore
+  await loadApprovedPOIFromFirestore(school.id);
+
+  // Cargar ítems pendientes según rol
+  checkAdminRole().then(role => {
+    if (role === 'admin') {
+      loadAllPendingForAdmin(school.id, school.zoomLevels?.vias || 14);
+    } else if (role === 'spotter') {
+      loadMyPendingRoutesFromFirestore(school.id, school.zoomLevels?.vias || 14);
+      loadMyPendingPOIFromFirestore(school.id);
+      loadMyPendingSectorsFromFirestore(school.id);
+    }
+  });
 }
 
 /**
@@ -1662,6 +1837,23 @@ async function mlLoadSchoolGeoJSON(school) {
     // Cargar vías aprobadas desde Firestore (usando el mismo minzoom que las vías oficiales)
     await loadApprovedRoutesFromFirestore(school.id, school.zoomLevels.vias);
   }
+
+  // Cargar sectores aprobados desde Firestore
+  await loadApprovedSectorsFromFirestore(school.id);
+
+  // Cargar POIs aprobados desde Firestore
+  await loadApprovedPOIFromFirestore(school.id);
+
+  // Cargar ítems pendientes según rol
+  checkAdminRole().then(role => {
+    if (role === 'admin') {
+      loadAllPendingForAdmin(school.id, school.zoomLevels?.vias || 14);
+    } else if (role === 'spotter') {
+      loadMyPendingRoutesFromFirestore(school.id, school.zoomLevels?.vias || 14);
+      loadMyPendingPOIFromFirestore(school.id);
+      loadMyPendingSectorsFromFirestore(school.id);
+    }
+  });
 
   // Cargar parkings
   if (school.geojson.parkings) {
@@ -2059,10 +2251,27 @@ async function mlLoadGeoJSONLayer(layerId, url, type, paint, minzoom = 0, layout
  * Limpia las capas de la escuela actual
  */
 function mlClearSchoolLayers() {
-  const layerIds = ['vias-ticks-circle-layer', 'vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer', 'vias-variant-connector-layer'];
-  const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source', 'vias-variant-connector-source'];
+  const layerIds = ['vias-ticks-circle-layer', 'vias-ticks-layer', 'vias-layer', 'sectores-layer', 'sectores-casing-layer', 'parkings-layer', 'rutas-acceso-layer', 'puntos-interes-layer', 'vias-variant-connector-layer', 'vias-usuarios-layer', 'poi-usuarios-layer', 'sectores-usuarios-layer', 'sectores-usuarios-casing-layer', 'escuelas-usuarios-layer', 'escuelas-usuarios-labels-layer', 'pending-my-routes-layer', 'pending-my-poi-layer', 'pending-my-sectors-layer', 'pending-my-sectors-casing-layer', 'admin-pending-routes-layer', 'admin-pending-poi-layer', 'admin-pending-sectors-layer', 'admin-pending-sectors-casing-layer'];
+  const sourceIds = ['vias-ticks-source', 'vias-source', 'sectores-source', 'parkings-source', 'rutas-acceso-source', 'puntos-interes-source', 'vias-variant-connector-source', 'vias-usuarios-source', 'poi-usuarios-source', 'sectores-usuarios-source', 'escuelas-usuarios-source', 'pending-my-routes-source', 'pending-my-poi-source', 'pending-my-sectors-source', 'admin-pending-routes-source', 'admin-pending-poi-source', 'admin-pending-sectors-source'];
+
+  // Cancelar listeners realtime antes de eliminar capas/sources
+  mlClearApprovedListeners();
+
+  // Resetear flags de interacción (las capas serán recreadas)
+  mlUserViasInteractionAttached = false;
+  mlUserPOIInteractionAttached = false;
+  mlUserSectorsInteractionAttached = false;
+  mlMyPendingViasInteractionAttached = false;
+  mlMyPendingSectorsInteractionAttached = false;
+  mlAdminPendingViasInteractionAttached = false;
+  mlAdminPendingPOIInteractionAttached = false;
+  mlAdminPendingSectorsInteractionAttached = false;
+
+  // Cancel any active geometry edit
+  mlCancelPendingEdit();
 
   // Limpiar estado de variantes
+  mlClearVariantMarkers();
   mlVariantGroups.clear();
   mlVariantFeatureIndex.clear();
   mlCurrentVariantGroup = null;
@@ -2518,16 +2727,214 @@ function mlLoadVariantConnectorLayer(connectorGeoJSON) {
   console.log(`Variant connector layer loaded: ${connectorGeoJSON.features.length} connectors`);
 }
 
+// ============================================
+// VARIANT CONCENTRIC RING MARKERS
+// ============================================
+
+/**
+ * Genera SVG inline para un marcador de variantes con anillos concéntricos.
+ * El marcador se inscribe en un viewBox de 100×100 y se escala vía CSS
+ * para coincidir con el radio de los puntos simples a cualquier zoom.
+ *
+ * @param {string[]} gradeColors — array de colores hex; [0] = centro, [1..N] = anillos
+ * @returns {string} SVG markup
+ */
+/**
+ * @param {string[]} gradeColors — [0]=centro, [1..N]=anillos
+ * @param {number}   pixelDiameter — diámetro real del marcador en px
+ */
+function mlGenerateVariantMarkerSVG(gradeColors, pixelDiameter) {
+  const VB = 100;
+  const C  = VB / 2;
+  const R  = C;
+  const N  = gradeColors.length - 1;
+
+  // Convertir px reales → unidades de viewBox.
+  // Borde exterior = mismo grosor que circle-stroke-width de puntos simples.
+  // Gap entre anillos se reduce con más variantes para dejar más espacio al color.
+  const strokePx = isMobileDevice() ? 1 : 1.5;
+  const pxToVB   = VB / pixelDiameter;
+  const STROKE_W = strokePx * pxToVB;
+  const gapFactor = N <= 1 ? 1.0 : N === 2 ? 0.6 : 0.4;
+  const GAP       = N > 0 ? strokePx * gapFactor * pxToVB : 0;
+
+  const INNER_R = R - STROKE_W;
+
+  // Centro con doble peso para que la vía principal domine
+  const CENTER_WEIGHT = 2;
+  const totalWeight   = CENTER_WEIGHT + N;
+  const unit          = (INNER_R - N * GAP) / totalWeight;
+  const centerR       = unit * CENTER_WEIGHT;
+  const ringBand      = unit;
+
+  let svg = `<svg viewBox="0 0 ${VB} ${VB}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">`;
+
+  // Borde blanco exterior
+  svg += `<circle cx="${C}" cy="${C}" r="${R - STROKE_W / 2}" fill="none" stroke="white" stroke-width="${STROKE_W}"/>`;
+
+  // Círculo central
+  svg += `<circle cx="${C}" cy="${C}" r="${centerR}" fill="${gradeColors[0]}"/>`;
+
+  // Anillos concéntricos con gaps blancos
+  for (let i = 0; i < N; i++) {
+    const ringInner = centerR + (i + 1) * GAP + i * ringBand;
+    const ringR     = ringInner + ringBand / 2;
+    const gapR      = ringInner - GAP / 2;
+    svg += `<circle cx="${C}" cy="${C}" r="${gapR}"  fill="none" stroke="white"              stroke-width="${GAP}"/>`;
+    svg += `<circle cx="${C}" cy="${C}" r="${ringR}" fill="none" stroke="${gradeColors[i + 1]}" stroke-width="${ringBand}"/>`;
+  }
+
+  svg += '</svg>';
+  return svg;
+}
+
+/**
+ * Calcula el radio de los puntos de vías (px) para el zoom actual,
+ * replicando la interpolación lineal de vias-layer circle-radius.
+ */
+function mlGetViasRadius() {
+  const zoom = mlMap.getZoom();
+  const mobile = isMobileDevice();
+  const stops = mobile
+    ? [[14, 2], [16, 3.5], [18, 5.5], [20, 9]]
+    : [[14, 3], [16, 5],   [18, 8],   [20, 14]];
+
+  if (zoom <= stops[0][0]) return stops[0][1];
+  if (zoom >= stops[stops.length - 1][0]) return stops[stops.length - 1][1];
+
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (zoom <= stops[i + 1][0]) {
+      const t = (zoom - stops[i][0]) / (stops[i + 1][0] - stops[i][0]);
+      return stops[i][1] + t * (stops[i + 1][1] - stops[i][1]);
+    }
+  }
+  return stops[stops.length - 1][1];
+}
+
+/**
+ * Crea marcadores HTML con anillos concéntricos para cada grupo de variantes.
+ * Cada marcador se posiciona en el centroide del grupo.
+ */
+function mlCreateVariantMarkers() {
+  mlClearVariantMarkers();
+
+  for (const [groupKey, group] of mlVariantGroups) {
+    if (group.length < 2) continue;
+
+    // Calcular centroide del grupo
+    let sumLng = 0, sumLat = 0, count = 0;
+    for (const gf of group) {
+      if (gf.coords) {
+        sumLng += gf.coords[0];
+        sumLat += gf.coords[1];
+        count++;
+      }
+    }
+    if (count === 0) continue;
+    const centroid = [sumLng / count, sumLat / count];
+
+    // Array de colores: centro = primer route, anillos = variantes
+    const gradeColors = group.map(gf => {
+      const grade = gf.props._displayGrado || gf.props.grado1 || '?';
+      return getGradeColor(grade);
+    });
+
+    // Crear elemento HTML (SVG se regenera en updateMarkers)
+    const el = document.createElement('div');
+    el.style.cursor = 'pointer';
+    el.className = 'variant-marker';
+    el.dataset.groupKey = groupKey;
+
+    // Crear marcador MapLibre
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat(centroid)
+      .addTo(mlMap);
+
+    // Click handler → abre carrusel de variantes
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const coords = { lng: centroid[0], lat: centroid[1] };
+
+      if (isMobileDevice()) {
+        adaptiveMapPanForBottomSheet(coords);
+        mlShowVariantGroupBottomSheet(group, 0, coords);
+      } else {
+        mlMap.flyTo({
+          center: centroid,
+          zoom: mlMap.getZoom(),
+          speed: 0.8,
+          curve: 1,
+          padding: { top: 450, bottom: 0, left: 0, right: 0 }
+        });
+        mlShowVariantGroupPopup(group, 0, coords);
+      }
+    });
+
+    mlVariantMarkers.push({ marker, gradeColors });
+  }
+
+  // Control de visibilidad, tamaño y regeneración SVG por zoom
+  if (mlVariantMarkers.length > 0) {
+    let lastDiameter = 0;
+    const updateMarkers = () => {
+      const school = mlCurrentSchool ? MAPLIBRE_SCHOOLS[mlCurrentSchool] : null;
+      const minZoom = school ? school.zoomLevels.vias : 17;
+      const visible = mlMap.getZoom() >= minZoom;
+
+      const strokeW      = isMobileDevice() ? 1 : 1.5;
+      const baseDiameter = Math.round(mlGetViasRadius() * 2 + strokeW * 2);
+      const sizeChanged  = baseDiameter !== lastDiameter;
+      lastDiameter = baseDiameter;
+
+      for (const entry of mlVariantMarkers) {
+        const N  = entry.gradeColors.length - 1;
+        // Marcadores con 3+ variantes: ligeramente más grandes para que
+        // los anillos finos sean legibles
+        const scale = N >= 3 ? 1.25 : N >= 2 ? 1.15 : 1.0;
+        const d  = Math.round(baseDiameter * scale);
+        const el = entry.marker.getElement();
+        el.style.display = visible ? '' : 'none';
+        el.style.width   = d + 'px';
+        el.style.height  = d + 'px';
+        // Regenerar SVG solo cuando cambia el diámetro base en px
+        if (sizeChanged) {
+          el.innerHTML = mlGenerateVariantMarkerSVG(entry.gradeColors, d);
+        }
+      }
+    };
+    mlMap.on('zoom', updateMarkers);
+    updateMarkers(); // estado inicial
+  }
+
+  console.log(`Variant markers created: ${mlVariantMarkers.length} concentric markers`);
+}
+
+/**
+ * Elimina todos los marcadores HTML de variantes del mapa.
+ */
+function mlClearVariantMarkers() {
+  for (const entry of mlVariantMarkers) entry.marker.remove();
+  mlVariantMarkers = [];
+}
+
 /**
  * Procesa variantes tras cargar un GeoJSON de vías:
- * construye índice, aplica offsets y carga capa de conectores.
+ * construye índice, elimina features de variantes del GeoJSON y
+ * crea marcadores concéntricos.
  */
 function mlProcessVariantsForGeoJSON(geojson) {
   if (!geojson || !geojson.features) return;
   mlBuildVariantGroupsIndex(geojson.features);
-  mlApplyLateralOffsets(geojson.features);
-  const connectorGeoJSON = mlBuildVariantConnectorGeoJSON(geojson.features);
-  mlLoadVariantConnectorLayer(connectorGeoJSON);
+
+  // Eliminar features de variantes del GeoJSON para que no se pinten
+  // como puntos individuales en vias-layer
+  geojson.features = geojson.features.filter(f => {
+    const id = Number(f.properties.id);
+    return !mlVariantFeatureIndex.has(id);
+  });
+
+  // Crear marcadores concéntricos para los grupos
+  mlCreateVariantMarkers();
 }
 
 // ============================================
@@ -2540,6 +2947,7 @@ function mlProcessVariantsForGeoJSON(geojson) {
 function setupViasInteraction() {
   // Clic en vía
   mlMap.on('click', 'vias-layer', (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
 
     const feature = e.features[0];
@@ -2655,7 +3063,7 @@ async function showRoutePopup(props, coords) {
   // Iconos SVG de la botonera (tamaño 32x32)
   const iconCheck = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
-  const iconBookmark = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+  const iconBookmark = buildBookmarkIcon(routeId);
 
   const iconComment = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
 
@@ -2742,7 +3150,7 @@ async function showRoutePopup(props, coords) {
         <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">
           ${iconCheck}
         </button>
-        <button class="ml-route-action-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
+        <button class="ml-route-action-btn ${isRouteInProjects(routeId) ? 'bookmark-active' : ''}" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
           ${iconBookmark}
         </button>
         <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">
@@ -2793,7 +3201,40 @@ async function showRoutePopup(props, coords) {
 // ============================================
 
 /**
- * Muestra un popup con carrusel de variantes (desktop).
+ * Construye la fila de badges de grado para navegar entre variantes.
+ * @param {Array}  groupFeatures — array de { props, coords }
+ * @param {number} activeIndex   — índice activo
+ * @param {boolean} isTrinomial
+ * @param {string} navFn        — nombre de la función JS a llamar al hacer click
+ * @param {string} barId        — id del contenedor de badges
+ */
+function mlBuildVariantBadgesHTML(groupFeatures, activeIndex, isTrinomial, navFn, barId) {
+  let html = `<div class="ml-variant-badge-bar" id="${barId}">`;
+  for (let i = 0; i < groupFeatures.length; i++) {
+    const gf    = groupFeatures[i];
+    const grade = isTrinomial
+      ? (gf.props._displayGrado || gf.props.grado1 || '?')
+      : (gf.props.grado1 || '?');
+    const color = getGradeColor(grade);
+    const rgb   = hexToRgbComponents(color);
+    const isActive = i === activeIndex;
+    // Active: solid grade color bg + white text + shadow (matches .ml-route-grade).
+    // Inactive: same color at 35% opacity bg + white text at 80% — readable but subdued.
+    const style = isActive
+      ? `background:${color};color:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.25);`
+      : `background:rgba(${rgb},0.35);color:rgba(255,255,255,0.8);`;
+    html += `<button class="ml-variant-badge${isActive ? ' active' : ''}"
+               style="${style}"
+               data-color="${color}"
+               data-rgb="${rgb}"
+               onclick="${navFn}(${i})">${grade}</button>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Muestra un popup con badges de variante (desktop).
  * @param {Array} groupFeatures - Array de { props, coords } del grupo
  * @param {number} startIndex - Índice de la variante clickeada
  * @param {Object} coords - lngLat del click
@@ -2802,28 +3243,14 @@ async function mlShowVariantGroupPopup(groupFeatures, startIndex, coords) {
   mlCurrentVariantGroup = groupFeatures;
   mlCurrentVariantSlide = startIndex >= 0 ? startIndex : 0;
 
-  const n = groupFeatures.length;
   const isTrinomial = groupFeatures[0].props._isTrinomialGroup;
 
-  // Generar dots
-  let dotsHTML = '';
-  for (let i = 0; i < n; i++) {
-    dotsHTML += `<span class="ml-variant-dot${i === mlCurrentVariantSlide ? ' active' : ''}"></span>`;
-  }
-
-  // Generar contenido del slide actual
-  const slideHTML = await mlBuildVariantSlideHTML(groupFeatures[mlCurrentVariantSlide], isTrinomial);
+  const badgesHTML = mlBuildVariantBadgesHTML(groupFeatures, mlCurrentVariantSlide, isTrinomial, 'mlVariantGoTo', 'ml-variant-badge-bar');
+  const slideHTML  = await mlBuildVariantSlideHTML(groupFeatures[mlCurrentVariantSlide], isTrinomial);
 
   const html = `
     <div class="ml-route-popup-new ml-variant-popup">
-      <div class="ml-variant-nav-bar">
-        <button class="ml-variant-nav-btn" onclick="mlVariantNav(-1)">&#8249;</button>
-        <span class="ml-variant-indicator" id="ml-variant-indicator">
-          ${isTrinomial ? 'Variante' : ''} ${mlCurrentVariantSlide + 1} de ${n}
-        </span>
-        <button class="ml-variant-nav-btn" onclick="mlVariantNav(1)">&#8250;</button>
-      </div>
-      <div class="ml-variant-dots-bar" id="ml-variant-dots">${dotsHTML}</div>
+      ${badgesHTML}
       <div id="ml-variant-content">${slideHTML}</div>
     </div>
   `;
@@ -2912,16 +3339,15 @@ async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
 
   // Iconos SVG botonera
   const iconCheck = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-  const iconBookmark = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+  const iconBookmark = buildBookmarkIcon(routeId);
   const iconComment = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
   const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 
   return `
-    <!-- Header: Check + Nombre + Grado -->
+    <!-- Header: Check + Nombre (grado ya indicado en segmented control) -->
     <div class="ml-route-header">
       ${ascentCheckHTML}
       <span class="ml-route-name">${routeName}</span>
-      <span class="ml-route-grade" style="background-color: ${gradeColor}">${grade}</span>
     </div>
 
     <!-- Info items -->
@@ -2959,7 +3385,7 @@ async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
       <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">
         ${iconCheck}
       </button>
-      <button class="ml-route-action-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
+      <button class="ml-route-action-btn ${isRouteInProjects(routeId) ? 'bookmark-active' : ''}" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
         ${iconBookmark}
       </button>
       <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">
@@ -3002,51 +3428,61 @@ function mlLoadVariantSlideAsyncData(variantData, isTrinomial) {
 }
 
 /**
- * Navega entre slides del carrusel de variantes.
- * @param {number} direction - -1 para anterior, +1 para siguiente
+ * Navega directamente a una variante por índice (popup desktop).
+ * Llamada por onclick de los badges y por swipe.
+ * @param {number} index — índice destino
  */
-async function mlVariantNav(direction) {
+async function mlVariantGoTo(index) {
   if (!mlCurrentVariantGroup || mlCurrentVariantGroup.length === 0) return;
+  if (index === mlCurrentVariantSlide) return;
 
-  const n = mlCurrentVariantGroup.length;
-  mlCurrentVariantSlide = (mlCurrentVariantSlide + direction + n) % n;
+  mlCurrentVariantSlide = index;
   const isTrinomial = mlCurrentVariantGroup[0].props._isTrinomialGroup;
 
-  // Actualizar indicador
-  const indicator = document.getElementById('ml-variant-indicator');
-  if (indicator) {
-    indicator.textContent = `${isTrinomial ? 'Variante ' : ''}${mlCurrentVariantSlide + 1} de ${n}`;
-  }
-
-  // Actualizar dots
-  const dotsContainer = document.getElementById('ml-variant-dots');
-  if (dotsContainer) {
-    const dots = dotsContainer.querySelectorAll('.ml-variant-dot');
-    dots.forEach((dot, i) => {
-      dot.classList.toggle('active', i === mlCurrentVariantSlide);
+  // Actualizar estado visual de los badges
+  const badgeBar = document.getElementById('ml-variant-badge-bar');
+  if (badgeBar) {
+    badgeBar.querySelectorAll('.ml-variant-badge').forEach((b, i) => {
+      const isActive = i === index;
+      const color = b.dataset.color || '#888';
+      const rgb   = b.dataset.rgb   || '136, 136, 136';
+      b.classList.toggle('active', isActive);
+      b.style.background  = isActive ? color : `rgba(${rgb},0.35)`;
+      b.style.color        = isActive ? '#fff' : 'rgba(255,255,255,0.8)';
+      b.style.boxShadow    = isActive ? '0 2px 6px rgba(0,0,0,0.25)' : 'none';
     });
   }
 
-  // Transición fade del contenido
+  // Transición fade del contenido — fijar altura para evitar colapso visual
   const contentEl = document.getElementById('ml-variant-content');
   if (contentEl) {
+    // Capturar altura actual y fijarla antes de vaciar el contenido
+    const currentH = contentEl.offsetHeight;
+    contentEl.style.minHeight = `${currentH}px`;
     contentEl.classList.add('fading');
     await new Promise(resolve => setTimeout(resolve, 150));
-
-    const slideHTML = await mlBuildVariantSlideHTML(mlCurrentVariantGroup[mlCurrentVariantSlide], isTrinomial);
-    contentEl.innerHTML = slideHTML;
+    contentEl.innerHTML = await mlBuildVariantSlideHTML(mlCurrentVariantGroup[index], isTrinomial);
     contentEl.classList.remove('fading');
-
-    // Cargar datos asíncronos del nuevo slide
-    mlLoadVariantSlideAsyncData(mlCurrentVariantGroup[mlCurrentVariantSlide], isTrinomial);
+    // Liberar la altura fijada para que el nuevo contenido respire
+    contentEl.style.minHeight = '';
+    mlLoadVariantSlideAsyncData(mlCurrentVariantGroup[index], isTrinomial);
   }
 
-  // Actualizar estado global de ruta para funciones externas
-  const currentProps = mlCurrentVariantGroup[mlCurrentVariantSlide].props;
-  mlCurrentRouteGrade = isTrinomial ? (currentProps._displayGrado || currentProps.grado1) : currentProps.grado1;
-  mlCurrentRouteSector = currentProps.sector || '';
-  mlCurrentRouteId = Number(currentProps.id);
-  mlCurrentRouteName = currentProps.nombre || 'Sin nombre';
+  // Actualizar estado global de ruta
+  const props = mlCurrentVariantGroup[index].props;
+  mlCurrentRouteGrade = isTrinomial ? (props._displayGrado || props.grado1) : props.grado1;
+  mlCurrentRouteSector = props.sector || '';
+  mlCurrentRouteId = Number(props.id);
+  mlCurrentRouteName = props.nombre || 'Sin nombre';
+}
+
+/**
+ * Wrapper para swipe (dirección relativa → índice absoluto).
+ */
+async function mlVariantNav(direction) {
+  if (!mlCurrentVariantGroup) return;
+  const n = mlCurrentVariantGroup.length;
+  await mlVariantGoTo((mlCurrentVariantSlide + direction + n) % n);
 }
 
 // ============================================
@@ -3080,38 +3516,18 @@ async function mlShowVariantGroupBottomSheet(groupFeatures, startIndex, coords) 
   if (!sheet) return;
 
   // Eliminar barra de variantes previa si existe
-  const existingNav = sheet.querySelector('.rbs-variant-nav-bar');
-  if (existingNav) existingNav.remove();
-  const existingDots = sheet.querySelector('.rbs-variant-dots-bar');
-  if (existingDots) existingDots.remove();
+  const existingBadges = sheet.querySelector('.rbs-variant-badge-bar');
+  if (existingBadges) existingBadges.remove();
 
-  const n = groupFeatures.length;
-
-  // Generar dots
-  let dotsHTML = '';
-  for (let i = 0; i < n; i++) {
-    dotsHTML += `<span class="ml-variant-dot${i === mlCurrentVariantSlide ? ' active' : ''}"></span>`;
-  }
-
-  // Insertar barra de navegación después del handle del bottom sheet
+  // Insertar badges de grado después del handle del bottom sheet
   const handle = sheet.querySelector('.rbs-handle') || sheet.firstElementChild;
   if (handle) {
-    const navBar = document.createElement('div');
-    navBar.className = 'rbs-variant-nav-bar';
-    navBar.innerHTML = `
-      <button class="ml-variant-nav-btn" onclick="mlVariantNavBottomSheet(-1)">&#8249;</button>
-      <span class="ml-variant-indicator" id="rbs-variant-indicator">
-        ${isTrinomial ? 'Variante ' : ''}${mlCurrentVariantSlide + 1} de ${n}
-      </span>
-      <button class="ml-variant-nav-btn" onclick="mlVariantNavBottomSheet(1)">&#8250;</button>
-    `;
-    handle.insertAdjacentElement('afterend', navBar);
-
-    const dotsBar = document.createElement('div');
-    dotsBar.className = 'rbs-variant-dots-bar';
-    dotsBar.id = 'rbs-variant-dots';
-    dotsBar.innerHTML = dotsHTML;
-    navBar.insertAdjacentElement('afterend', dotsBar);
+    const badgeBar = document.createElement('div');
+    badgeBar.innerHTML = mlBuildVariantBadgesHTML(
+      groupFeatures, mlCurrentVariantSlide, isTrinomial,
+      'mlVariantGoToBottomSheet', 'rbs-variant-badge-bar'
+    ).replace('ml-variant-badge-bar', 'ml-variant-badge-bar rbs-variant-badge-bar');
+    handle.insertAdjacentElement('afterend', badgeBar.firstElementChild);
   }
 
   // Añadir swipe horizontal al contenido del bottom sheet
@@ -3127,34 +3543,34 @@ function mlBottomSheetSwipeStart(e) {
 function mlBottomSheetSwipeEnd(e) {
   const diff = mlVariantSwipeStartX - e.changedTouches[0].screenX;
   if (Math.abs(diff) > 50 && mlCurrentVariantGroup) {
-    mlVariantNavBottomSheet(diff > 0 ? 1 : -1);
+    const n = mlCurrentVariantGroup.length;
+    mlVariantGoToBottomSheet((mlCurrentVariantSlide + (diff > 0 ? 1 : -1) + n) % n);
   }
 }
 
 /**
- * Navega entre variantes en el bottom sheet móvil.
- * Recarga el contenido del bottom sheet con la nueva variante.
+ * Navega directamente a una variante por índice (bottom sheet móvil).
+ * @param {number} index — índice destino
  */
-async function mlVariantNavBottomSheet(direction) {
+async function mlVariantGoToBottomSheet(index) {
   if (!mlCurrentVariantGroup || mlCurrentVariantGroup.length === 0) return;
+  if (index === mlCurrentVariantSlide) return;
 
-  const n = mlCurrentVariantGroup.length;
-  mlCurrentVariantSlide = (mlCurrentVariantSlide + direction + n) % n;
+  mlCurrentVariantSlide = index;
   const isTrinomial = mlCurrentVariantGroup[0].props._isTrinomialGroup;
-  const currentVariant = mlCurrentVariantGroup[mlCurrentVariantSlide];
+  const currentVariant = mlCurrentVariantGroup[index];
 
-  // Actualizar indicador
-  const indicator = document.getElementById('rbs-variant-indicator');
-  if (indicator) {
-    indicator.textContent = `${isTrinomial ? 'Variante ' : ''}${mlCurrentVariantSlide + 1} de ${n}`;
-  }
-
-  // Actualizar dots
-  const dotsContainer = document.getElementById('rbs-variant-dots');
-  if (dotsContainer) {
-    const dots = dotsContainer.querySelectorAll('.ml-variant-dot');
-    dots.forEach((dot, i) => {
-      dot.classList.toggle('active', i === mlCurrentVariantSlide);
+  // Actualizar estado visual de los badges
+  const badgeBar = document.getElementById('rbs-variant-badge-bar');
+  if (badgeBar) {
+    badgeBar.querySelectorAll('.ml-variant-badge').forEach((b, i) => {
+      const isActive = i === index;
+      const color = b.dataset.color || '#888';
+      const rgb   = b.dataset.rgb   || '136, 136, 136';
+      b.classList.toggle('active', isActive);
+      b.style.background  = isActive ? color : `rgba(${rgb},0.35)`;
+      b.style.color        = isActive ? '#fff' : 'rgba(255,255,255,0.8)';
+      b.style.boxShadow    = isActive ? '0 2px 6px rgba(0,0,0,0.25)' : 'none';
     });
   }
 
@@ -3272,13 +3688,13 @@ function mlUpdateBottomSheetContent(props, isTrinomial) {
   const actionsContainer = document.getElementById('rbs-actions');
   if (actionsContainer) {
     const iconCheck = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-    const iconBookmark = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+    const iconBookmark = buildBookmarkIcon(routeId);
     const iconComment = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
     const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 
     actionsContainer.innerHTML = `
       <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">${iconCheck}</button>
-      <button class="ml-route-action-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">${iconBookmark}</button>
+      <button class="ml-route-action-btn ${isRouteInProjects(routeId) ? 'bookmark-active' : ''}" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">${iconBookmark}</button>
       <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">${iconComment}</button>
       <button class="ml-route-action-btn" onclick="mlShareRoute(${routeId}, '${encodeURIComponent(routeName)}')" title="Compartir">${iconShare}</button>
     `;
@@ -3946,19 +4362,36 @@ function mlToggleFavorite(encodedName) {
   }
 }
 
-function mlToggleBookmark(routeId, encodedName) {
-  const name = decodeURIComponent(encodedName);
-  console.log('Toggle bookmark:', name, 'routeId:', routeId);
+function buildBookmarkIcon(routeId) {
+  const inProj = typeof isProject === 'function' && isProject(routeId);
+  const color = inProj ? '#eab308' : 'currentColor';
+  const fill = inProj ? '#eab308' : 'none';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="${fill}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+}
 
-  if (typeof addToProjects === 'function') {
-    const schoolId = mlCurrentSchool || 'valeria';
-    addToProjects(schoolId, routeId, name);
-  } else if (typeof addToFavorites === 'function') {
-    const schoolId = mlCurrentSchool || 'valeria';
-    addToFavorites(schoolId, routeId, name);
-  } else {
-    showToast('Guardado en proyectos', 'success');
+function isRouteInProjects(routeId) {
+  return typeof isProject === 'function' && isProject(routeId);
+}
+
+async function mlToggleBookmark(routeId, encodedName) {
+  const name = decodeURIComponent(encodedName);
+
+  if (typeof toggleProject !== 'function') {
+    showToast('Función no disponible', 'error');
+    return;
   }
+
+  await toggleProject(routeId, name, mlCurrentRouteGrade || '');
+
+  // Actualizar icono + estado "presionado" del botón en el popup activo
+  const btn = document.getElementById('ml-bookmark-btn');
+  if (btn) {
+    btn.innerHTML = buildBookmarkIcon(routeId);
+    btn.classList.toggle('bookmark-active', isRouteInProjects(routeId));
+  }
+
+  // Si el filtro de proyectos está activo, reaplicar para reflejar el cambio
+  if (mlShowOnlyProjects) applyGradeFilter();
 }
 
 function mlOpenComments(routeId, encodedName) {
@@ -4338,43 +4771,35 @@ function getExposureIcon(exposicion) {
  * @returns {Object} Objeto con conteo por grado
  */
 function countRoutesByGradeForSector(sectorName) {
-  if (!mlMap || !mlMap.getSource('vias-source')) return {};
+  if (!mlMap) return {};
 
-  try {
-    const features = mlMap.querySourceFeatures('vias-source', {
-      sourceLayer: 'vias'
-    });
+  const gradeCounts = {};
+  const targetSector = sectorName.toLowerCase().trim();
 
-    // [FIX] Priorizar source._data (GeoJSON completo) sobre querySourceFeatures (solo visibles)
-    // para asegurar estadísticas completas independientemente del zoom/viewport
-    const source = mlMap.getSource('vias-source');
-    let routeFeatures = [];
-
-    if (source && source._data && source._data.features) {
-      routeFeatures = source._data.features;
-    } else {
-      routeFeatures = features.length > 0 ? features : [];
-    }
-
-    const gradeCounts = {};
-
-    routeFeatures.forEach(feature => {
-      const props = feature.properties;
-      // Normalizar nombre del sector para comparación
-      const routeSector = (props.sector || '').toLowerCase().trim();
-      const targetSector = sectorName.toLowerCase().trim();
-
-      if (routeSector === targetSector) {
-        const grade = props.grado1 || '?';
-        gradeCounts[grade] = (gradeCounts[grade] || 0) + 1;
+  const countFromSource = (sourceId, sourceLayer) => {
+    try {
+      const source = mlMap.getSource(sourceId);
+      if (!source) return;
+      let features = [];
+      if (source._data && source._data.features) {
+        features = source._data.features;
+      } else {
+        features = mlMap.querySourceFeatures(sourceId, sourceLayer ? { sourceLayer } : {});
       }
-    });
+      features.forEach(f => {
+        const props = f.properties;
+        if ((props.sector || '').toLowerCase().trim() === targetSector) {
+          const grade = props.grado1 || '?';
+          gradeCounts[grade] = (gradeCounts[grade] || 0) + 1;
+        }
+      });
+    } catch (e) { /* source may not exist */ }
+  };
 
-    return gradeCounts;
-  } catch (error) {
-    console.error('Error counting routes by grade:', error);
-    return {};
-  }
+  countFromSource('vias-source', 'vias');
+  countFromSource('vias-usuarios-source', null);
+
+  return gradeCounts;
 }
 
 /**
@@ -4450,7 +4875,7 @@ function renderGradeChart(containerId, gradeCounts) {
 /**
  * Muestra popup de sector
  */
-function showSectorPopup(props, coords) {
+function showSectorPopup(props, coords, extraHTML = '') {
   // Cerrar popup/bottom sheet de ruta si está abierto
   if (mlRoutePopup) mlRoutePopup.remove();
   hideRouteBottomSheet();
@@ -4519,6 +4944,8 @@ function showSectorPopup(props, coords) {
         </svg>
         Ver Sector
       </button>
+
+      ${extraHTML}
     </div>
   `;
 
@@ -4571,6 +4998,7 @@ function setupSectoresInteraction() {
 
   // Click en sector
   mlMap.on('click', 'sectores-layer', (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
 
     const feature = e.features[0];
@@ -4645,6 +5073,7 @@ function setupParkingsInteraction() {
 
   // Click en parking
   mlMap.on('click', 'parkings-layer', (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
 
     const feature = e.features[0];
@@ -4932,6 +5361,7 @@ function setupSchoolLayerInteraction() {
 
   // Click en marker de escuela
   mlMap.on('click', 'school-markers-layer', (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
 
     const feature = e.features[0];
@@ -5262,6 +5692,41 @@ function renderWeatherForecast(schoolId, dailyData) {
 /**
  * Carga estadísticas de la escuela (Gráfico Donut SVG Interactivo)
  */
+/**
+ * Lee las vías aprobadas de Spotters desde Firestore y devuelve { grado: count }
+ * Usa la fuente del mapa si ya está cargada; si no, consulta Firestore directamente.
+ */
+async function getSpotterGradeCounts(schoolId) {
+  const counts = {};
+  // Intentar leer de la fuente del mapa primero (más rápido, si ya está cargada)
+  if (mlMap) {
+    try {
+      const source = mlMap.getSource('vias-usuarios-source');
+      if (source && source._data?.features?.length > 0) {
+        source._data.features.forEach(f => {
+          const grade = (f.properties?.grado1 || '').toLowerCase().trim();
+          if (grade) counts[grade] = (counts[grade] || 0) + 1;
+        });
+        return counts;
+      }
+    } catch (e) {}
+  }
+  // Fallback: consultar Firestore directamente
+  if (!schoolId || typeof firebase === 'undefined' || !firebase.firestore) return counts;
+  try {
+    const db = firebase.firestore();
+    const snapshot = await db.collection('pending_routes')
+      .where('schoolId', '==', schoolId)
+      .where('status', '==', 'approved')
+      .get();
+    snapshot.forEach(doc => {
+      const grade = (doc.data().grado1 || doc.data().geojsonFeature?.properties?.grado1 || '').toLowerCase().trim();
+      if (grade) counts[grade] = (counts[grade] || 0) + 1;
+    });
+  } catch (e) {}
+  return counts;
+}
+
 async function loadSchoolStats(schoolId, chartId) {
   const container = document.getElementById(chartId);
   if (!container) return;
@@ -5269,7 +5734,7 @@ async function loadSchoolStats(schoolId, chartId) {
   try {
     const schoolConfig = MAPLIBRE_SCHOOLS[schoolId];
     if (schoolConfig && schoolConfig.geojson && schoolConfig.geojson.vias) {
-      const response = await fetch(schoolConfig.geojson.vias);
+      const response = await fetch(`${schoolConfig.geojson.vias}?v=${Date.now()}`);
       if (response.ok) {
         const geojson = await response.json();
 
@@ -5280,9 +5745,15 @@ async function loadSchoolStats(schoolId, chartId) {
         geojson.features.forEach(feature => {
           let grade = (feature.properties.grado1 || '').toLowerCase().trim();
           if (!grade) return;
-          // Normalizar grados si es necesario (ej: convertir '7a+' a '7a+')
           gradeCounts[grade] = (gradeCounts[grade] || 0) + 1;
           total++;
+        });
+
+        // Sumar vías aprobadas de Spotters
+        const spotterCounts = await getSpotterGradeCounts(schoolId);
+        Object.entries(spotterCounts).forEach(([grade, count]) => {
+          gradeCounts[grade] = (gradeCounts[grade] || 0) + count;
+          total += count;
         });
 
         if (total === 0) {
@@ -5520,6 +5991,16 @@ function setupSchoolPopupEvents(school, gmapsUrl) {
         if (typeof currentSchoolName !== 'undefined') {
           window.currentSchoolName = school.nombre;
         }
+      } else if (mlPendingSchoolsCache.has(school.id)) {
+        // Escuela aprobada/pendiente solo en Firestore — cargar como pending school
+        mlMap.flyTo({
+          center: school.coords,
+          zoom: school.zoom || 16,
+          duration: 1500
+        });
+        mlLoadSchool(school.id, true);
+        if (typeof currentSchoolId !== 'undefined') window.currentSchoolId = school.id;
+        if (typeof currentSchoolName !== 'undefined') window.currentSchoolName = school.nombre;
       } else {
         // Fallback para escuelas no configuradas en MAPLIBRE_SCHOOLS
         mlMap.flyTo({
@@ -5695,6 +6176,7 @@ function mlEnsureMapReady() {
 // Exponer funciones globalmente
 window.initMapLibre = initMapLibre;
 window.mlLoadSchool = mlLoadSchool;
+window.mlLoadPendingSchool = mlLoadPendingSchool;
 window.mlToggle3D = mlToggle3D;
 window.mlFlyTo = mlFlyTo;
 window.mlGetMap = mlGetMap;
@@ -5902,7 +6384,9 @@ function initBottomSheet() {
         return;
       }
 
-      if (!MAPLIBRE_SCHOOLS[bsCurrentSchool.id]) {
+      const isFirestoreSchool = !MAPLIBRE_SCHOOLS[bsCurrentSchool.id] && mlPendingSchoolsCache.has(bsCurrentSchool.id);
+
+      if (!MAPLIBRE_SCHOOLS[bsCurrentSchool.id] && !isFirestoreSchool) {
         console.warn('Escuela no configurada en MAPLIBRE_SCHOOLS:', bsCurrentSchool.id);
         if (typeof showToast === 'function') {
           showToast('Esta escuela aún no está disponible', 'info');
@@ -5917,9 +6401,11 @@ function initBottomSheet() {
 
       hideBottomSheet();
 
+      const flyCenter = schoolConfig ? schoolConfig.center : bsCurrentSchool.coords;
+      const flyZoom = schoolConfig ? schoolConfig.zoom : (bsCurrentSchool.zoom || 16);
       mlMap.flyTo({
-        center: schoolConfig.center,
-        zoom: schoolConfig.zoom,
+        center: flyCenter,
+        zoom: flyZoom,
         duration: 1500
       });
 
@@ -5998,7 +6484,7 @@ function initSectorBottomSheet() {
 /**
  * Muestra el Sector Bottom Sheet con datos del sector
  */
-function showSectorBottomSheet(props, coords) {
+function showSectorBottomSheet(props, coords, extraHTML = '') {
   if (!isMobileDevice()) return false;
 
   const sheet = document.getElementById('sector-bottom-sheet');
@@ -6098,6 +6584,10 @@ function showSectorBottomSheet(props, coords) {
       container.innerHTML = generateSectorEstadoHTML(result.avg, result.ratedCount, result.totalCount);
     }
   });
+
+  // Admin actions
+  const adminActionsEl = document.getElementById('secbs-admin-actions');
+  if (adminActionsEl) adminActionsEl.innerHTML = extraHTML;
 
   return true;
 }
@@ -6369,7 +6859,7 @@ async function showRouteBottomSheet(props, coords) {
   const actionsContainer = document.getElementById('rbs-actions');
   if (actionsContainer) {
     const iconCheck = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-    const iconBookmark = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+    const iconBookmark = buildBookmarkIcon(routeId);
     const iconComment = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
     const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 
@@ -6389,7 +6879,7 @@ async function showRouteBottomSheet(props, coords) {
 
     actionsContainer.innerHTML = `
       <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">${iconCheck}</button>
-      <button class="ml-route-action-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">${iconBookmark}</button>
+      <button class="ml-route-action-btn ${isRouteInProjects(routeId) ? 'bookmark-active' : ''}" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">${iconBookmark}</button>
       <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">${iconComment}${commentBadge}</button>
       <button class="ml-route-action-btn" onclick="mlShareRoute(${routeId}, '${encodeURIComponent(routeName)}')" title="Compartir">${iconShare}</button>
     `;
@@ -6905,6 +7395,7 @@ function renderDonutChart(gradeData) {
   `;
 
   // Añadir interactividad a los segmentos
+  const svgEl = container.querySelector('svg');
   const svgSegments = container.querySelectorAll('.bs-donut-segment');
   const centerText = document.getElementById('bs-donut-center');
 
@@ -6913,17 +7404,19 @@ function renderDonutChart(gradeData) {
       const grade = segment.getAttribute('data-grade');
       const count = segment.getAttribute('data-count');
       const color = segment.getAttribute('stroke');
-
       centerText.innerHTML = `
-        <div class="bs-donut-total" style="color: ${color};">${grade}</div>
+        <div class="bs-donut-total" style="color: ${color};">${grade.toUpperCase()}</div>
         <div class="bs-donut-label">${count} Vías</div>
       `;
     });
+  });
 
-    segment.addEventListener('mouseleave', () => {
+  // Restaurar total cuando el ratón sale del SVG (no de cada segmento)
+  if (svgEl) {
+    svgEl.addEventListener('mouseleave', () => {
       centerText.innerHTML = defaultCenterContent;
     });
-  });
+  }
 }
 
 // ============================================
@@ -6963,7 +7456,7 @@ async function loadBottomSheetStats(schoolId) {
       throw new Error('No hay ruta de vías configurada');
     }
 
-    const response = await fetch(viasPath);
+    const response = await fetch(`${viasPath}?v=${Date.now()}`);
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -6989,6 +7482,13 @@ async function loadBottomSheetStats(schoolId) {
         gradeCount[normalizedGrade] = (gradeCount[normalizedGrade] || 0) + 1;
         totalVias++;
       }
+    });
+
+    // Sumar vías aprobadas de Spotters
+    const spotterCounts = await getSpotterGradeCounts(schoolId);
+    Object.entries(spotterCounts).forEach(([grade, count]) => {
+      gradeCount[grade] = (gradeCount[grade] || 0) + count;
+      totalVias += count;
     });
 
     // Guardar en cache
@@ -7261,6 +7761,7 @@ setupSchoolLayerInteraction = function () {
 
   // Click en marker de escuela
   mlMap.on('click', 'school-markers-layer', (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
 
     const feature = e.features[0];
@@ -7375,131 +7876,116 @@ window.mlOpenDrawingEditor = mlOpenDrawingEditor;
  * @param {number} minZoom - Nivel de zoom mínimo para mostrar las vías (mismo que vías oficiales)
  */
 async function loadApprovedRoutesFromFirestore(schoolId, minZoom = 14) {
-  try {
-    // Verificar que Firebase esté disponible
-    if (typeof firebase === 'undefined' || !firebase.firestore) {
-      console.log('[ApprovedRoutes] Firebase no disponible');
-      return;
-    }
+  if (typeof firebase === 'undefined' || !firebase.firestore) {
+    console.log('[ApprovedRoutes] Firebase no disponible');
+    return;
+  }
 
-    const db = firebase.firestore();
+  // Cancelar listener previo si existiera
+  if (mlApprovedRoutesUnsub) { try { mlApprovedRoutesUnsub(); } catch (e) {} mlApprovedRoutesUnsub = null; }
 
-    // Buscar vías aprobadas para esta escuela
-    const snapshot = await db.collection('pending_routes')
+  const db = firebase.firestore();
+  const sourceId = 'vias-usuarios-source';
+  const layerId = 'vias-usuarios-layer';
+
+  return new Promise((resolve) => {
+    let firstFire = true;
+    const settle = () => { if (firstFire) { firstFire = false; resolve(); } };
+
+    mlApprovedRoutesUnsub = db.collection('pending_routes')
       .where('schoolId', '==', schoolId)
       .where('status', '==', 'approved')
-      .get();
+      .onSnapshot((snapshot) => {
+        try {
+          // Si el usuario cambió de escuela mientras escuchábamos, cancelar
+          if (!mlMap || mlCurrentSchool !== schoolId) {
+            if (mlApprovedRoutesUnsub) { try { mlApprovedRoutesUnsub(); } catch (e) {} mlApprovedRoutesUnsub = null; }
+            settle();
+            return;
+          }
 
-    if (snapshot.empty) {
-      console.log(`[ApprovedRoutes] No hay vías aprobadas para ${schoolId}`);
-      return;
-    }
+          const features = [];
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            let coordinates = null;
+            if (data.coordinates && Array.isArray(data.coordinates)) {
+              coordinates = data.coordinates;
+            } else if (data.geojsonFeature?.geometry) {
+              const geom = data.geojsonFeature.geometry;
+              if (geom.coordinates) {
+                coordinates = geom.coordinates;
+              } else if (geom.lng !== undefined && geom.lat !== undefined) {
+                coordinates = [geom.lng, geom.lat];
+              }
+            }
+            if (!coordinates) {
+              console.warn(`[ApprovedRoutes] Ruta sin coordenadas: ${doc.id}`);
+              return;
+            }
+            features.push({
+              type: 'Feature',
+              properties: {
+                fid: `user_${doc.id}`,
+                docId: doc.id,
+                nombre: data.nombre || data.geojsonFeature?.properties?.nombre || 'Sin nombre',
+                grado1: data.grado1 || data.geojsonFeature?.properties?.grado1 || '?',
+                sector: data.sector || data.geojsonFeature?.properties?.sector || '',
+                exp1: data.exp1 || data.geojsonFeature?.properties?.exp1 || '',
+                long1: data.long1 || data.geojsonFeature?.properties?.long1 || '',
+                descripcion: data.descripcion || data.geojsonFeature?.properties?.descripcion || '',
+                modalidad: data.modalidad || data.geojsonFeature?.properties?.modalidad || 'Simple',
+                variante: data.variante || data.geojsonFeature?.properties?.variante || 'NO',
+                isUserRoute: true,
+                approvedBy: data.approvedBy || '',
+                createdByEmail: data.createdByEmail || '',
+                lng: coordinates[0],
+                lat: coordinates[1]
+              },
+              geometry: { type: 'Point', coordinates }
+            });
+          });
 
-    // Convertir a formato GeoJSON
-    const features = [];
-    snapshot.forEach(doc => {
-      const data = doc.data();
+          const geojson = { type: 'FeatureCollection', features };
+          console.log(`[ApprovedRoutes] Realtime: ${features.length} vías para ${schoolId}`);
 
-      // Obtener coordenadas (pueden estar en diferentes formatos)
-      let coordinates = null;
-      if (data.coordinates && Array.isArray(data.coordinates)) {
-        coordinates = data.coordinates;
-      } else if (data.geojsonFeature?.geometry) {
-        const geom = data.geojsonFeature.geometry;
-        if (geom.coordinates) {
-          coordinates = geom.coordinates;
-        } else if (geom.lng !== undefined && geom.lat !== undefined) {
-          coordinates = [geom.lng, geom.lat];
+          // Si el source ya existe, actualizar datos; si no, crear source + layer
+          if (mlMap.getSource(sourceId)) {
+            mlMap.getSource(sourceId).setData(geojson);
+          } else {
+            mlMap.addSource(sourceId, { type: 'geojson', data: geojson });
+            mlMap.addLayer({
+              id: layerId,
+              type: 'circle',
+              source: sourceId,
+              minzoom: minZoom,
+              paint: {
+                'circle-radius': [
+                  'interpolate', ['linear'], ['zoom'],
+                  14, isMobileDevice() ? 2 : 3,
+                  16, isMobileDevice() ? 3.5 : 5,
+                  18, isMobileDevice() ? 5.5 : 8,
+                  20, isMobileDevice() ? 9 : 14
+                ],
+                'circle-color': generateGradeColorExpression('grado1'),
+                'circle-stroke-color': '#FFD700',
+                'circle-stroke-width': isMobileDevice() ? 2 : 2.5,
+                'circle-opacity': 0.95
+              }
+            });
+            if (!mlUserViasInteractionAttached) {
+              setupUserViasInteraction();
+              mlUserViasInteractionAttached = true;
+            }
+          }
+        } catch (err) {
+          console.error('[ApprovedRoutes] Error procesando snapshot:', err);
         }
-      }
-
-      if (!coordinates) {
-        console.warn(`[ApprovedRoutes] Ruta sin coordenadas: ${doc.id}`);
-        return;
-      }
-
-      features.push({
-        type: 'Feature',
-        properties: {
-          fid: `user_${doc.id}`,
-          nombre: data.nombre || data.geojsonFeature?.properties?.nombre || 'Sin nombre',
-          grado1: data.grado1 || data.geojsonFeature?.properties?.grado1 || '?',
-          sector: data.sector || data.geojsonFeature?.properties?.sector || '',
-          exp1: data.exp1 || data.geojsonFeature?.properties?.exp1 || '',
-          long1: data.long1 || data.geojsonFeature?.properties?.long1 || '',
-          descripcion: data.descripcion || data.geojsonFeature?.properties?.descripcion || '',
-          modalidad: data.modalidad || data.geojsonFeature?.properties?.modalidad || 'Simple',
-          variante: data.variante || data.geojsonFeature?.properties?.variante || 'NO',
-          isUserRoute: true,
-          approvedBy: data.approvedBy || '',
-          createdByEmail: data.createdByEmail || ''
-        },
-        geometry: {
-          type: 'Point',
-          coordinates: coordinates
-        }
+        settle();
+      }, (err) => {
+        console.error('[ApprovedRoutes] Error onSnapshot:', err);
+        settle();
       });
-    });
-
-    if (features.length === 0) {
-      console.log(`[ApprovedRoutes] No se pudieron procesar vías para ${schoolId}`);
-      return;
-    }
-
-    const geojson = {
-      type: 'FeatureCollection',
-      features: features
-    };
-
-    console.log(`[ApprovedRoutes] Cargando ${features.length} vías de usuarios para ${schoolId}`);
-
-    // Añadir source y layer al mapa
-    const sourceId = 'vias-usuarios-source';
-    const layerId = 'vias-usuarios-layer';
-
-    // Remover si ya existe
-    if (mlMap.getLayer(layerId)) {
-      mlMap.removeLayer(layerId);
-    }
-    if (mlMap.getSource(sourceId)) {
-      mlMap.removeSource(sourceId);
-    }
-
-    // Añadir source
-    mlMap.addSource(sourceId, {
-      type: 'geojson',
-      data: geojson
-    });
-
-    // Añadir layer con estilo similar a las vías oficiales pero con borde diferente
-    mlMap.addLayer({
-      id: layerId,
-      type: 'circle',
-      source: sourceId,
-      minzoom: minZoom,
-      paint: {
-        'circle-radius': [
-          'interpolate', ['linear'], ['zoom'],
-          14, isMobileDevice() ? 2 : 3,
-          16, isMobileDevice() ? 3.5 : 5,
-          18, isMobileDevice() ? 5.5 : 8,
-          20, isMobileDevice() ? 9 : 14
-        ],
-        'circle-color': generateGradeColorExpression('grado1'),
-        'circle-stroke-color': '#FFD700', // Borde dorado para distinguir vías de usuarios
-        'circle-stroke-width': isMobileDevice() ? 2 : 2.5,
-        'circle-opacity': 0.95
-      }
-    });
-
-    // Añadir interactividad
-    setupUserViasInteraction();
-
-    console.log(`[ApprovedRoutes] ✅ Capa de vías de usuarios añadida para ${schoolId}`);
-
-  } catch (error) {
-    console.error('[ApprovedRoutes] Error cargando vías aprobadas:', error);
-  }
+  });
 }
 
 /**
@@ -7519,6 +8005,7 @@ function setupUserViasInteraction() {
 
   // Click en vía de usuario
   mlMap.on('click', layerId, (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
     if (!e.features || e.features.length === 0) return;
 
     const feature = e.features[0];
@@ -7578,7 +8065,7 @@ async function showUserRoutePopup(props, coords) {
 
   // Iconos SVG de la botonera (tamaño 32x32)
   const iconCheck = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-  const iconBookmark = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+  const iconBookmark = buildBookmarkIcon(routeId);
   const iconComment = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
   const iconShare = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 
@@ -7595,6 +8082,20 @@ async function showUserRoutePopup(props, coords) {
   const hasDescripcion = props.descripcion && props.descripcion.trim();
   const hasExp = props.exp1;
   const hasLong = props.long1;
+
+  // Comprobar si el admin puede editar/eliminar esta vía
+  const adminRole = await checkAdminRole();
+  const adminRouteHTML = adminRole === 'admin' && props.docId ? `
+    <div style="display:flex;gap:8px;padding:8px 0 0;border-top:1px solid #e5e7eb;margin-top:4px;">
+      <button onclick="mlDeletePendingItem('pending_routes','${props.docId}');mlCloseRoutePopup();"
+        style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+        🗑️ Eliminar
+      </button>
+      <button onclick="mlStartEditPending('pending_routes','${props.docId}','Point',[${props.lng},${props.lat}]);mlCloseRoutePopup();"
+        style="flex:1;background:#2563EB;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+        ✏️ Mover
+      </button>
+    </div>` : '';
 
   // Obtener votaciones de aleje desde Firestore
   const alejeData = await getAlejeVotes(schoolId, routeId);
@@ -7663,7 +8164,7 @@ async function showUserRoutePopup(props, coords) {
         <button class="ml-route-action-btn" onclick="mlRegisterAscent(${routeId}, '${encodeURIComponent(routeName)}')" title="Registrar ascenso">
           ${iconCheck}
         </button>
-        <button class="ml-route-action-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
+        <button class="ml-route-action-btn ${isRouteInProjects(routeId) ? 'bookmark-active' : ''}" id="ml-bookmark-btn" onclick="mlToggleBookmark(${routeId}, '${encodeURIComponent(routeName)}')" title="Guardar">
           ${iconBookmark}
         </button>
         <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">
@@ -7694,6 +8195,9 @@ async function showUserRoutePopup(props, coords) {
           Subida por: ${props.createdByEmail}
         </div>
       ` : ''}
+
+      <!-- Acciones de admin (solo visible para admins) -->
+      ${adminRouteHTML}
     </div>
   `;
 
@@ -7708,6 +8212,1430 @@ async function showUserRoutePopup(props, coords) {
     .setLngLat(coords)
     .setHTML(html)
     .addTo(mlMap);
+}
+
+// ============================================
+// CARGA DE POI, SECTORES Y ESCUELAS APROBADOS DESDE FIRESTORE
+// ============================================
+
+/**
+ * Carga POIs aprobados desde pending_poi en Firestore y los muestra en el mapa
+ * como emojis (misma lógica que mlLoadPuntosInteres pero desde Firestore).
+ */
+function setupUserPOIInteraction(layerId) {
+  mlMap.on('mouseenter', layerId, () => {
+    mlMap.getCanvas().style.cursor = 'pointer';
+  });
+  mlMap.on('mouseleave', layerId, () => {
+    mlMap.getCanvas().style.cursor = '';
+  });
+  mlMap.on('click', layerId, async (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+    if (!e.features || e.features.length === 0) return;
+    const props = e.features[0].properties;
+    const coords = e.features[0].geometry.coordinates.slice();
+    const emoji = props._emoji || '📍';
+    const desc = props._poiType || 'Punto de interés';
+    const nombre = props.nombre || '';
+    const link = props.link || '';
+
+    const adminRole = await checkAdminRole();
+    const adminHTML = adminRole === 'admin' && props.docId ? `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;padding:8px 0 0;">
+        <button onclick="mlDeletePendingItem('pending_poi','${props.docId}');document.querySelectorAll('.maplibregl-popup').forEach(p=>p.remove());"
+          style="flex:1;background:#DC2626;color:white;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+          🗑️ Eliminar
+        </button>
+        <button onclick="mlStartEditPending('pending_poi','${props.docId}','Point',[${props.lng},${props.lat}]);document.querySelectorAll('.maplibregl-popup').forEach(p=>p.remove());"
+          style="flex:1;background:#2563EB;color:white;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+          ✏️ Mover
+        </button>
+      </div>` : '';
+
+    const descCapitalized = desc.charAt(0).toUpperCase() + desc.slice(1);
+    const poiLat = coords[1];
+    const poiLng = coords[0];
+    const poiGmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${poiLat},${poiLng}`;
+    const poiBtnId = `poi-user-dir-${Date.now()}`;
+
+    const popupHTML = `
+      <div class="poi-popup-content">
+        <div class="poi-popup-icon">${emoji}</div>
+        <div class="poi-popup-info">
+          <div class="poi-popup-type">${descCapitalized}</div>
+          ${nombre ? `<div class="poi-popup-name">${nombre}</div>` : ''}
+          ${link ? `<div class="poi-popup-name"><a href="${link}" target="_blank" style="color:#4285f4;">Ver enlace</a></div>` : ''}
+        </div>
+      </div>
+      <button class="poi-popup-directions-btn" id="${poiBtnId}">🧭 ¿Cómo llegar?</button>
+      ${adminHTML}
+    `;
+
+    const userPoiPopup = new maplibregl.Popup({ offset: 18, closeButton: false, className: 'poi-popup' })
+      .setLngLat(coords)
+      .setHTML(popupHTML)
+      .addTo(mlMap);
+
+    setTimeout(() => {
+      const btnDir = document.getElementById(poiBtnId);
+      if (btnDir) btnDir.onclick = () => window.open(poiGmapsUrl, '_blank');
+    }, 50);
+  });
+}
+
+async function loadApprovedPOIFromFirestore(schoolId) {
+  if (typeof firebase === 'undefined' || !firebase.firestore) {
+    console.warn('[ApprovedPOI] Firebase no disponible');
+    return;
+  }
+
+  if (mlApprovedPOIUnsub) { try { mlApprovedPOIUnsub(); } catch (e) {} mlApprovedPOIUnsub = null; }
+
+  const db = firebase.firestore();
+  const sourceId = 'poi-usuarios-source';
+  const layerId = 'poi-usuarios-layer';
+
+  console.log(`%c[ApprovedPOI] Suscribiendo realtime para schoolId=${schoolId}...`, 'color: #4CAF50; font-weight: bold');
+
+  return new Promise((resolve) => {
+    let firstFire = true;
+    const settle = () => { if (firstFire) { firstFire = false; resolve(); } };
+
+    mlApprovedPOIUnsub = db.collection('pending_poi')
+      .where('status', '==', 'approved')
+      .onSnapshot((snapshot) => {
+        try {
+          if (!mlMap || mlCurrentSchool !== schoolId) {
+            if (mlApprovedPOIUnsub) { try { mlApprovedPOIUnsub(); } catch (e) {} mlApprovedPOIUnsub = null; }
+            settle();
+            return;
+          }
+
+          const features = [];
+          let skippedCoords = 0;
+          let skippedSchool = 0;
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            if (!data.coordinates || !Array.isArray(data.coordinates)) {
+              skippedCoords++;
+              return;
+            }
+            if (data.schoolId && data.schoolId !== schoolId) {
+              skippedSchool++;
+              return;
+            }
+
+            const desc = data.descripcio || '';
+            const emoji = getPOIEmoji(desc);
+
+            features.push({
+              type: 'Feature',
+              properties: {
+                docId: doc.id,
+                descripcio: desc,
+                nombre: data.nombre || '',
+                link: data.link || '',
+                _emoji: emoji,
+                _poiType: desc,
+                _emojiIcon: 'poi-emoji-' + emoji,
+                isUserPOI: true,
+                createdByEmail: data.createdByEmail || '',
+                lng: data.coordinates[0],
+                lat: data.coordinates[1]
+              },
+              geometry: { type: 'Point', coordinates: data.coordinates }
+            });
+          });
+
+          console.log(`%c[ApprovedPOI] Realtime: ${features.length} POI para ${schoolId} (skippedCoords=${skippedCoords}, skippedSchool=${skippedSchool})`, 'color: #4CAF50; font-weight: bold');
+
+          // Registrar emojis necesarios
+          const usedEmojis = new Set(features.map(f => f.properties._emoji));
+          for (const emoji of usedEmojis) {
+            const imgId = 'poi-emoji-' + emoji;
+            if (!mlMap.hasImage(imgId)) {
+              const img = createEmojiImage(emoji, 48);
+              mlMap.addImage(imgId, img, { sdf: false });
+            }
+          }
+
+          const geojson = { type: 'FeatureCollection', features };
+
+          if (mlMap.getSource(sourceId)) {
+            mlMap.getSource(sourceId).setData(geojson);
+          } else {
+            mlMap.addSource(sourceId, { type: 'geojson', data: geojson });
+            mlMap.addLayer({
+              id: layerId,
+              type: 'symbol',
+              source: sourceId,
+              minzoom: 13,
+              layout: {
+                'icon-image': ['get', '_emojiIcon'],
+                'icon-size': [
+                  'interpolate', ['linear'], ['zoom'],
+                  13, 0.35,
+                  14, 0.45,
+                  16, 0.65,
+                  18, 0.85,
+                  20, 1.0
+                ],
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
+                'icon-anchor': 'center'
+              }
+            });
+            if (!mlUserPOIInteractionAttached) {
+              setupUserPOIInteraction(layerId);
+              mlUserPOIInteractionAttached = true;
+            }
+          }
+        } catch (err) {
+          console.error('[ApprovedPOI] Error procesando snapshot:', err);
+        }
+        settle();
+      }, (err) => {
+        console.error('[ApprovedPOI] Error onSnapshot:', err);
+        settle();
+      });
+  });
+}
+
+/**
+ * Carga sectores aprobados desde pending_sectors en Firestore y los dibuja en el mapa
+ * como líneas (misma lógica que los sectores estáticos de GeoJSON).
+ */
+function setupUserSectorsInteraction(lineLayerId) {
+  mlMap.on('mouseenter', lineLayerId, () => {
+    mlMap.getCanvas().style.cursor = 'pointer';
+  });
+  mlMap.on('mouseleave', lineLayerId, () => {
+    mlMap.getCanvas().style.cursor = '';
+  });
+  mlMap.on('click', lineLayerId, async (e) => {
+    if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+    if (!e.features || e.features.length === 0) return;
+    const props = e.features[0].properties;
+    const coords = e.lngLat;
+
+    const adminRole = await checkAdminRole();
+    const adminHTML = adminRole === 'admin' && props.docId ? `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding:0 4px 4px;">
+        <button onclick="mlDeletePendingItem('pending_sectors','${props.docId}');document.querySelectorAll('.maplibregl-popup').forEach(p=>p.remove());"
+          style="flex:1;background:#DC2626;color:white;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+          🗑️ Eliminar
+        </button>
+        <button onclick="mlStartEditPending('pending_sectors','${props.docId}','LineString',${props.verticesCoordsStr});document.querySelectorAll('.maplibregl-popup').forEach(p=>p.remove());"
+          style="flex:1;background:#2563EB;color:white;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+          ✏️ Editar
+        </button>
+      </div>` : '';
+
+    if (isMobileDevice()) {
+      adaptiveMapPanForBottomSheet(coords);
+      showSectorBottomSheet(props, [coords.lng, coords.lat], adminHTML);
+    } else {
+      mlMap.flyTo({ center: coords, zoom: mlMap.getZoom(), speed: 0.8, curve: 1, padding: { top: 450, bottom: 0, left: 0, right: 0 } });
+      showSectorPopup(props, [coords.lng, coords.lat], adminHTML);
+    }
+  });
+}
+
+async function loadApprovedSectorsFromFirestore(schoolId) {
+  if (typeof firebase === 'undefined' || !firebase.firestore) {
+    console.warn('[ApprovedSectors] Firebase no disponible');
+    return;
+  }
+
+  if (mlApprovedSectorsUnsub) { try { mlApprovedSectorsUnsub(); } catch (e) {} mlApprovedSectorsUnsub = null; }
+
+  const db = firebase.firestore();
+  const sourceId = 'sectores-usuarios-source';
+  const casingLayerId = 'sectores-usuarios-casing-layer';
+  const lineLayerId = 'sectores-usuarios-layer';
+
+  console.log(`%c[ApprovedSectors] Suscribiendo realtime para schoolId=${schoolId}...`, 'color: #2196F3; font-weight: bold');
+
+  return new Promise((resolve) => {
+    let firstFire = true;
+    const settle = () => { if (firstFire) { firstFire = false; resolve(); } };
+
+    mlApprovedSectorsUnsub = db.collection('pending_sectors')
+      .where('status', '==', 'approved')
+      .onSnapshot((snapshot) => {
+        try {
+          if (!mlMap || mlCurrentSchool !== schoolId) {
+            if (mlApprovedSectorsUnsub) { try { mlApprovedSectorsUnsub(); } catch (e) {} mlApprovedSectorsUnsub = null; }
+            settle();
+            return;
+          }
+
+          const features = [];
+          let skippedVertices = 0;
+          let skippedSchool = 0;
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.schoolId && data.schoolId !== schoolId) {
+              skippedSchool++;
+              return;
+            }
+            if (!data.vertices || !Array.isArray(data.vertices) || data.vertices.length < 3) {
+              skippedVertices++;
+              return;
+            }
+
+            const coords = data.vertices.map(v => [v.lng, v.lat]);
+            const name = data.nombre || `sector-${doc.id}`;
+            let hash = 0;
+            for (let j = 0; j < name.length; j++) {
+              hash = ((hash << 5) - hash) + name.charCodeAt(j);
+              hash |= 0;
+            }
+
+            features.push({
+              type: 'Feature',
+              properties: {
+                fid: Math.abs(hash),
+                docId: doc.id,
+                nombre: data.nombre || 'Sin nombre',
+                restr: data.restr || 'NO',
+                exposicion: data.exposicion || '',
+                Fecha_inicio: data.Fecha_inicio || '',
+                Fecha_fin: data.Fecha_fin || '',
+                isUserSector: true,
+                createdByEmail: data.createdByEmail || '',
+                verticesCoordsStr: '[' + coords.map(c => `[${c[0]},${c[1]}]`).join(',') + ']'
+              },
+              geometry: { type: 'LineString', coordinates: coords }
+            });
+          });
+
+          console.log(`%c[ApprovedSectors] Realtime: ${features.length} sectores para ${schoolId} (skippedVertices=${skippedVertices}, skippedSchool=${skippedSchool})`, 'color: #2196F3; font-weight: bold');
+
+          const geojson = { type: 'FeatureCollection', features };
+
+          if (mlMap.getSource(sourceId)) {
+            mlMap.getSource(sourceId).setData(geojson);
+          } else {
+            mlMap.addSource(sourceId, { type: 'geojson', data: geojson });
+
+            const school = MAPLIBRE_SCHOOLS[schoolId];
+            const sectorMinZoom = school?.zoomLevels?.sectores || 12;
+
+            mlMap.addLayer({
+              id: casingLayerId,
+              type: 'line',
+              source: sourceId,
+              minzoom: sectorMinZoom,
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
+              paint: {
+                'line-color': generateSectorCasingColorExpression(),
+                'line-width': [
+                  'interpolate', ['linear'], ['zoom'],
+                  12, 4, 14, 6, 16, 10, 18, 14, 20, 18
+                ],
+                'line-opacity': 0.9
+              }
+            });
+
+            mlMap.addLayer({
+              id: lineLayerId,
+              type: 'line',
+              source: sourceId,
+              minzoom: sectorMinZoom,
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
+              paint: {
+                'line-color': generateSectorColorExpression(),
+                'line-width': [
+                  'interpolate', ['linear'], ['zoom'],
+                  12, 2, 14, 4, 16, 7, 18, 10, 20, 14
+                ],
+                'line-opacity': 1
+              }
+            });
+
+            if (!mlUserSectorsInteractionAttached) {
+              setupUserSectorsInteraction(lineLayerId);
+              mlUserSectorsInteractionAttached = true;
+            }
+          }
+        } catch (err) {
+          console.error('[ApprovedSectors] Error procesando snapshot:', err);
+        }
+        settle();
+      }, (err) => {
+        console.error('[ApprovedSectors] Error onSnapshot:', err);
+        settle();
+      });
+  });
+}
+
+/**
+ * Carga escuelas aprobadas desde pending_schools en Firestore y las añade
+ * como marcadores en el mapa con el mismo icono verde y popup/bottom-sheet
+ * que las escuelas estáticas.
+ */
+// ============================================
+// ÍTEMS PENDIENTES DEL SPOTTER (solo el autor los ve)
+// ============================================
+
+/**
+ * Carga las vías pendientes del usuario en el mapa con estilo diferenciado.
+ */
+async function loadMyPendingRoutesFromFirestore(schoolId, minZoom = 14) {
+  if (typeof firebase === 'undefined' || !firebase.firestore) return;
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  if (mlMyPendingRoutesUnsub) { try { mlMyPendingRoutesUnsub(); } catch (e) {} mlMyPendingRoutesUnsub = null; }
+
+  const db = firebase.firestore();
+  const sourceId = 'pending-my-routes-source';
+  const layerId = 'pending-my-routes-layer';
+
+  return new Promise((resolve) => {
+    let firstFire = true;
+    const settle = () => { if (firstFire) { firstFire = false; resolve(); } };
+
+    mlMyPendingRoutesUnsub = db.collection('pending_routes')
+      .where('schoolId', '==', schoolId)
+      .where('createdBy', '==', user.uid)
+      .where('status', '==', 'pending')
+      .onSnapshot((snapshot) => {
+        try {
+          if (!mlMap || mlCurrentSchool !== schoolId) {
+            if (mlMyPendingRoutesUnsub) { try { mlMyPendingRoutesUnsub(); } catch (e) {} mlMyPendingRoutesUnsub = null; }
+            settle(); return;
+          }
+
+          const features = [];
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            let coordinates = null;
+            if (data.coordinates && Array.isArray(data.coordinates)) coordinates = data.coordinates;
+            else if (data.geojsonFeature?.geometry?.coordinates) coordinates = data.geojsonFeature.geometry.coordinates;
+            if (!coordinates) return;
+
+            features.push({
+              type: 'Feature',
+              properties: {
+                fid: `pending_${doc.id}`,
+                nombre: data.nombre || 'Sin nombre',
+                grado1: data.grado1 || '?',
+                sector: data.sector || '',
+                isPending: true
+              },
+              geometry: { type: 'Point', coordinates }
+            });
+          });
+
+          const geojson = { type: 'FeatureCollection', features };
+          console.log(`[MyPendingRoutes] ${features.length} vías pendientes propias para ${schoolId}`);
+
+          if (mlMap.getSource(sourceId)) {
+            mlMap.getSource(sourceId).setData(geojson);
+          } else {
+            mlMap.addSource(sourceId, { type: 'geojson', data: geojson });
+            mlMap.addLayer({
+              id: layerId,
+              type: 'circle',
+              source: sourceId,
+              minzoom: minZoom,
+              paint: {
+                'circle-radius': [
+                  'interpolate', ['linear'], ['zoom'],
+                  14, isMobileDevice() ? 2 : 3,
+                  16, isMobileDevice() ? 3.5 : 5,
+                  18, isMobileDevice() ? 5.5 : 8,
+                  20, isMobileDevice() ? 9 : 14
+                ],
+                'circle-color': generateGradeColorExpression('grado1'),
+                'circle-stroke-color': '#FF6B00',
+                'circle-stroke-width': isMobileDevice() ? 2.5 : 3,
+                'circle-opacity': 0.8
+              }
+            });
+            if (!mlMyPendingViasInteractionAttached) {
+              mlMap.on('click', layerId, (e) => {
+                if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+                if (!e.features || e.features.length === 0) return;
+                const props = e.features[0].properties;
+                const coords = e.features[0].geometry.coordinates;
+                new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
+                  .setLngLat(coords)
+                  .setHTML(`<div style="padding:8px;font-size:13px;">
+                    <strong>⏳ ${props.nombre}</strong><br>
+                    Grado: ${props.grado1} · Sector: ${props.sector || '—'}<br>
+                    <small style="color:#f97316;font-weight:600;">Pendiente de aprobación</small>
+                  </div>`)
+                  .addTo(mlMap);
+              });
+              mlMyPendingViasInteractionAttached = true;
+            }
+          }
+        } catch (err) {
+          console.error('[MyPendingRoutes] Error:', err);
+        }
+        settle();
+      }, (err) => { console.error('[MyPendingRoutes] onSnapshot error:', err); settle(); });
+  });
+}
+
+/**
+ * Carga los POIs pendientes del usuario con estilo semi-transparente.
+ */
+async function loadMyPendingPOIFromFirestore(schoolId) {
+  if (typeof firebase === 'undefined' || !firebase.firestore) return;
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  if (mlMyPendingPOIUnsub) { try { mlMyPendingPOIUnsub(); } catch (e) {} mlMyPendingPOIUnsub = null; }
+
+  const db = firebase.firestore();
+  const sourceId = 'pending-my-poi-source';
+  const layerId = 'pending-my-poi-layer';
+
+  return new Promise((resolve) => {
+    let firstFire = true;
+    const settle = () => { if (firstFire) { firstFire = false; resolve(); } };
+
+    mlMyPendingPOIUnsub = db.collection('pending_poi')
+      .where('createdBy', '==', user.uid)
+      .where('status', '==', 'pending')
+      .onSnapshot((snapshot) => {
+        try {
+          if (!mlMap || mlCurrentSchool !== schoolId) {
+            if (mlMyPendingPOIUnsub) { try { mlMyPendingPOIUnsub(); } catch (e) {} mlMyPendingPOIUnsub = null; }
+            settle(); return;
+          }
+
+          const features = [];
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            if (!data.coordinates || !Array.isArray(data.coordinates)) return;
+            if (data.schoolId && data.schoolId !== schoolId) return;
+
+            const desc = data.descripcio || '';
+            const emoji = getPOIEmoji(desc);
+
+            features.push({
+              type: 'Feature',
+              properties: {
+                descripcio: desc, nombre: data.nombre || '',
+                _emoji: emoji, _poiType: desc,
+                _emojiIcon: 'poi-emoji-' + emoji,
+                isPending: true
+              },
+              geometry: { type: 'Point', coordinates: data.coordinates }
+            });
+          });
+
+          // Registrar emojis
+          const usedEmojis = new Set(features.map(f => f.properties._emoji));
+          for (const emoji of usedEmojis) {
+            const imgId = 'poi-emoji-' + emoji;
+            if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, createEmojiImage(emoji, 48), { sdf: false });
+          }
+
+          const geojson = { type: 'FeatureCollection', features };
+          console.log(`[MyPendingPOI] ${features.length} POIs pendientes propios para ${schoolId}`);
+
+          if (mlMap.getSource(sourceId)) {
+            mlMap.getSource(sourceId).setData(geojson);
+          } else {
+            mlMap.addSource(sourceId, { type: 'geojson', data: geojson });
+            mlMap.addLayer({
+              id: layerId,
+              type: 'symbol',
+              source: sourceId,
+              minzoom: 13,
+              paint: { 'icon-opacity': 0.6 },
+              layout: {
+                'icon-image': ['get', '_emojiIcon'],
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.35, 16, 0.65, 20, 1.0],
+                'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-anchor': 'center'
+              }
+            });
+            mlMap.on('click', layerId, (e) => {
+              if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+              if (!e.features || e.features.length === 0) return;
+              const props = e.features[0].properties;
+              const coords = e.features[0].geometry.coordinates.slice();
+              new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
+                .setLngLat(coords)
+                .setHTML(`<div style="padding:8px;font-size:13px;">
+                  <strong>${props._emoji || '📍'} ${props._poiType}</strong>
+                  ${props.nombre ? `<br>${props.nombre}` : ''}
+                  <br><small style="color:#f97316;font-weight:600;">⏳ Pendiente de aprobación</small>
+                </div>`)
+                .addTo(mlMap);
+            });
+          }
+        } catch (err) {
+          console.error('[MyPendingPOI] Error:', err);
+        }
+        settle();
+      }, (err) => { console.error('[MyPendingPOI] onSnapshot error:', err); settle(); });
+  });
+}
+
+/**
+ * Carga los sectores pendientes del usuario con línea punteada naranja.
+ */
+async function loadMyPendingSectorsFromFirestore(schoolId) {
+  if (typeof firebase === 'undefined' || !firebase.firestore) return;
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  if (mlMyPendingSectorsUnsub) { try { mlMyPendingSectorsUnsub(); } catch (e) {} mlMyPendingSectorsUnsub = null; }
+
+  const db = firebase.firestore();
+  const sourceId = 'pending-my-sectors-source';
+  const casingLayerId = 'pending-my-sectors-casing-layer';
+  const lineLayerId = 'pending-my-sectors-layer';
+
+  return new Promise((resolve) => {
+    let firstFire = true;
+    const settle = () => { if (firstFire) { firstFire = false; resolve(); } };
+
+    mlMyPendingSectorsUnsub = db.collection('pending_sectors')
+      .where('createdBy', '==', user.uid)
+      .where('status', '==', 'pending')
+      .onSnapshot((snapshot) => {
+        try {
+          if (!mlMap || mlCurrentSchool !== schoolId) {
+            if (mlMyPendingSectorsUnsub) { try { mlMyPendingSectorsUnsub(); } catch (e) {} mlMyPendingSectorsUnsub = null; }
+            settle(); return;
+          }
+
+          const features = [];
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.schoolId && data.schoolId !== schoolId) return;
+            if (!data.vertices || data.vertices.length < 2) return;
+
+            features.push({
+              type: 'Feature',
+              properties: { nombre: data.nombre || 'Sin nombre', isPending: true },
+              geometry: { type: 'LineString', coordinates: data.vertices.map(v => [v.lng, v.lat]) }
+            });
+          });
+
+          const geojson = { type: 'FeatureCollection', features };
+          console.log(`[MyPendingSectors] ${features.length} sectores pendientes propios para ${schoolId}`);
+
+          if (mlMap.getSource(sourceId)) {
+            mlMap.getSource(sourceId).setData(geojson);
+          } else {
+            const school = MAPLIBRE_SCHOOLS[schoolId];
+            const sectorMinZoom = school?.zoomLevels?.sectores || 12;
+
+            mlMap.addSource(sourceId, { type: 'geojson', data: geojson });
+
+            mlMap.addLayer({
+              id: casingLayerId,
+              type: 'line',
+              source: sourceId,
+              minzoom: sectorMinZoom,
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
+              paint: {
+                'line-color': '#FF6B00',
+                'line-width': ['interpolate', ['linear'], ['zoom'], 12, 4, 14, 6, 16, 10, 18, 14],
+                'line-opacity': 0.5,
+                'line-dasharray': [3, 2]
+              }
+            });
+
+            mlMap.addLayer({
+              id: lineLayerId,
+              type: 'line',
+              source: sourceId,
+              minzoom: sectorMinZoom,
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
+              paint: {
+                'line-color': '#FF9500',
+                'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2, 14, 3, 16, 5, 18, 8],
+                'line-opacity': 0.9,
+                'line-dasharray': [4, 3]
+              }
+            });
+
+            if (!mlMyPendingSectorsInteractionAttached) {
+              mlMap.on('click', lineLayerId, (e) => {
+                if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+                if (!e.features || e.features.length === 0) return;
+                const props = e.features[0].properties;
+                new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
+                  .setLngLat(e.lngLat)
+                  .setHTML(`<div style="padding:8px;font-size:13px;">
+                    <strong>📐 ${props.nombre}</strong><br>
+                    <small style="color:#f97316;font-weight:600;">⏳ Sector pendiente de aprobación</small>
+                  </div>`)
+                  .addTo(mlMap);
+              });
+              mlMyPendingSectorsInteractionAttached = true;
+            }
+          }
+        } catch (err) {
+          console.error('[MyPendingSectors] Error:', err);
+        }
+        settle();
+      }, (err) => { console.error('[MyPendingSectors] onSnapshot error:', err); settle(); });
+  });
+}
+
+/**
+ * Carga las escuelas pendientes del usuario como marcadores en el mapa.
+ * Solo el autor las ve. Al hacer clic permite entrar en contexto de esa escuela.
+ */
+async function loadMyPendingSchoolsFromFirestore() {
+  if (typeof firebase === 'undefined' || !firebase.firestore) return;
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  try {
+    const db = firebase.firestore();
+    const snapshot = await db.collection('pending_schools')
+      .where('createdBy', '==', user.uid)
+      .where('status', '==', 'pending')
+      .get();
+
+    if (snapshot.empty) return;
+
+    const features = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (!data.coordinates || !Array.isArray(data.coordinates)) return;
+      mlPendingSchoolsCache.set(doc.id, { nombre: data.nombre, coordinates: data.coordinates });
+      features.push({
+        type: 'Feature',
+        properties: {
+          id: doc.id,
+          nombre: data.nombre || 'Escuela pendiente',
+          coords: JSON.stringify(data.coordinates),
+          isPending: true
+        },
+        geometry: { type: 'Point', coordinates: data.coordinates }
+      });
+    });
+
+    if (features.length === 0) return;
+
+    console.log(`[MyPendingSchools] ${features.length} escuelas pendientes propias`);
+
+    if (!mlMap.hasImage('school-icon-orange')) await loadSchoolIcons();
+
+    const sourceId = 'pending-my-schools-source';
+    const layerId = 'pending-my-schools-layer';
+
+    if (mlMap.getLayer(layerId)) mlMap.removeLayer(layerId);
+    if (mlMap.getSource(sourceId)) mlMap.removeSource(sourceId);
+
+    mlMap.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+
+    mlMap.addLayer({
+      id: layerId,
+      type: 'symbol',
+      source: sourceId,
+      minzoom: 5,
+      maxzoom: 12,
+      layout: {
+        'icon-image': 'school-icon-orange',
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.3, 8, 0.5, 10, 0.65, 12, 0.75],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'text-field': ['concat', ['get', 'nombre'], '\n⏳'],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 7, 10, 12, 13],
+        'text-offset': [0, 2.4],
+        'text-anchor': 'top'
+      },
+      paint: {
+        'text-color': '#f97316',
+        'text-halo-color': 'rgba(255,255,255,0.95)',
+        'text-halo-width': 2
+      }
+    });
+
+    mlMap.on('mouseenter', layerId, () => { mlMap.getCanvas().style.cursor = 'pointer'; });
+    mlMap.on('mouseleave', layerId, () => { mlMap.getCanvas().style.cursor = ''; });
+    mlMap.on('click', layerId, (e) => {
+      if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+      if (!e.features || e.features.length === 0) return;
+      const props = e.features[0].properties;
+      const coords = JSON.parse(props.coords);
+      const popupHTML = `
+        <div style="padding:10px;font-size:13px;max-width:220px;">
+          <strong>${props.nombre}</strong><br>
+          <span style="color:#f97316;font-weight:600;">⏳ Pendiente de aprobación</span><br><br>
+          <button onclick="mlLoadSchool('${props.id}', true); this.closest('.maplibregl-popup').remove();"
+            style="background:#f97316;color:white;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;width:100%;">
+            Añadir sectores y vías
+          </button>
+        </div>`;
+      new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
+        .setLngLat(coords)
+        .setHTML(popupHTML)
+        .addTo(mlMap);
+    });
+  } catch (err) {
+    console.error('[MyPendingSchools] Error:', err);
+  }
+}
+
+/**
+ * Carga una escuela pendiente (sin datos estáticos) para que el Spotter
+ * pueda añadir sectores y vías antes de que sea aprobada.
+ */
+async function mlLoadPendingSchool(schoolId, coordinates, skipFlyTo = false) {
+  mlClearSchoolLayers();
+  mlCurrentSchool = schoolId;
+
+  if (!skipFlyTo) {
+    mlMap.flyTo({ center: coordinates, zoom: 14, essential: true });
+  }
+
+  console.log(`[PendingSchool] Cargando escuela pendiente ${schoolId}`);
+
+  // No hay GeoJSON ni Vector Tiles — solo ítems de Firestore
+  await Promise.all([
+    loadApprovedRoutesFromFirestore(schoolId),
+    loadApprovedSectorsFromFirestore(schoolId),
+    loadApprovedPOIFromFirestore(schoolId),
+  ]);
+  checkAdminRole().then(role => {
+    if (role === 'admin') {
+      loadAllPendingForAdmin(schoolId);
+    } else if (role === 'spotter') {
+      loadMyPendingRoutesFromFirestore(schoolId);
+      loadMyPendingPOIFromFirestore(schoolId);
+      loadMyPendingSectorsFromFirestore(schoolId);
+    }
+  });
+}
+
+// ============================================
+// ADMIN: ALL PENDING ITEMS OVERLAY
+// ============================================
+
+/**
+ * Carga TODOS los ítems pendientes de TODOS los Spotters (solo para admins).
+ * Estilo: línea/borde rojo punteado con botones de eliminar y editar en popup.
+ */
+async function loadAllPendingForAdmin(schoolId, minZoom = 14) {
+  if (typeof firebase === 'undefined' || !firebase.firestore) return;
+  if (!firebase.auth().currentUser) return;
+
+  if (mlAdminPendingRoutesUnsub) { try { mlAdminPendingRoutesUnsub(); } catch (e) {} mlAdminPendingRoutesUnsub = null; }
+  if (mlAdminPendingPOIUnsub) { try { mlAdminPendingPOIUnsub(); } catch (e) {} mlAdminPendingPOIUnsub = null; }
+  if (mlAdminPendingSectorsUnsub) { try { mlAdminPendingSectorsUnsub(); } catch (e) {} mlAdminPendingSectorsUnsub = null; }
+
+  const db = firebase.firestore();
+  const school = MAPLIBRE_SCHOOLS[schoolId];
+
+  // --- Pending Routes ---
+  const routeSourceId = 'admin-pending-routes-source';
+  const routeLayerId = 'admin-pending-routes-layer';
+
+  mlAdminPendingRoutesUnsub = db.collection('pending_routes')
+    .where('status', '==', 'pending')
+    .onSnapshot(snapshot => {
+      if (!mlMap || mlCurrentSchool !== schoolId) {
+        if (mlAdminPendingRoutesUnsub) { try { mlAdminPendingRoutesUnsub(); } catch (e) {} mlAdminPendingRoutesUnsub = null; }
+        return;
+      }
+      const features = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.schoolId !== schoolId) return;
+        let coords = data.coordinates;
+        if (!coords && data.geojsonFeature?.geometry?.coordinates) coords = data.geojsonFeature.geometry.coordinates;
+        if (!coords || !Array.isArray(coords)) return;
+        features.push({
+          type: 'Feature',
+          properties: {
+            docId: doc.id,
+            nombre: data.nombre || 'Sin nombre',
+            grado1: data.grado1 || '?',
+            sector: data.sector || '',
+            createdBy: data.createdBy || '',
+            lng: coords[0],
+            lat: coords[1]
+          },
+          geometry: { type: 'Point', coordinates: coords }
+        });
+      });
+      console.log(`[AdminPending] ${features.length} vías pendientes para ${schoolId}`);
+      const geojson = { type: 'FeatureCollection', features };
+      if (mlMap.getSource(routeSourceId)) {
+        mlMap.getSource(routeSourceId).setData(geojson);
+      } else {
+        mlMap.addSource(routeSourceId, { type: 'geojson', data: geojson });
+        mlMap.addLayer({
+          id: routeLayerId,
+          type: 'circle',
+          source: routeSourceId,
+          minzoom: minZoom,
+          paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, isMobileDevice() ? 3 : 4, 18, isMobileDevice() ? 7 : 10],
+            'circle-color': '#FEE2E2',
+            'circle-stroke-color': '#DC2626',
+            'circle-stroke-width': isMobileDevice() ? 2.5 : 3,
+            'circle-opacity': 0.9
+          }
+        });
+        if (!mlAdminPendingViasInteractionAttached) {
+          mlMap.on('click', routeLayerId, (e) => {
+            if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+            if (!e.features || !e.features.length) return;
+            const props = e.features[0].properties;
+            const coords = e.features[0].geometry.coordinates;
+            new maplibregl.Popup({ closeButton: true, maxWidth: '290px' })
+              .setLngLat(coords)
+              .setHTML(`<div style="padding:10px;font-size:13px;">
+                <strong style="color:#DC2626;">⏳ ${props.nombre}</strong><br>
+                Grado: ${props.grado1} · Sector: ${props.sector || '—'}<br>
+                <small style="color:#9ca3af;">Por: ${props.createdBy}</small><br><br>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button onclick="mlDeletePendingItem('pending_routes','${props.docId}');this.closest('.maplibregl-popup').remove();"
+                    style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                    🗑️ Eliminar
+                  </button>
+                  <button onclick="mlStartEditPending('pending_routes','${props.docId}','Point',[${props.lng},${props.lat}]);this.closest('.maplibregl-popup').remove();"
+                    style="flex:1;background:#2563EB;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                    ✏️ Editar
+                  </button>
+                </div>
+              </div>`)
+              .addTo(mlMap);
+          });
+          mlAdminPendingViasInteractionAttached = true;
+        }
+      }
+    }, err => console.error('[AdminPending] routes error:', err));
+
+  // --- Pending POIs ---
+  const poiSourceId = 'admin-pending-poi-source';
+  const poiLayerId = 'admin-pending-poi-layer';
+
+  mlAdminPendingPOIUnsub = db.collection('pending_poi')
+    .where('status', '==', 'pending')
+    .onSnapshot(snapshot => {
+      if (!mlMap || mlCurrentSchool !== schoolId) {
+        if (mlAdminPendingPOIUnsub) { try { mlAdminPendingPOIUnsub(); } catch (e) {} mlAdminPendingPOIUnsub = null; }
+        return;
+      }
+      const features = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.schoolId && data.schoolId !== schoolId) return;
+        if (!data.coordinates || !Array.isArray(data.coordinates)) return;
+        const desc = data.descripcio || '';
+        const emoji = getPOIEmoji(desc);
+        const imgId = 'poi-emoji-' + emoji;
+        if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, createEmojiImage(emoji, 48), { sdf: false });
+        features.push({
+          type: 'Feature',
+          properties: {
+            docId: doc.id,
+            _emoji: emoji, _emojiIcon: imgId, _poiType: desc,
+            nombre: data.nombre || '',
+            createdBy: data.createdBy || '',
+            lng: data.coordinates[0],
+            lat: data.coordinates[1]
+          },
+          geometry: { type: 'Point', coordinates: data.coordinates }
+        });
+      });
+      const geojson = { type: 'FeatureCollection', features };
+      if (mlMap.getSource(poiSourceId)) {
+        mlMap.getSource(poiSourceId).setData(geojson);
+      } else {
+        mlMap.addSource(poiSourceId, { type: 'geojson', data: geojson });
+        mlMap.addLayer({
+          id: poiLayerId,
+          type: 'symbol',
+          source: poiSourceId,
+          minzoom: 13,
+          paint: { 'icon-opacity': 0.8 },
+          layout: {
+            'icon-image': ['get', '_emojiIcon'],
+            'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.35, 16, 0.65, 20, 1.0],
+            'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-anchor': 'center'
+          }
+        });
+        if (!mlAdminPendingPOIInteractionAttached) {
+          mlMap.on('click', poiLayerId, (e) => {
+            if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+            if (!e.features || !e.features.length) return;
+            const props = e.features[0].properties;
+            const coords = e.features[0].geometry.coordinates.slice();
+            new maplibregl.Popup({ closeButton: true, maxWidth: '290px' })
+              .setLngLat(coords)
+              .setHTML(`<div style="padding:10px;font-size:13px;">
+                <strong style="color:#DC2626;">${props._emoji || '📍'} ${props._poiType}</strong>
+                ${props.nombre ? `<br>${props.nombre}` : ''}
+                <br><small style="color:#9ca3af;">Por: ${props.createdBy}</small><br><br>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button onclick="mlDeletePendingItem('pending_poi','${props.docId}');this.closest('.maplibregl-popup').remove();"
+                    style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                    🗑️ Eliminar
+                  </button>
+                  <button onclick="mlStartEditPending('pending_poi','${props.docId}','Point',[${props.lng},${props.lat}]);this.closest('.maplibregl-popup').remove();"
+                    style="flex:1;background:#2563EB;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                    ✏️ Editar
+                  </button>
+                </div>
+              </div>`)
+              .addTo(mlMap);
+          });
+          mlAdminPendingPOIInteractionAttached = true;
+        }
+      }
+    }, err => console.error('[AdminPending] POI error:', err));
+
+  // --- Pending Sectors ---
+  const sectorSourceId = 'admin-pending-sectors-source';
+  const sectorCasingId = 'admin-pending-sectors-casing-layer';
+  const sectorLineId = 'admin-pending-sectors-layer';
+  const sectorMinZoom = school?.zoomLevels?.sectores || 12;
+
+  mlAdminPendingSectorsUnsub = db.collection('pending_sectors')
+    .where('status', '==', 'pending')
+    .onSnapshot(snapshot => {
+      if (!mlMap || mlCurrentSchool !== schoolId) {
+        if (mlAdminPendingSectorsUnsub) { try { mlAdminPendingSectorsUnsub(); } catch (e) {} mlAdminPendingSectorsUnsub = null; }
+        return;
+      }
+      const features = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.schoolId && data.schoolId !== schoolId) return;
+        if (!data.vertices || data.vertices.length < 2) return;
+        const coords = data.vertices.map(v => [v.lng, v.lat]);
+        const verticesCoordsStr = '[' + coords.map(c => `[${c[0]},${c[1]}]`).join(',') + ']';
+        features.push({
+          type: 'Feature',
+          properties: {
+            docId: doc.id,
+            nombre: data.nombre || 'Sin nombre',
+            createdBy: data.createdBy || '',
+            verticesCoordsStr
+          },
+          geometry: { type: 'LineString', coordinates: coords }
+        });
+      });
+      const geojson = { type: 'FeatureCollection', features };
+      if (mlMap.getSource(sectorSourceId)) {
+        mlMap.getSource(sectorSourceId).setData(geojson);
+      } else {
+        mlMap.addSource(sectorSourceId, { type: 'geojson', data: geojson });
+        mlMap.addLayer({
+          id: sectorCasingId,
+          type: 'line', source: sectorSourceId, minzoom: sectorMinZoom,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': '#DC2626',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 12, 4, 14, 6, 16, 10],
+            'line-opacity': 0.35,
+            'line-dasharray': [3, 2]
+          }
+        });
+        mlMap.addLayer({
+          id: sectorLineId,
+          type: 'line', source: sectorSourceId, minzoom: sectorMinZoom,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': '#EF4444',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2, 14, 3, 16, 5],
+            'line-opacity': 0.9,
+            'line-dasharray': [4, 3]
+          }
+        });
+        if (!mlAdminPendingSectorsInteractionAttached) {
+          mlMap.on('click', sectorLineId, (e) => {
+            if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+            if (!e.features || !e.features.length) return;
+            const props = e.features[0].properties;
+            new maplibregl.Popup({ closeButton: true, maxWidth: '290px' })
+              .setLngLat(e.lngLat)
+              .setHTML(`<div style="padding:10px;font-size:13px;">
+                <strong style="color:#DC2626;">📐 ${props.nombre}</strong><br>
+                <small style="color:#9ca3af;">Por: ${props.createdBy}</small><br><br>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button onclick="mlDeletePendingItem('pending_sectors','${props.docId}');this.closest('.maplibregl-popup').remove();"
+                    style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                    🗑️ Eliminar
+                  </button>
+                  <button onclick="mlStartEditPending('pending_sectors','${props.docId}','LineString',${props.verticesCoordsStr});this.closest('.maplibregl-popup').remove();"
+                    style="flex:1;background:#2563EB;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                    ✏️ Editar
+                  </button>
+                </div>
+              </div>`)
+              .addTo(mlMap);
+          });
+          mlAdminPendingSectorsInteractionAttached = true;
+        }
+      }
+    }, err => console.error('[AdminPending] sectors error:', err));
+}
+
+/**
+ * Carga TODAS las escuelas pendientes en el mapa (solo para admins).
+ */
+async function loadAllPendingSchoolsForAdmin() {
+  if (typeof firebase === 'undefined' || !firebase.firestore) return;
+  try {
+    const db = firebase.firestore();
+    const snapshot = await db.collection('pending_schools')
+      .where('status', '==', 'pending')
+      .get();
+    if (snapshot.empty) return;
+
+    const features = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (!data.coordinates || !Array.isArray(data.coordinates)) return;
+      mlPendingSchoolsCache.set(doc.id, { nombre: data.nombre, coordinates: data.coordinates });
+      features.push({
+        type: 'Feature',
+        properties: {
+          id: doc.id,
+          docId: doc.id,
+          nombre: data.nombre || 'Escuela pendiente',
+          createdBy: data.createdBy || '',
+          coords: JSON.stringify(data.coordinates),
+          lng: data.coordinates[0],
+          lat: data.coordinates[1]
+        },
+        geometry: { type: 'Point', coordinates: data.coordinates }
+      });
+    });
+    if (!features.length) return;
+
+    if (!mlMap.hasImage('school-icon-orange')) await loadSchoolIcons();
+
+    const sourceId = 'admin-pending-schools-source';
+    const layerId = 'admin-pending-schools-layer';
+    if (mlMap.getLayer(layerId)) mlMap.removeLayer(layerId);
+    if (mlMap.getSource(sourceId)) mlMap.removeSource(sourceId);
+
+    mlMap.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+    mlMap.addLayer({
+      id: layerId,
+      type: 'symbol',
+      source: sourceId,
+      minzoom: 5,
+      maxzoom: 12,
+      layout: {
+        'icon-image': 'school-icon-orange',
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.3, 8, 0.5, 10, 0.65, 12, 0.75],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'text-field': ['concat', ['get', 'nombre'], '\n⏳'],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 7, 10, 12, 13],
+        'text-offset': [0, 2.4],
+        'text-anchor': 'top'
+      },
+      paint: {
+        'text-color': '#DC2626',
+        'text-halo-color': 'rgba(255,255,255,0.95)',
+        'text-halo-width': 2
+      }
+    });
+
+    mlMap.on('mouseenter', layerId, () => { mlMap.getCanvas().style.cursor = 'pointer'; });
+    mlMap.on('mouseleave', layerId, () => { mlMap.getCanvas().style.cursor = ''; });
+    mlMap.on('click', layerId, (e) => {
+      if (mlMap.getCanvas().style.cursor === 'crosshair') return;
+      if (!e.features || !e.features.length) return;
+      const props = e.features[0].properties;
+      const coords = JSON.parse(props.coords);
+      new maplibregl.Popup({ closeButton: true, maxWidth: '290px' })
+        .setLngLat(coords)
+        .setHTML(`<div style="padding:10px;font-size:13px;max-width:250px;">
+          <strong style="color:#DC2626;">${props.nombre}</strong><br>
+          <small style="color:#9ca3af;">Por: ${props.createdBy}</small><br>
+          <span style="color:#DC2626;font-weight:600;">⏳ Pendiente de aprobación</span><br><br>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button onclick="mlLoadSchool('${props.id}',true);this.closest('.maplibregl-popup').remove();"
+              style="background:#2563EB;color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:600;">
+              Gestionar sectores y vías
+            </button>
+            <div style="display:flex;gap:8px;">
+              <button onclick="mlStartEditPending('pending_schools','${props.docId}','Point',[${props.lng},${props.lat}]);this.closest('.maplibregl-popup').remove();"
+                style="flex:1;background:#6b7280;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                ✏️ Mover
+              </button>
+              <button onclick="mlDeletePendingItem('pending_schools','${props.docId}');this.closest('.maplibregl-popup').remove();"
+                style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                🗑️ Eliminar
+              </button>
+            </div>
+          </div>
+        </div>`)
+        .addTo(mlMap);
+    });
+    console.log(`[AdminPendingSchools] ${features.length} escuelas pendientes cargadas`);
+  } catch (err) {
+    console.error('[AdminPendingSchools] Error:', err);
+  }
+}
+
+// ============================================
+// ADMIN: GEOMETRY EDITING (drag-to-reposition)
+// ============================================
+
+async function mlDeletePendingItem(collection, docId) {
+  try {
+    await firebase.firestore().collection(collection).doc(docId).delete();
+    if (typeof showRDToast === 'function') showRDToast('Propuesta eliminada', 'success');
+    else console.log(`[Admin] Eliminado ${collection}/${docId}`);
+  } catch (err) {
+    console.error('[Admin] Delete error:', err);
+    if (typeof showRDToast === 'function') showRDToast('Error al eliminar', 'error');
+  }
+}
+
+function mlStartEditPending(collection, docId, type, coords) {
+  mlCancelPendingEdit();
+
+  mlEditState.docId = docId;
+  mlEditState.collection = collection;
+  mlEditState.type = type;
+
+  if (type === 'Point') {
+    const el = document.createElement('div');
+    el.style.cssText = 'width:26px;height:26px;background:#DC2626;border:3px solid white;border-radius:50%;cursor:move;box-shadow:0 2px 8px rgba(0,0,0,0.45);';
+    const marker = new maplibregl.Marker({ element: el, draggable: true })
+      .setLngLat(coords)
+      .addTo(mlMap);
+    mlEditState.markers.push(marker);
+  } else if (type === 'LineString') {
+    coords.forEach(c => {
+      const el = document.createElement('div');
+      el.style.cssText = 'width:16px;height:16px;background:white;border:2.5px solid #DC2626;border-radius:50%;cursor:move;box-shadow:0 1px 5px rgba(0,0,0,0.4);';
+      const marker = new maplibregl.Marker({ element: el, draggable: true })
+        .setLngLat(c)
+        .addTo(mlMap);
+      mlEditState.markers.push(marker);
+    });
+  }
+
+  const toolbar = document.getElementById('admin-edit-toolbar');
+  if (toolbar) toolbar.classList.remove('hidden');
+}
+
+async function mlSavePendingEdit() {
+  if (!mlEditState.docId) return;
+  const { docId, collection, type, markers } = mlEditState;
+  try {
+    if (type === 'Point') {
+      const ll = markers[0].getLngLat();
+      await firebase.firestore().collection(collection).doc(docId).update({ coordinates: [ll.lng, ll.lat] });
+    } else if (type === 'LineString') {
+      const vertices = markers.map(m => { const ll = m.getLngLat(); return { lng: ll.lng, lat: ll.lat }; });
+      await firebase.firestore().collection(collection).doc(docId).update({ vertices });
+    }
+    if (typeof showRDToast === 'function') showRDToast('Geometría actualizada', 'success');
+    else console.log('[Admin] Geometría guardada');
+  } catch (err) {
+    console.error('[Admin] Save error:', err);
+    if (typeof showRDToast === 'function') showRDToast('Error al guardar', 'error');
+  }
+  mlCancelPendingEdit();
+}
+
+function mlCancelPendingEdit() {
+  mlEditState.markers.forEach(m => { try { m.remove(); } catch (e) {} });
+  mlEditState.markers = [];
+  mlEditState.docId = null;
+  mlEditState.collection = null;
+  mlEditState.type = null;
+  const toolbar = document.getElementById('admin-edit-toolbar');
+  if (toolbar) toolbar.classList.add('hidden');
+}
+
+async function loadApprovedSchoolsFromFirestore() {
+  try {
+    if (typeof firebase === 'undefined' || !firebase.firestore) return;
+
+    const db = firebase.firestore();
+    const snapshot = await db.collection('pending_schools')
+      .where('status', '==', 'approved')
+      .get();
+
+    if (snapshot.empty) {
+      console.log('[ApprovedSchools] No hay escuelas aprobadas pendientes');
+      return;
+    }
+
+    const features = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (!data.coordinates || !Array.isArray(data.coordinates)) return;
+
+      // Registrar en cache para que mlLoadSchool pueda cargarla como pending school
+      mlPendingSchoolsCache.set(doc.id, { nombre: data.nombre, coordinates: data.coordinates });
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: data.coordinates
+        },
+        properties: {
+          id: doc.id,
+          docId: doc.id,
+          nombre: data.nombre || 'Sin nombre',
+          zoom: 16,
+          isOpen: true,
+          rockType: data.rockType || '',
+          coords: JSON.stringify(data.coordinates),
+          isUserSchool: true,
+          lng: data.coordinates[0],
+          lat: data.coordinates[1]
+        }
+      });
+    });
+
+    if (features.length === 0) return;
+
+    console.log(`[ApprovedSchools] Cargando ${features.length} escuelas aprobadas`);
+
+    const sourceId = 'escuelas-usuarios-source';
+    const layerId = 'escuelas-usuarios-layer';
+    const labelLayerId = 'escuelas-usuarios-labels-layer';
+
+    if (mlMap.getLayer(labelLayerId)) mlMap.removeLayer(labelLayerId);
+    if (mlMap.getLayer(layerId)) mlMap.removeLayer(layerId);
+    if (mlMap.getSource(sourceId)) mlMap.removeSource(sourceId);
+
+    // Esperar a que school-icon-green esté disponible (lo carga loadSchoolIcons)
+    if (!mlMap.hasImage('school-icon-green')) {
+      await loadSchoolIcons();
+    }
+
+    mlMap.addSource(sourceId, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features }
+    });
+
+    // Capa de iconos — mismo icono verde que las escuelas abiertas
+    mlMap.addLayer({
+      id: layerId,
+      type: 'symbol',
+      source: sourceId,
+      minzoom: 5,
+      maxzoom: 12,
+      layout: {
+        'icon-image': 'school-icon-green',
+        'icon-size': [
+          'interpolate', ['linear'], ['zoom'],
+          5, 0.3, 8, 0.5, 10, 0.65, 12, 0.75
+        ],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-anchor': 'center'
+      }
+    });
+
+    // Etiqueta de nombre debajo del icono (igual que school-labels-layer)
+    mlMap.addLayer({
+      id: labelLayerId,
+      type: 'symbol',
+      source: sourceId,
+      minzoom: 7,
+      maxzoom: 12,
+      layout: {
+        'text-field': ['get', 'nombre'],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': [
+          'interpolate', ['linear'], ['zoom'],
+          7, 10, 10, 12, 12, 14
+        ],
+        'text-offset': [0, 2.2],
+        'text-anchor': 'top',
+        'text-max-width': 10,
+        'text-allow-overlap': false
+      },
+      paint: {
+        'text-color': '#1f2937',
+        'text-halo-color': 'rgba(255, 255, 255, 0.95)',
+        'text-halo-width': 2,
+        'text-halo-blur': 0
+      }
+    });
+
+    // Interactividad: mismo comportamiento que school-markers-layer
+    mlMap.on('mouseenter', layerId, () => {
+      mlMap.getCanvas().style.cursor = 'pointer';
+    });
+    mlMap.on('mouseleave', layerId, () => {
+      mlMap.getCanvas().style.cursor = '';
+    });
+    mlMap.on('click', layerId, async (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const props = e.features[0].properties;
+
+      const school = {
+        id: props.id,
+        nombre: props.nombre,
+        coords: JSON.parse(props.coords),
+        zoom: props.zoom || 16,
+        isOpen: props.isOpen,
+        rockType: props.rockType || ''
+      };
+
+      const adminRole = await checkAdminRole();
+      if (adminRole === 'admin') {
+        new maplibregl.Popup({ closeButton: true, maxWidth: '290px' })
+          .setLngLat(school.coords)
+          .setHTML(`<div style="padding:10px;font-size:13px;max-width:250px;">
+            <strong>${school.nombre}</strong><br>
+            <small style="color:#9ca3af;">Escuela aprobada</small><br><br>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <button onclick="mlLoadSchool('${props.id}',true);this.closest('.maplibregl-popup').remove();"
+                style="background:#2563EB;color:white;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:600;">
+                Entrar a la escuela
+              </button>
+              <div style="display:flex;gap:8px;">
+                <button onclick="mlStartEditPending('pending_schools','${props.docId}','Point',[${props.lng},${props.lat}]);this.closest('.maplibregl-popup').remove();"
+                  style="flex:1;background:#6b7280;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                  ✏️ Mover
+                </button>
+                <button onclick="mlDeletePendingItem('pending_schools','${props.docId}');this.closest('.maplibregl-popup').remove();"
+                  style="flex:1;background:#DC2626;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:600;">
+                  🗑️ Eliminar
+                </button>
+              </div>
+            </div>
+          </div>`)
+          .addTo(mlMap);
+        return;
+      }
+
+      if (isMobileDevice()) {
+        if (mlSchoolPopup) mlSchoolPopup.remove();
+        adaptiveMapPanForBottomSheet(school.coords);
+        showBottomSheet(school);
+      } else {
+        mlMap.flyTo({
+          center: school.coords,
+          zoom: mlMap.getZoom(),
+          speed: 0.8,
+          curve: 1,
+          padding: { top: 450, bottom: 0, left: 0, right: 0 }
+        });
+        showSchoolPopup(school, null);
+      }
+    });
+
+    console.log(`[ApprovedSchools] ✅ Capa de escuelas de usuarios añadida`);
+  } catch (error) {
+    console.error('[ApprovedSchools] Error cargando escuelas aprobadas:', error);
+  }
 }
 
 // ============================================
@@ -7841,9 +9769,32 @@ function buildGradeFilterPanelHTML() {
     <div class="gfp-range-ticks" id="gfp-range-ticks"></div>
 
     <div class="gfp-divider"></div>
+
+    <label class="gfp-myvias-row" id="gfp-myvias-label">
+      <input type="checkbox" id="gfp-myvias-checkbox" onchange="toggleShowOnlyMyRoutes(this.checked)">
+      <span class="gfp-myvias-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      </span>
+      <span class="gfp-myvias-text">Solo vías hechas</span>
+    </label>
+
+    <label class="gfp-myvias-row" id="gfp-projects-label">
+      <input type="checkbox" id="gfp-projects-checkbox" onchange="toggleShowOnlyProjects(this.checked)">
+      <span class="gfp-myvias-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </span>
+      <span class="gfp-myvias-text">Proyectos</span>
+    </label>
+
+    <div class="gfp-divider"></div>
     <button class="gfp-legend-btn" onclick="openGradeLegendModal()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       Leyenda de colores
+    </button>
+
+    <button class="gfp-legend-btn" onclick="openSymbolsLegendModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="11"/></svg>
+      Símbolos del mapa
     </button>
   `;
 }
@@ -8048,6 +9999,13 @@ function closeGradeFilterPanel() {
 function resetGradeFilter() {
   mlGradeRangeMin = 0;
   mlGradeRangeMax = ALL_GRADES_ORDERED.length - 1;
+  mlShowOnlyMyRoutes = false;
+  mlShowOnlyProjects = false;
+
+  const cb = document.getElementById('gfp-myvias-checkbox');
+  if (cb) cb.checked = false;
+  const cbProj = document.getElementById('gfp-projects-checkbox');
+  if (cbProj) cbProj.checked = false;
 
   updateSliderPositions();
   updateRangeLabels();
@@ -8056,26 +10014,113 @@ function resetGradeFilter() {
 }
 
 /**
- * Aplica el filtro de grados a la capa vias-layer del mapa
+ * Activa/desactiva el filtro "solo mis vías"
+ */
+function toggleShowOnlyMyRoutes(checked) {
+  mlShowOnlyMyRoutes = checked;
+  applyGradeFilter();
+  updateFilterButtonBadge();
+}
+
+/**
+ * Activa/desactiva el filtro "proyectos"
+ */
+function toggleShowOnlyProjects(checked) {
+  mlShowOnlyProjects = checked;
+  applyGradeFilter();
+  updateFilterButtonBadge();
+}
+
+/**
+ * Aplica el filtro de grados (y opcionalmente "solo mis vías") a la capa vias-layer
  */
 function applyGradeFilter() {
   if (!mlMap) return;
   if (!mlMap.getLayer('vias-layer')) return;
 
+  const gradeActive = !isFullGradeRange();
+
+  // Construir filtro de grados
   let gradeExpr = null;
-  if (!isFullGradeRange()) {
+  if (gradeActive) {
     const selectedGrades = ALL_GRADES_ORDERED.slice(mlGradeRangeMin, mlGradeRangeMax + 1);
     gradeExpr = ['in', ['get', 'grado1'], ['literal', selectedGrades]];
   }
 
-  mlMap.setFilter('vias-layer', gradeExpr || null);
+  // Construir filtro de "solo vías hechas"
+  let myViasExpr = null;
+  if (mlShowOnlyMyRoutes && mlCurrentSchool && typeof userAscentsCache !== 'undefined' && userAscentsCache.size > 0) {
+    const myRouteIds = [];
+    const prefix = mlCurrentSchool + ':';
+    for (const key of userAscentsCache.keys()) {
+      if (key.startsWith(prefix)) {
+        const id = parseInt(key.slice(prefix.length), 10);
+        if (!isNaN(id)) myRouteIds.push(id);
+      }
+    }
+    if (myRouteIds.length > 0) {
+      myViasExpr = ['in', ['get', 'id'], ['literal', myRouteIds]];
+    } else {
+      myViasExpr = ['literal', false];
+    }
+  }
 
-  // Sincronizar ticks con el filtro de grado
+  // Construir filtro de "proyectos"
+  let projectsExpr = null;
+  if (mlShowOnlyProjects && typeof userProjects !== 'undefined' && userProjects.size > 0) {
+    const projectIds = [];
+    for (const key of userProjects.keys()) {
+      const id = parseInt(key.replace('route_', ''), 10);
+      if (!isNaN(id)) projectIds.push(id);
+    }
+    if (projectIds.length > 0) {
+      projectsExpr = ['in', ['get', 'id'], ['literal', projectIds]];
+    } else {
+      projectsExpr = ['literal', false];
+    }
+  }
+
+  // Combinar filtros de usuario (union si ambos activos)
+  let routeSetExpr = null;
+  if (myViasExpr && projectsExpr) {
+    routeSetExpr = ['any', myViasExpr, projectsExpr];
+  } else {
+    routeSetExpr = myViasExpr || projectsExpr;
+  }
+
+  // Combinar con filtro de grado
+  let combinedFilter = null;
+  if (gradeExpr && routeSetExpr) {
+    combinedFilter = ['all', gradeExpr, routeSetExpr];
+  } else {
+    combinedFilter = gradeExpr || routeSetExpr || null;
+  }
+
+  // Excluir variantes que se muestran como marcadores concéntricos
+  if (mlVariantFeatureIndex.size > 0) {
+    const variantIds = [...mlVariantFeatureIndex.keys()];
+    const excludeExpr = ['!', ['in', ['get', 'id'], ['literal', variantIds]]];
+    combinedFilter = combinedFilter
+      ? ['all', combinedFilter, excludeExpr]
+      : excludeExpr;
+  }
+
+  mlMap.setFilter('vias-layer', combinedFilter);
+
+  // Sincronizar ticks con filtros:
+  // - El filtro "Solo vías hechas" no restringe los ticks (ya son vías hechas por construcción).
+  // - El filtro "Proyectos" (activo en solitario) SÍ restringe los ticks: solo se muestran
+  //   ticks de vías que también son proyectos, para que no aparezcan ticks sueltos
+  //   sobre vías que ya no están visibles.
+  let ticksExpr = gradeExpr;
+  if (mlShowOnlyProjects && !mlShowOnlyMyRoutes && projectsExpr) {
+    ticksExpr = ticksExpr ? ['all', ticksExpr, projectsExpr] : projectsExpr;
+  }
   if (mlMap.getLayer('vias-ticks-circle-layer')) {
-    mlMap.setFilter('vias-ticks-circle-layer', gradeExpr || null);
+    mlMap.setFilter('vias-ticks-circle-layer', ticksExpr || null);
   }
   if (mlMap.getLayer('vias-ticks-layer')) {
-    mlMap.setFilter('vias-ticks-layer', gradeExpr || null);
+    mlMap.setFilter('vias-ticks-layer', ticksExpr || null);
   }
 }
 
@@ -8086,7 +10131,7 @@ function updateFilterButtonBadge() {
   const btn = document.getElementById('btn-grade-filter');
   if (!btn) return;
 
-  if (!isFullGradeRange()) {
+  if (!isFullGradeRange() || mlShowOnlyMyRoutes || mlShowOnlyProjects) {
     btn.classList.add('has-filter');
   } else {
     btn.classList.remove('has-filter');
@@ -8158,12 +10203,149 @@ function openGradeLegendModal() {
   document.body.appendChild(overlay);
 }
 
+/**
+ * Abre la modal con los símbolos del mapa y su explicación
+ * (parkings, vías, ticks, variantes, sectores, POI, escuelas, etc.)
+ */
+function openSymbolsLegendModal() {
+  closeGradeFilterPanel();
+
+  const existing = document.getElementById('symbols-legend-modal');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'symbols-legend-modal';
+  overlay.className = 'grade-legend-overlay';
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  // SVG inline reutilizando los mismos estilos que renderiza el mapa
+  const symbols = [
+    {
+      title: 'Vía deportiva',
+      desc: 'Cada círculo es una vía. El color indica el grado de dificultad. Pulsa para ver detalles, fotos y croquis.',
+      svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="9" fill="#22c55e" stroke="#fff" stroke-width="2"/></svg>`
+    },
+    {
+      title: 'Vía hecha (tick)',
+      desc: 'Vía registrada en tu logbook. El check blanco sobre el círculo de grado indica que ya la has encadenado.',
+      svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="#22c55e" stroke="#fff" stroke-width="2"/><polyline points="10,17 14,21 22,12" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+    },
+    {
+      title: 'Vías con variantes',
+      desc: 'Grupo de vías que comparten salida o pertenecen al mismo enlace. El círculo central es la vía principal y cada anillo es una variante con su grado. Pulsa para abrir el carrusel.',
+      svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="16" cy="16" r="13" fill="none" stroke="#3b82f6" stroke-width="2.5"/><circle cx="16" cy="16" r="9.5" fill="none" stroke="#fff" stroke-width="1"/><circle cx="16" cy="16" r="8.5" fill="none" stroke="#f59e0b" stroke-width="2.5"/><circle cx="16" cy="16" r="5" fill="#ef4444"/></svg>`
+    },
+    {
+      title: 'Sector',
+      desc: 'Línea coloreada que delimita un sector de escalada. Cada sector usa un color distinto. Pulsa para ver su nombre y la lista de vías.',
+      svg: `<svg viewBox="0 0 32 32"><path d="M3 22 C 9 8, 22 26, 29 10" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" opacity="0.7"/><path d="M3 22 C 9 8, 22 26, 29 10" fill="none" stroke="#a855f7" stroke-width="3.5" stroke-linecap="round"/></svg>`
+    },
+    {
+      title: 'Ruta de acceso',
+      desc: 'Sendero de aproximación al sector representado con línea naranja discontinua.',
+      svg: `<svg viewBox="0 0 32 32"><path d="M3 26 C 10 22, 14 10, 22 8 L 29 6" fill="none" stroke="#FF6B00" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 3"/></svg>`
+    },
+    {
+      title: 'Parking',
+      desc: 'Aparcamiento recomendado para acceder al sector. Pulsa para ver las indicaciones y abrir la navegación.',
+      svg: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#4285f4" stroke="#fff" stroke-width="2"/><text x="12" y="17" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold" font-family="sans-serif">P</text></svg>`
+    },
+    {
+      title: 'Punto de interés (POI)',
+      desc: 'Fuente, refugio, mirador, baño, bar, peligro… El emoji identifica el tipo. Pulsa para ver la descripción.',
+      svg: `<svg viewBox="0 0 32 32"><text x="16" y="22" text-anchor="middle" font-size="20">🚰</text></svg>`
+    },
+    {
+      title: 'Escuela abierta',
+      desc: 'Escuela con cartografía publicada. Pulsa el icono verde para entrar y explorar sus sectores y vías.',
+      svg: `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#22c55e"/><circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g></svg>`
+    },
+    {
+      title: 'Escuela en desarrollo',
+      desc: 'Escuela con datos parciales o aún en construcción. El martillo indica que falta cartografía o información.',
+      svg: `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#f59e0b"/><circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g><g transform="translate(36,10)"><circle cx="0" cy="0" r="8" fill="#fff" stroke="#f59e0b" stroke-width="1.5"/><text x="0" y="3.5" text-anchor="middle" font-size="10">🔨</text></g></svg>`
+    }
+  ];
+
+  let html = `
+    <div class="grade-legend-content symbols-legend-content">
+      <div class="grade-legend-header">
+        <h3>Símbolos del mapa</h3>
+        <button class="grade-legend-close" onclick="document.getElementById('symbols-legend-modal').remove()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="grade-legend-body symbols-legend-body">
+  `;
+
+  symbols.forEach(s => {
+    html += `
+      <div class="symbol-legend-item">
+        <div class="symbol-legend-icon">${s.svg}</div>
+        <div class="symbol-legend-text">
+          <div class="symbol-legend-title">${s.title}</div>
+          <div class="symbol-legend-desc">${s.desc}</div>
+        </div>
+      </div>
+    `;
+  });
+
+  html += `
+      </div>
+    </div>
+  `;
+
+  overlay.innerHTML = html;
+  document.body.appendChild(overlay);
+}
+
 // Exponer funciones para uso desde HTML onclick
 window.resetGradeFilter = resetGradeFilter;
 window.openGradeLegendModal = openGradeLegendModal;
+window.openSymbolsLegendModal = openSymbolsLegendModal;
 
 // Exponer función para uso externo
 window.loadApprovedRoutesFromFirestore = loadApprovedRoutesFromFirestore;
+window.loadApprovedPOIFromFirestore = loadApprovedPOIFromFirestore;
+window.loadApprovedSectorsFromFirestore = loadApprovedSectorsFromFirestore;
+window.loadApprovedSchoolsFromFirestore = loadApprovedSchoolsFromFirestore;
 window.updateAscentTicksLayer = updateAscentTicksLayer;
+window.mlCloseRoutePopup = () => { if (mlRoutePopup) mlRoutePopup.remove(); };
+window.mlDeletePendingItem = mlDeletePendingItem;
+window.mlStartEditPending = mlStartEditPending;
+window.mlSavePendingEdit = mlSavePendingEdit;
+window.mlCancelPendingEdit = mlCancelPendingEdit;
+
+// Debug: llamar desde la consola del navegador con debugApprovedItems()
+window.debugApprovedItems = async function() {
+  if (typeof firebase === 'undefined' || !firebase.firestore) {
+    console.error('Firebase no disponible');
+    return;
+  }
+  const db = firebase.firestore();
+  const collections = ['pending_poi', 'pending_sectors', 'pending_schools', 'pending_routes'];
+  for (const col of collections) {
+    try {
+      const snap = await db.collection(col).get();
+      console.log(`%c=== ${col} === (${snap.size} docs total)`, 'color: #E91E63; font-weight: bold; font-size: 14px');
+      snap.forEach(doc => {
+        const d = doc.data();
+        console.log(`  ${doc.id}: status=${d.status}, schoolId=${d.schoolId}, coords=${JSON.stringify(d.coordinates || d.vertices?.length + ' vertices')}`);
+      });
+    } catch (err) {
+      console.error(`  ${col}: ERROR - ${err.message}`);
+    }
+  }
+  console.log(`%cEscuela actual: ${mlCurrentSchool}`, 'color: #9C27B0; font-weight: bold');
+  console.log(`%cZoom actual: ${mlMap?.getZoom()?.toFixed(1)}`, 'color: #9C27B0; font-weight: bold');
+  // Listar capas de usuarios activas
+  if (mlMap) {
+    const userLayers = mlMap.getStyle().layers.filter(l => l.id.includes('usuario'));
+    console.log(`%cCapas de usuarios en el mapa: ${userLayers.length}`, 'color: #9C27B0; font-weight: bold');
+    userLayers.forEach(l => console.log(`  - ${l.id} (minzoom: ${l.minzoom || 'none'})`));
+  }
+};
 
 console.log('MapLibre Map JS cargado');

@@ -21,6 +21,7 @@
 // --- Modo Vía (existente) ---
 let devModeActive = false;
 let devCurrentSchoolSectors = [];
+let devPendingSectorNames = new Set(); // Sectores propios aún pendientes de aprobación
 let devPendingRouteCoords = null;
 let devRouteMarker = null;
 let devPendingRouteDocId = null;
@@ -78,17 +79,30 @@ async function isDevAdminOrSpotter() {
  * Se posiciona justo encima del botón 3D
  */
 async function addDevEditorButton() {
-  // Verificar si ya existe
-  if (document.getElementById('btn-dev-editor')) return;
-
-  // Verificar permisos de admin o spotter
-  const hasAccess = await isDevAdminOrSpotter();
-  if (!hasAccess) {
-    console.log('[DevEditor] Usuario no es admin ni spotter, botón oculto');
+  // Si ya existe y es visible, no hacer nada
+  const existing = document.getElementById('btn-dev-editor');
+  if (existing) {
+    existing.style.display = 'flex'; // Por si quedó oculto tras logout
     return;
   }
 
-  const isNative = window.Capacitor !== undefined;
+  // Verificar permisos. Retry simple: si falla por red, reintentar una vez tras 2s.
+  let hasAccess = await isDevAdminOrSpotter();
+  if (!hasAccess) {
+    await new Promise(r => setTimeout(r, 2000));
+    hasAccess = await isDevAdminOrSpotter();
+  }
+
+  if (!hasAccess) {
+    console.log('[DevEditor] Usuario sin rol admin/spotter — botón no añadido');
+    return;
+  }
+
+  const mapEl = document.getElementById('map');
+  if (!mapEl) {
+    setTimeout(addDevEditorButton, 500);
+    return;
+  }
 
   const btn = document.createElement('button');
   btn.id = 'btn-dev-editor';
@@ -105,24 +119,22 @@ async function addDevEditorButton() {
     <path d="M16.24 7.76l2.83-2.83"/>
   </svg>`;
   btn.title = 'Herramienta de desarrollador: Añadir vías';
-
-  // Posición: encima del botón 3D (bottom: 250px + 46px de altura + 10px de espacio)
   btn.style.cssText = `
     position: absolute;
-    bottom: ${isNative ? '306px' : '306px'};
+    bottom: 306px;
     right: 10px;
     width: 36px;
     height: 36px;
     background: white;
     border: none;
     border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
     font-size: 13px;
     font-weight: 600;
     color: #333;
     cursor: pointer;
     z-index: 1000;
-    display: none;
+    display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
@@ -131,18 +143,15 @@ async function addDevEditorButton() {
   `;
 
   btn.addEventListener('click', toggleDevMode);
+  mapEl.appendChild(btn);
 
-  document.getElementById('map').appendChild(btn);
-
-  // Actualizar visibilidad con el botón 3D
   if (mlMap) {
     mlMap.on('zoom', updateDevButtonVisibility);
     mlMap.on('zoomend', updateDevButtonVisibility);
     mlMap.on('moveend', updateDevButtonVisibility);
-    updateDevButtonVisibility();
   }
 
-  console.log('[DevEditor] Botón de desarrollador añadido');
+  console.log('[DevEditor] Botón Spotter añadido');
 }
 
 /**
@@ -392,28 +401,67 @@ async function loadSchoolSectors() {
   }
 
   const school = MAPLIBRE_SCHOOLS[mlCurrentSchool];
-  if (!school || !school.geojson || !school.geojson.sectores) {
-    console.warn('[DevEditor] No se encontró configuración de sectores');
-    return;
-  }
+  const sectorNames = new Set();
 
-  try {
-    const response = await fetch(school.geojson.sectores + '?v=' + Date.now());
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const geojson = await response.json();
-
-    if (geojson.features) {
-      devCurrentSchoolSectors = geojson.features
-        .map(f => f.properties.nombre)
-        .filter(name => name && name.trim() !== '')
-        .sort();
+  // 1. Sectores del GeoJSON estático
+  if (school?.geojson?.sectores) {
+    try {
+      const response = await fetch(school.geojson.sectores + '?v=' + Date.now());
+      if (response.ok) {
+        const geojson = await response.json();
+        if (geojson.features) {
+          geojson.features
+            .map(f => f.properties.nombre)
+            .filter(name => name && name.trim() !== '')
+            .forEach(name => sectorNames.add(name));
+        }
+      }
+    } catch (error) {
+      console.warn('[DevEditor] Error cargando GeoJSON sectores:', error);
     }
-
-    console.log('[DevEditor] Sectores cargados:', devCurrentSchoolSectors);
-  } catch (error) {
-    console.error('[DevEditor] Error cargando sectores:', error);
   }
+
+  // 2. Sectores aprobados en Firestore para esta escuela
+  try {
+    const user = typeof firebase !== 'undefined' && firebase.auth?.().currentUser;
+    if (user && firebase.firestore) {
+      const snap = await firebase.firestore().collection('pending_sectors')
+        .where('schoolId', '==', mlCurrentSchool)
+        .where('status', '==', 'approved')
+        .get();
+      snap.forEach(doc => {
+        const nombre = doc.data().nombre?.trim();
+        if (nombre) sectorNames.add(nombre);
+      });
+    }
+  } catch (error) {
+    console.warn('[DevEditor] Error cargando sectores aprobados:', error);
+  }
+
+  // 3. Sectores propios pendientes de aprobación (solo los del usuario actual)
+  devPendingSectorNames = new Set();
+  try {
+    const user = typeof firebase !== 'undefined' && firebase.auth?.().currentUser;
+    if (user && firebase.firestore) {
+      const snap = await firebase.firestore().collection('pending_sectors')
+        .where('schoolId', '==', mlCurrentSchool)
+        .where('createdBy', '==', user.uid)
+        .where('status', '==', 'pending')
+        .get();
+      snap.forEach(doc => {
+        const nombre = doc.data().nombre?.trim();
+        if (nombre) {
+          devPendingSectorNames.add(nombre);
+          sectorNames.add(nombre);
+        }
+      });
+    }
+  } catch (error) {
+    console.warn('[DevEditor] Error cargando sectores propios pendientes:', error);
+  }
+
+  devCurrentSchoolSectors = [...sectorNames].sort();
+  console.log('[DevEditor] Sectores cargados:', devCurrentSchoolSectors, '| Pendientes propios:', [...devPendingSectorNames]);
 }
 
 // ============================================
@@ -554,7 +602,7 @@ async function showDevRouteModal() {
             <label for="dev-route-sector">Sector *</label>
             <select id="dev-route-sector" required>
               <option value="">Seleccionar...</option>
-              ${devCurrentSchoolSectors.map(s => `<option value="${s}" ${s === detectedSector ? 'selected' : ''}>${s}</option>`).join('')}
+              ${devCurrentSchoolSectors.map(s => `<option value="${s}" ${s === detectedSector ? 'selected' : ''}>${s}${devPendingSectorNames.has(s) ? ' ⏳' : ''}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -808,16 +856,27 @@ async function saveDevRoute() {
 
     console.log('[DevEditor] Vía guardada:', routeData);
 
-    // Abrir automáticamente el editor de dibujo para esta vía
-    showDevToast('Ahora dibuja la vía en la imagen del sector', 'info');
-
     // Desactivar modo dev temporalmente para evitar conflictos
     deactivateDevMode();
 
-    // Abrir editor de dibujo para vincular la vía con la imagen
-    setTimeout(() => {
-      openDrawingEditorForPendingRoute(routeData.nombre, routeData.sector, docRef.id);
-    }, 500);
+    const openDrawing = () => {
+      showDevToast('Ahora dibuja la vía en la imagen del sector', 'info');
+      setTimeout(() => {
+        openDrawingEditorForPendingRoute(routeData.nombre, routeData.sector, docRef.id);
+      }, 500);
+    };
+
+    // Verificar si el sector tiene foto; si no, preguntar antes de abrir el editor
+    const schoolId = mlCurrentSchool || routeData.schoolId;
+    const hasSectorPhoto = typeof window.sectorHasImage === 'function'
+      ? await window.sectorHasImage(schoolId, routeData.sector)
+      : true;
+
+    if (!hasSectorPhoto) {
+      promptSectorPhoto(schoolId, routeData.sector, openDrawing);
+    } else {
+      openDrawing();
+    }
 
   } catch (error) {
     console.error('[DevEditor] Error guardando vía:', error);
@@ -1556,13 +1615,11 @@ function updateSectorDrawPreview() {
 function finishSectorDraw() {
   if (devSectorVertices.length < 3) return;
 
-  // Cerrar el polígono (conectar último con primero)
-  const closedVertices = [...devSectorVertices, devSectorVertices[0]];
   mlMap.getSource(DEV_SECTOR_SOURCE).setData({
     type: 'FeatureCollection',
     features: [{
       type: 'Feature',
-      geometry: { type: 'LineString', coordinates: closedVertices },
+      geometry: { type: 'LineString', coordinates: devSectorVertices },
       properties: {}
     }]
   });
@@ -1702,9 +1759,9 @@ async function saveSector() {
     const dateStart = document.getElementById('dev-sector-date-start')?.value?.trim() || null;
     const dateEnd = document.getElementById('dev-sector-date-end')?.value?.trim() || null;
 
-    // Cerrar polígono — guardar como array de objetos {lng, lat}
+    // Guardar vértices como array de objetos {lng, lat}
     // (Firestore no soporta arrays anidados como [[[lng,lat],...]])
-    const closedVertices = [...devSectorVertices, devSectorVertices[0]]
+    const closedVertices = devSectorVertices
       .map(v => ({ lng: v[0], lat: v[1] }));
 
     const sectorData = {
@@ -1726,10 +1783,86 @@ async function saveSector() {
 
     showDevToast('Sector propuesto correctamente', 'success');
     deactivateSectorMode();
+
+    // Preguntar si quiere añadir foto (sector nuevo → sin imagen seguro)
+    const schoolId = mlCurrentSchool || sectorData.schoolId;
+    promptSectorPhoto(schoolId, name, null);
+
   } catch (error) {
     console.error('[Spotter] Error guardando sector:', error);
     showDevToast('Error al guardar: ' + error.message, 'error');
   }
+}
+
+// ============================================
+// FOTO DEL SECTOR — PROMPT AL SPOTTER
+// ============================================
+
+/**
+ * Muestra un diálogo preguntando si el Spotter quiere añadir foto al sector.
+ * @param {string} schoolId
+ * @param {string} sectorName
+ * @param {Function|null} onNo  Callback ejecutado si el usuario dice No
+ */
+function promptSectorPhoto(schoolId, sectorName, onNo) {
+  const existing = document.getElementById('spotter-sector-photo-prompt');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'spotter-sector-photo-prompt';
+  overlay.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  `;
+
+  overlay.innerHTML = `
+    <div style="
+      background:#fff;border-radius:16px;padding:24px 20px;max-width:340px;width:100%;
+      box-shadow:0 8px 32px rgba(0,0,0,0.18);text-align:center;
+    ">
+      <div style="font-size:36px;margin-bottom:12px;">📷</div>
+      <h3 style="margin:0 0 8px;font-size:17px;font-weight:700;color:#111827;">
+        Este sector no tiene foto
+      </h3>
+      <p style="margin:0 0 20px;font-size:14px;color:#6b7280;line-height:1.5;">
+        ¿Quieres añadir una imagen para el sector <strong>${sectorName}</strong>?
+      </p>
+      <div style="display:flex;gap:10px;">
+        <button id="spotter-photo-no"
+          style="flex:1;padding:12px;border:1.5px solid #d1d5db;border-radius:10px;background:#fff;
+                 font-size:15px;font-weight:600;color:#374151;cursor:pointer;">
+          No, gracias
+        </button>
+        <button id="spotter-photo-yes"
+          style="flex:1;padding:12px;border:none;border-radius:10px;
+                 background:linear-gradient(135deg,#7c3aed,#a855f7);
+                 font-size:15px;font-weight:600;color:#fff;cursor:pointer;">
+          Sí, añadir
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+
+  overlay.querySelector('#spotter-photo-yes').addEventListener('click', () => {
+    close();
+    if (typeof window.showSectorUploadModal === 'function') {
+      window.showSectorUploadModal(schoolId, encodeURIComponent(sectorName));
+    }
+  });
+
+  overlay.querySelector('#spotter-photo-no').addEventListener('click', () => {
+    close();
+    if (typeof onNo === 'function') onNo();
+  });
+
+  // Cerrar al tocar fuera del card
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) { close(); if (typeof onNo === 'function') onNo(); }
+  });
 }
 
 // ============================================
@@ -1766,17 +1899,32 @@ function showDevToast(message, type = 'info') {
  * Se llama después de que el mapa esté listo
  */
 function initDevRouteEditor() {
-  // Esperar a que el usuario esté autenticado
-  if (typeof auth !== 'undefined') {
-    auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        await addDevEditorButton();
-      }
-    });
-  } else {
-    // Reintentar después
+  if (typeof auth === 'undefined') {
     setTimeout(initDevRouteEditor, 1000);
+    return;
   }
+
+  auth.onAuthStateChanged(async (user) => {
+    if (user) {
+      await addDevEditorButton();
+    } else {
+      // Logout: ocultar sin destruir (si vuelve a loguear, addDevEditorButton lo restaura)
+      const btn = document.getElementById('btn-dev-editor');
+      if (btn) btn.style.display = 'none';
+    }
+  });
+
+  // Cuando el mapa se reinicializa: reasignar listeners y mostrar el botón
+  window.addEventListener('maplibre:ready', async () => {
+    if (mlMap) {
+      mlMap.on('zoom', updateDevButtonVisibility);
+      mlMap.on('zoomend', updateDevButtonVisibility);
+      mlMap.on('moveend', updateDevButtonVisibility);
+    }
+    if (typeof auth !== 'undefined' && auth.currentUser) {
+      await addDevEditorButton(); // Crea o muestra el botón
+    }
+  });
 }
 
 // Auto-inicializar cuando el DOM esté listo

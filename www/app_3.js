@@ -4435,6 +4435,25 @@ function initAdminPanelContent() {
         </svg>
         Spotters
       </button>
+      <button class="admin-tab" data-section="schools">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4" />
+        </svg>
+        Escuelas
+      </button>
+      <button class="admin-tab" data-section="sectors">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+        </svg>
+        Sectores
+      </button>
+      <button class="admin-tab" data-section="poi">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        POI
+      </button>
       <button class="admin-tab" data-section="users">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -4641,6 +4660,78 @@ function initAdminPanelContent() {
         </div>
       </div>
     </section>
+
+    <!-- Seccion Escuelas Pendientes -->
+    <section class="admin-section" id="admin-section-schools">
+      <h1 class="admin-page-title">Aprobar Escuelas</h1>
+      <p class="admin-page-desc">Escuelas propuestas por Spotters</p>
+
+      <div class="admin-filter-row">
+        <select id="admin-filter-school-status" onchange="loadAdminPendingSchools()">
+          <option value="pending">Pendientes</option>
+          <option value="approved">Aprobadas</option>
+          <option value="rejected">Rechazadas</option>
+          <option value="all">Todas</option>
+        </select>
+      </div>
+
+      <div class="admin-card">
+        <div class="admin-card-body" id="admin-schools-list">
+          <div class="admin-loading">
+            <div class="admin-spinner"></div>
+            <p>Cargando escuelas...</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Seccion Sectores Pendientes -->
+    <section class="admin-section" id="admin-section-sectors">
+      <h1 class="admin-page-title">Aprobar Sectores</h1>
+      <p class="admin-page-desc">Sectores propuestos por Spotters</p>
+
+      <div class="admin-filter-row">
+        <select id="admin-filter-sector-status" onchange="loadAdminPendingSectors()">
+          <option value="pending">Pendientes</option>
+          <option value="approved">Aprobados</option>
+          <option value="rejected">Rechazados</option>
+          <option value="all">Todos</option>
+        </select>
+      </div>
+
+      <div class="admin-card">
+        <div class="admin-card-body" id="admin-sectors-list">
+          <div class="admin-loading">
+            <div class="admin-spinner"></div>
+            <p>Cargando sectores...</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Seccion POI Pendientes -->
+    <section class="admin-section" id="admin-section-poi">
+      <h1 class="admin-page-title">Aprobar Puntos de Interes</h1>
+      <p class="admin-page-desc">Puntos de interes propuestos por Spotters</p>
+
+      <div class="admin-filter-row">
+        <select id="admin-filter-poi-status" onchange="loadAdminPendingPOI()">
+          <option value="pending">Pendientes</option>
+          <option value="approved">Aprobados</option>
+          <option value="rejected">Rechazados</option>
+          <option value="all">Todos</option>
+        </select>
+      </div>
+
+      <div class="admin-card">
+        <div class="admin-card-body" id="admin-poi-list">
+          <div class="admin-loading">
+            <div class="admin-spinner"></div>
+            <p>Cargando puntos de interes...</p>
+          </div>
+        </div>
+      </div>
+    </section>
   `;
 
   // Inicializar event listeners
@@ -4686,22 +4777,38 @@ function switchAdminSection(section) {
   });
 
   adminData.currentSection = section;
+
+  // Cargar datos de la seccion al cambiar
+  if (section === 'schools') loadAdminPendingSchools();
+  if (section === 'sectors') loadAdminPendingSectors();
+  if (section === 'poi') loadAdminPendingPOI();
 }
 
 async function loadAdminStats() {
   try {
     const db = firebase.firestore();
 
-    // Contar pendientes, aprobadas y rechazadas
-    const pendingSnap = await db.collection('pending_routes').where('status', '==', 'pending').get();
-    const approvedSnap = await db.collection('pending_routes').where('status', '==', 'approved').get();
-    const rejectedSnap = await db.collection('pending_routes').where('status', '==', 'rejected').get();
+    // Contar pendientes, aprobadas y rechazadas (todas las colecciones)
+    const collections = ['pending_routes', 'pending_schools', 'pending_sectors', 'pending_poi'];
+    let totalPending = 0, totalApproved = 0, totalRejected = 0;
+
+    for (const col of collections) {
+      try {
+        const pSnap = await db.collection(col).where('status', '==', 'pending').get();
+        const aSnap = await db.collection(col).where('status', '==', 'approved').get();
+        const rSnap = await db.collection(col).where('status', '==', 'rejected').get();
+        totalPending += pSnap.size;
+        totalApproved += aSnap.size;
+        totalRejected += rSnap.size;
+      } catch (e) { /* coleccion puede no existir aun */ }
+    }
+
     const adminsSnap = await db.collection('admins').get();
 
     adminData.stats = {
-      pending: pendingSnap.size,
-      approved: approvedSnap.size,
-      rejected: rejectedSnap.size,
+      pending: totalPending,
+      approved: totalApproved,
+      rejected: totalRejected,
       admins: adminsSnap.size
     };
 
@@ -4880,6 +4987,198 @@ async function loadAdminUsers() {
   } catch (error) {
     console.error('Error loading users:', error);
     listEl.innerHTML = '<div class="admin-empty-state"><p>Error al cargar usuarios</p></div>';
+  }
+}
+
+// ============================================
+// ADMIN: ESCUELAS PENDIENTES
+// ============================================
+
+async function loadAdminPendingSchools() {
+  const listEl = document.getElementById('admin-schools-list');
+  if (!listEl) return;
+  listEl.innerHTML = '<div class="admin-loading"><div class="admin-spinner"></div><p>Cargando escuelas...</p></div>';
+
+  try {
+    const db = firebase.firestore();
+    const statusFilter = document.getElementById('admin-filter-school-status')?.value || 'pending';
+
+    let query = db.collection('pending_schools');
+    if (statusFilter !== 'all') query = query.where('status', '==', statusFilter);
+
+    const snapshot = await query.limit(50).get();
+    let items = [];
+    snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+    items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    if (items.length === 0) {
+      listEl.innerHTML = '<div class="admin-empty-state"><p>No hay escuelas con este filtro</p></div>';
+      return;
+    }
+
+    listEl.innerHTML = items.map(item => `
+      <div class="admin-route-card" data-id="${item.id}">
+        <div class="admin-route-name">${item.nombre || 'Sin nombre'}</div>
+        <div class="admin-route-meta">
+          ${item.descripcion || 'Sin descripcion'} · ${item.createdByEmail || ''}
+          ${item.coordinates ? ` · [${item.coordinates[1]?.toFixed(4)}, ${item.coordinates[0]?.toFixed(4)}]` : ''}
+          ${item.status === 'approved' ? ' · ✅ Aprobada' : item.status === 'rejected' ? ' · ❌ Rechazada' : ''}
+        </div>
+        ${item.status === 'pending' ? `
+          <div class="admin-route-actions">
+            <button class="admin-btn-approve" onclick="approveAdminItem('pending_schools','${item.id}','loadAdminPendingSchools')">Aprobar</button>
+            <button class="admin-btn-reject" onclick="rejectAdminItem('pending_schools','${item.id}','loadAdminPendingSchools')">Rechazar</button>
+          </div>
+        ` : ''}
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('Error loading pending schools:', error);
+    listEl.innerHTML = '<div class="admin-empty-state"><p>Error al cargar escuelas</p></div>';
+  }
+}
+
+// ============================================
+// ADMIN: SECTORES PENDIENTES
+// ============================================
+
+async function loadAdminPendingSectors() {
+  const listEl = document.getElementById('admin-sectors-list');
+  if (!listEl) return;
+  listEl.innerHTML = '<div class="admin-loading"><div class="admin-spinner"></div><p>Cargando sectores...</p></div>';
+
+  try {
+    const db = firebase.firestore();
+    const statusFilter = document.getElementById('admin-filter-sector-status')?.value || 'pending';
+
+    let query = db.collection('pending_sectors');
+    if (statusFilter !== 'all') query = query.where('status', '==', statusFilter);
+
+    const snapshot = await query.limit(50).get();
+    let items = [];
+    snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+    items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    if (items.length === 0) {
+      listEl.innerHTML = '<div class="admin-empty-state"><p>No hay sectores con este filtro</p></div>';
+      return;
+    }
+
+    listEl.innerHTML = items.map(item => {
+      const vertexCount = item.vertices?.length || item.geometry?.coordinates?.[0]?.length || 0;
+      return `
+        <div class="admin-route-card" data-id="${item.id}">
+          <div class="admin-route-name">${item.nombre || 'Sin nombre'}</div>
+          <div class="admin-route-meta">
+            Escuela: ${item.schoolId || 'No asignada'} · Restriccion: ${item.restr || 'NO'}
+            ${item.exposicion ? ` · ${item.exposicion}` : ''}
+            · ${vertexCount} vertices · ${item.createdByEmail || ''}
+            ${item.status === 'approved' ? ' · ✅ Aprobado' : item.status === 'rejected' ? ' · ❌ Rechazado' : ''}
+          </div>
+          ${item.status === 'pending' ? `
+            <div class="admin-route-actions">
+              <button class="admin-btn-approve" onclick="approveAdminItem('pending_sectors','${item.id}','loadAdminPendingSectors')">Aprobar</button>
+              <button class="admin-btn-reject" onclick="rejectAdminItem('pending_sectors','${item.id}','loadAdminPendingSectors')">Rechazar</button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('Error loading pending sectors:', error);
+    listEl.innerHTML = '<div class="admin-empty-state"><p>Error al cargar sectores</p></div>';
+  }
+}
+
+// ============================================
+// ADMIN: PUNTOS DE INTERES PENDIENTES
+// ============================================
+
+async function loadAdminPendingPOI() {
+  const listEl = document.getElementById('admin-poi-list');
+  if (!listEl) return;
+  listEl.innerHTML = '<div class="admin-loading"><div class="admin-spinner"></div><p>Cargando POI...</p></div>';
+
+  try {
+    const db = firebase.firestore();
+    const statusFilter = document.getElementById('admin-filter-poi-status')?.value || 'pending';
+
+    let query = db.collection('pending_poi');
+    if (statusFilter !== 'all') query = query.where('status', '==', statusFilter);
+
+    const snapshot = await query.limit(50).get();
+    let items = [];
+    snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+    items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    if (items.length === 0) {
+      listEl.innerHTML = '<div class="admin-empty-state"><p>No hay puntos de interes con este filtro</p></div>';
+      return;
+    }
+
+    listEl.innerHTML = items.map(item => {
+      const emoji = (typeof getPOIEmoji === 'function') ? getPOIEmoji(item.descripcio) : '📍';
+      return `
+        <div class="admin-route-card" data-id="${item.id}">
+          <div class="admin-route-name">${emoji} ${item.descripcio || 'Sin tipo'} ${item.nombre ? '— ' + item.nombre : ''}</div>
+          <div class="admin-route-meta">
+            Escuela: ${item.schoolId || 'No asignada'} · ${item.createdByEmail || ''}
+            ${item.coordinates ? ` · [${item.coordinates[1]?.toFixed(4)}, ${item.coordinates[0]?.toFixed(4)}]` : ''}
+            ${item.link ? ` · <a href="${item.link}" target="_blank">Link</a>` : ''}
+            ${item.status === 'approved' ? ' · ✅ Aprobado' : item.status === 'rejected' ? ' · ❌ Rechazado' : ''}
+          </div>
+          ${item.status === 'pending' ? `
+            <div class="admin-route-actions">
+              <button class="admin-btn-approve" onclick="approveAdminItem('pending_poi','${item.id}','loadAdminPendingPOI')">Aprobar</button>
+              <button class="admin-btn-reject" onclick="rejectAdminItem('pending_poi','${item.id}','loadAdminPendingPOI')">Rechazar</button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('Error loading pending POI:', error);
+    listEl.innerHTML = '<div class="admin-empty-state"><p>Error al cargar puntos de interes</p></div>';
+  }
+}
+
+// ============================================
+// ADMIN: APROBAR/RECHAZAR GENERICO
+// ============================================
+
+async function approveAdminItem(collection, docId, reloadFn) {
+  try {
+    const db = firebase.firestore();
+    await db.collection(collection).doc(docId).update({
+      status: 'approved',
+      approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      approvedBy: firebase.auth().currentUser?.email
+    });
+    showToast('Aprobado correctamente', 'success');
+    if (typeof window[reloadFn] === 'function') window[reloadFn]();
+    loadAdminStats();
+  } catch (error) {
+    console.error('Error approving item:', error);
+    showToast('Error al aprobar', 'error');
+  }
+}
+
+async function rejectAdminItem(collection, docId, reloadFn) {
+  const reason = prompt('Motivo del rechazo (opcional):');
+  try {
+    const db = firebase.firestore();
+    await db.collection(collection).doc(docId).update({
+      status: 'rejected',
+      rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      rejectedBy: firebase.auth().currentUser?.email,
+      rejectionReason: reason || ''
+    });
+    showToast('Rechazado', 'success');
+    if (typeof window[reloadFn] === 'function') window[reloadFn]();
+    loadAdminStats();
+  } catch (error) {
+    console.error('Error rejecting item:', error);
+    showToast('Error al rechazar', 'error');
   }
 }
 
