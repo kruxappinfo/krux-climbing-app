@@ -57,15 +57,23 @@ const DEV_SECTOR_VERTEX_LAYER = 'dev-sector-draw-vertices';
 async function isDevAdminOrSpotter() {
   try {
     const user = auth.currentUser;
-    if (!user) return false;
+    if (!user) {
+      console.log('[DevEditor] isDevAdminOrSpotter: sin auth.currentUser');
+      return false;
+    }
 
     const adminDoc = await db.collection('admins').doc(user.uid).get();
-    if (!adminDoc.exists) return false;
+    if (!adminDoc.exists) {
+      console.log('[DevEditor] isDevAdminOrSpotter: admins/' + user.uid + ' no existe');
+      return false;
+    }
 
     const role = adminDoc.data().role;
-    return role === 'admin' || role === 'spotter';
+    const ok = role === 'admin' || role === 'spotter';
+    console.log('[DevEditor] isDevAdminOrSpotter: role="' + role + '" → ' + ok);
+    return ok;
   } catch (error) {
-    console.error('[DevEditor] Error verificando admin/spotter:', error);
+    console.error('[DevEditor] Error verificando admin/spotter:', error && error.code, error && error.message);
     return false;
   }
 }
