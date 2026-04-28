@@ -1898,53 +1898,70 @@ function showDevToast(message, type = 'info') {
  * Inicializa la herramienta de desarrollador
  * Se llama después de que el mapa esté listo
  */
-function initDevRouteEditor() {
-  if (typeof auth === 'undefined') {
-    setTimeout(initDevRouteEditor, 1000);
+let _devEditorInitialized = false;
+async function initDevRouteEditor() {
+  if (_devEditorInitialized) return;
+  if (typeof auth === 'undefined' || typeof db === 'undefined') {
+    setTimeout(initDevRouteEditor, 500);
     return;
   }
+  _devEditorInitialized = true;
 
+  // Esperar a que Firebase Auth termine de restaurar la sesión.
+  // En iOS Capacitor la restauración puede tardar más de 2s.
+  try {
+    if (typeof waitForAuthReady === 'function') {
+      await waitForAuthReady();
+    }
+  } catch (e) {
+    console.warn('[DevEditor] waitForAuthReady falló:', e);
+  }
+
+  // Intento inmediato si ya hay usuario.
+  if (auth.currentUser) {
+    await addDevEditorButton();
+  }
+
+  // Listener permanente de cambios de auth (login/logout/restauración tardía).
   auth.onAuthStateChanged(async (user) => {
+    console.log('[DevEditor] onAuthStateChanged:', user ? user.uid : 'null');
     if (user) {
       await addDevEditorButton();
     } else {
-      // Logout: ocultar sin destruir (si vuelve a loguear, addDevEditorButton lo restaura)
       const btn = document.getElementById('btn-dev-editor');
       if (btn) btn.style.display = 'none';
     }
   });
 
-  // Cuando el mapa se reinicializa: reasignar listeners y mostrar el botón
+  // Si el mapa se reinicializa, reasignar listeners y restaurar el botón.
   window.addEventListener('maplibre:ready', async () => {
     if (mlMap) {
       mlMap.on('zoom', updateDevButtonVisibility);
       mlMap.on('zoomend', updateDevButtonVisibility);
       mlMap.on('moveend', updateDevButtonVisibility);
     }
-    if (typeof auth !== 'undefined' && auth.currentUser) {
-      await addDevEditorButton(); // Crea o muestra el botón
+    if (auth.currentUser) {
+      await addDevEditorButton();
     }
   });
+
+  // Salvavidas: si tras 8s no se ha creado el botón pero hay usuario admin/spotter,
+  // forzar un nuevo intento (cubre fallos de red transitorios en Firestore).
+  setTimeout(async () => {
+    if (auth.currentUser && !document.getElementById('btn-dev-editor')) {
+      console.log('[DevEditor] Salvavidas: reintentando addDevEditorButton');
+      await addDevEditorButton();
+    }
+  }, 8000);
 }
 
-// Auto-inicializar cuando el DOM esté listo
+// Auto-inicializar cuando el DOM esté listo. No esperamos a mlMap porque
+// addDevEditorButton solo necesita el div #map, y el listener maplibre:ready
+// se encarga de los listeners de zoom cuando el mapa exista.
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    // Esperar a que MapLibre esté listo
-    const checkMap = setInterval(() => {
-      if (typeof mlMap !== 'undefined' && mlMap) {
-        clearInterval(checkMap);
-        initDevRouteEditor();
-      }
-    }, 500);
-  });
+  document.addEventListener('DOMContentLoaded', () => initDevRouteEditor());
 } else {
-  const checkMap = setInterval(() => {
-    if (typeof mlMap !== 'undefined' && mlMap) {
-      clearInterval(checkMap);
-      initDevRouteEditor();
-    }
-  }, 500);
+  initDevRouteEditor();
 }
 
 // Exponer funciones globalmente
