@@ -78,80 +78,109 @@ async function isDevAdminOrSpotter() {
  * Añade el botón de herramienta de desarrollador al mapa
  * Se posiciona justo encima del botón 3D
  */
+// Caché simple del rol para evitar re-consultas durante la creación del botón.
+let _devEditorRoleCache = { ts: 0, hasAccess: false };
+const _DEV_EDITOR_ROLE_TTL = 60000;
+
+async function _getDevEditorAccess() {
+  const now = Date.now();
+  if (now - _devEditorRoleCache.ts < _DEV_EDITOR_ROLE_TTL && _devEditorRoleCache.hasAccess) {
+    return true;
+  }
+  const ok = await isDevAdminOrSpotter();
+  _devEditorRoleCache = { ts: now, hasAccess: ok };
+  return ok;
+}
+
+let _devEditorButtonCreating = false;
+
 async function addDevEditorButton() {
-  // Si ya existe y es visible, no hacer nada
+  if (_devEditorButtonCreating) return;
+  // Si ya existe, asegurar visibilidad y salir.
   const existing = document.getElementById('btn-dev-editor');
   if (existing) {
-    existing.style.display = 'flex'; // Por si quedó oculto tras logout
+    existing.style.display = 'flex';
     return;
   }
-
-  // Verificar permisos. Retry simple: si falla por red, reintentar una vez tras 2s.
-  let hasAccess = await isDevAdminOrSpotter();
-  if (!hasAccess) {
-    await new Promise(r => setTimeout(r, 2000));
-    hasAccess = await isDevAdminOrSpotter();
-  }
-
-  if (!hasAccess) {
-    console.log('[DevEditor] Usuario sin rol admin/spotter — botón no añadido');
+  if (!auth || !auth.currentUser) {
+    console.log('[DevEditor] addDevEditorButton: sin usuario autenticado');
     return;
   }
+  _devEditorButtonCreating = true;
+  try {
+    let hasAccess = await _getDevEditorAccess();
+    if (!hasAccess) {
+      // Reintentar una vez tras 2s por si fue fallo de red transitorio
+      await new Promise(r => setTimeout(r, 2000));
+      hasAccess = await _getDevEditorAccess();
+    }
+    if (!hasAccess) {
+      console.log('[DevEditor] Usuario sin rol admin/spotter — botón no añadido');
+      return;
+    }
+    // Si entre tanto otra invocación creó el botón, salir
+    if (document.getElementById('btn-dev-editor')) return;
 
-  const mapEl = document.getElementById('map');
-  if (!mapEl) {
-    setTimeout(addDevEditorButton, 500);
-    return;
+    // Anclar al body para no depender de la integridad del contenedor del mapa.
+    const host = document.body;
+    if (!host) {
+      setTimeout(addDevEditorButton, 500);
+      return;
+    }
+
+    const btn = document.createElement('button');
+    btn.id = 'btn-dev-editor';
+    btn.className = 'map-control-btn';
+    btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 2v4"/>
+      <path d="M12 18v4"/>
+      <path d="M4.93 4.93l2.83 2.83"/>
+      <path d="M16.24 16.24l2.83 2.83"/>
+      <path d="M2 12h4"/>
+      <path d="M18 12h4"/>
+      <path d="M4.93 19.07l2.83-2.83"/>
+      <path d="M16.24 7.76l2.83-2.83"/>
+    </svg>`;
+    btn.title = 'Herramienta de desarrollador: Añadir vías';
+    btn.style.cssText = `
+      position: fixed;
+      bottom: 306px;
+      right: 10px;
+      width: 36px;
+      height: 36px;
+      background: white;
+      border: none;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+      font-size: 13px;
+      font-weight: 600;
+      color: #333;
+      cursor: pointer;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    `;
+
+    btn.addEventListener('click', toggleDevMode);
+    host.appendChild(btn);
+
+    if (typeof mlMap !== 'undefined' && mlMap) {
+      mlMap.on('zoom', updateDevButtonVisibility);
+      mlMap.on('zoomend', updateDevButtonVisibility);
+      mlMap.on('moveend', updateDevButtonVisibility);
+    }
+
+    console.log('[DevEditor] Botón Spotter añadido');
+  } catch (err) {
+    console.error('[DevEditor] Error añadiendo botón:', err);
+  } finally {
+    _devEditorButtonCreating = false;
   }
-
-  const btn = document.createElement('button');
-  btn.id = 'btn-dev-editor';
-  btn.className = 'map-control-btn';
-  btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="12" cy="12" r="3"/>
-    <path d="M12 2v4"/>
-    <path d="M12 18v4"/>
-    <path d="M4.93 4.93l2.83 2.83"/>
-    <path d="M16.24 16.24l2.83 2.83"/>
-    <path d="M2 12h4"/>
-    <path d="M18 12h4"/>
-    <path d="M4.93 19.07l2.83-2.83"/>
-    <path d="M16.24 7.76l2.83-2.83"/>
-  </svg>`;
-  btn.title = 'Herramienta de desarrollador: Añadir vías';
-  btn.style.cssText = `
-    position: absolute;
-    bottom: 306px;
-    right: 10px;
-    width: 36px;
-    height: 36px;
-    background: white;
-    border: none;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-    font-size: 13px;
-    font-weight: 600;
-    color: #333;
-    cursor: pointer;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-  `;
-
-  btn.addEventListener('click', toggleDevMode);
-  mapEl.appendChild(btn);
-
-  if (mlMap) {
-    mlMap.on('zoom', updateDevButtonVisibility);
-    mlMap.on('zoomend', updateDevButtonVisibility);
-    mlMap.on('moveend', updateDevButtonVisibility);
-  }
-
-  console.log('[DevEditor] Botón Spotter añadido');
 }
 
 /**
@@ -1896,7 +1925,6 @@ function showDevToast(message, type = 'info') {
 
 /**
  * Inicializa la herramienta de desarrollador
- * Se llama después de que el mapa esté listo
  */
 let _devEditorInitialized = false;
 async function initDevRouteEditor() {
@@ -1906,12 +1934,13 @@ async function initDevRouteEditor() {
     return;
   }
   _devEditorInitialized = true;
+  console.log('[DevEditor] init iniciado');
 
   // Esperar a que Firebase Auth termine de restaurar la sesión.
-  // En iOS Capacitor la restauración puede tardar más de 2s.
   try {
     if (typeof waitForAuthReady === 'function') {
       await waitForAuthReady();
+      console.log('[DevEditor] waitForAuthReady resuelto, currentUser:', auth.currentUser ? auth.currentUser.uid : 'null');
     }
   } catch (e) {
     console.warn('[DevEditor] waitForAuthReady falló:', e);
@@ -1926,8 +1955,11 @@ async function initDevRouteEditor() {
   auth.onAuthStateChanged(async (user) => {
     console.log('[DevEditor] onAuthStateChanged:', user ? user.uid : 'null');
     if (user) {
+      // Invalidar caché de rol al cambiar de usuario
+      _devEditorRoleCache = { ts: 0, hasAccess: false };
       await addDevEditorButton();
     } else {
+      _devEditorRoleCache = { ts: 0, hasAccess: false };
       const btn = document.getElementById('btn-dev-editor');
       if (btn) btn.style.display = 'none';
     }
@@ -1935,7 +1967,7 @@ async function initDevRouteEditor() {
 
   // Si el mapa se reinicializa, reasignar listeners y restaurar el botón.
   window.addEventListener('maplibre:ready', async () => {
-    if (mlMap) {
+    if (typeof mlMap !== 'undefined' && mlMap) {
       mlMap.on('zoom', updateDevButtonVisibility);
       mlMap.on('zoomend', updateDevButtonVisibility);
       mlMap.on('moveend', updateDevButtonVisibility);
@@ -1945,14 +1977,16 @@ async function initDevRouteEditor() {
     }
   });
 
-  // Salvavidas: si tras 8s no se ha creado el botón pero hay usuario admin/spotter,
-  // forzar un nuevo intento (cubre fallos de red transitorios en Firestore).
-  setTimeout(async () => {
-    if (auth.currentUser && !document.getElementById('btn-dev-editor')) {
-      console.log('[DevEditor] Salvavidas: reintentando addDevEditorButton');
-      await addDevEditorButton();
-    }
-  }, 8000);
+  // Watchdog permanente: cada 5s comprueba que si hay usuario con acceso,
+  // el botón existe en el DOM. Si no, lo recrea. Cubre cualquier flujo
+  // raro (mapa reinicializado, error transitorio de Firestore, listener
+  // de auth no disparado, etc.).
+  setInterval(async () => {
+    if (!auth.currentUser) return;
+    if (document.getElementById('btn-dev-editor')) return;
+    console.log('[DevEditor] Watchdog: botón ausente con usuario logueado, reintentando');
+    await addDevEditorButton();
+  }, 5000);
 }
 
 // Auto-inicializar cuando el DOM esté listo. No esperamos a mlMap porque
