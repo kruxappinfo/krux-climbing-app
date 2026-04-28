@@ -615,7 +615,9 @@ function closeSectorImageViewer() {
   svDrawings = [];
   svRoutesList = [];
   svHighlightedRoute = null;
+  svHighlightedVariantIndex = null;
   svLockedRoute = null;
+  svLockedVariantIndex = null;
   svPendingHighlightRoute = null;
 
   // Resetear zoom
@@ -2356,12 +2358,13 @@ function redrawCanvasOverlay() {
   const imgWidth = displayWidth;
   const imgHeight = displayHeight;
 
-  // Separar la vía resaltada del resto (matching by routeId)
-  const highlightedDrawing = svHighlightedRoute
-    ? svDrawings.find(d => d.routeId === svHighlightedRoute)
+  // Separar la vía resaltada del resto (matching by routeId + variantIndex)
+  const _hvi = svHighlightedVariantIndex || 0;
+  const highlightedDrawing = svHighlightedRoute !== null
+    ? svDrawings.find(d => d.routeId === svHighlightedRoute && (d.variantIndex || 0) === _hvi)
     : null;
-  const normalDrawings = svHighlightedRoute
-    ? svDrawings.filter(d => d.routeId !== svHighlightedRoute)
+  const normalDrawings = svHighlightedRoute !== null
+    ? svDrawings.filter(d => !(d.routeId === svHighlightedRoute && (d.variantIndex || 0) === _hvi))
     : svDrawings;
 
   // PASO 1: Dibujar las líneas normales primero
@@ -3368,8 +3371,10 @@ function setupCanvasInteraction() {
 let svHoverTimeout = null;
 let svCurrentHoverRoute = null;
 let svHighlightedRoute = null; // routeId de la vía actualmente resaltada
+let svHighlightedVariantIndex = null; // variantIndex del dibujo resaltado
 let svPendingHighlightRoute = null; // routeId de la vía que debe resaltarse al abrir el visor
 let svLockedRoute = null; // routeId de la vía bloqueada (seleccionada por click/tap)
+let svLockedVariantIndex = null; // variantIndex del dibujo bloqueado
 
 /**
  * Maneja hover sobre el canvas para mostrar popup de vía
@@ -3440,15 +3445,18 @@ function handleOverlayHover(event) {
   // Cambiar cursor según si está sobre una vía
   svCanvas.style.cursor = foundRoute ? 'pointer' : 'default';
 
-  // Detectar si cambió la vía resaltada (using routeId)
+  // Detectar si cambió la vía resaltada (using routeId + variantIndex)
   const newHighlight = foundRoute ? foundRoute.routeId : null;
-  const highlightChanged = newHighlight !== svHighlightedRoute;
+  const newVariantIndex = foundRoute ? (foundRoute.variantIndex || 0) : null;
+  const highlightChanged = newHighlight !== svHighlightedRoute || newVariantIndex !== svHighlightedVariantIndex;
 
   // Si encontramos una vía diferente a la actual
   if (foundRoute && highlightChanged) {
     // Una vez que pasamos a otra vía, desbloquear (volver a comportamiento normal)
     svLockedRoute = null;
+    svLockedVariantIndex = null;
     svHighlightedRoute = foundRoute.routeId;
+    svHighlightedVariantIndex = foundRoute.variantIndex || 0;
     svCurrentHoverRoute = foundRoute.routeId;
 
     // Redibujar el canvas
@@ -3460,6 +3468,7 @@ function handleOverlayHover(event) {
     // No hay vía bajo el cursor y no hay vía bloqueada: limpiar todo
     if (svHighlightedRoute) {
       svHighlightedRoute = null;
+      svHighlightedVariantIndex = null;
       svCurrentHoverRoute = null;
       redrawCanvasOverlay();
       hideLockedPopup();
@@ -3558,6 +3567,7 @@ function handleCanvasMouseLeave() {
   hideHoverPopup();
   if (svHighlightedRoute) {
     svHighlightedRoute = null;
+    svHighlightedVariantIndex = null;
     redrawCanvasOverlay();
   }
 }
@@ -3631,9 +3641,12 @@ function handleOverlayTap(event) {
             if (!mobile) {
               svNavigateToRouteOnMap(drawing.routeId);
             } else {
-              if (svLockedRoute === drawing.routeId) return;
+              const _dvi = drawing.variantIndex || 0;
+              if (svLockedRoute === drawing.routeId && svLockedVariantIndex === _dvi) return;
               svLockedRoute = drawing.routeId;
+              svLockedVariantIndex = _dvi;
               svHighlightedRoute = drawing.routeId;
+              svHighlightedVariantIndex = _dvi;
               redrawCanvasOverlay();
               showLockedRoutePopup(drawing, i + 1);
             }
@@ -3650,7 +3663,9 @@ function handleOverlayTap(event) {
   // Si llegamos aquí, no se tocó ninguna vía -> cerrar popup y desbloquear
   if (svLockedRoute) {
     svLockedRoute = null;
+    svLockedVariantIndex = null;
     svHighlightedRoute = null;
+    svHighlightedVariantIndex = null;
     hideLockedPopup();
     redrawCanvasOverlay();
   }
