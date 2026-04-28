@@ -5693,17 +5693,34 @@ function renderWeatherForecast(schoolId, dailyData) {
  * Carga estadísticas de la escuela (Gráfico Donut SVG Interactivo)
  */
 /**
- * Lee las vías aprobadas de Spotters (vias-usuarios-source) y devuelve { grado: count }
+ * Lee las vías aprobadas de Spotters desde Firestore y devuelve { grado: count }
+ * Usa la fuente del mapa si ya está cargada; si no, consulta Firestore directamente.
  */
-function getSpotterGradeCounts() {
+async function getSpotterGradeCounts(schoolId) {
   const counts = {};
-  if (!mlMap) return counts;
+  // Intentar leer de la fuente del mapa primero (más rápido, si ya está cargada)
+  if (mlMap) {
+    try {
+      const source = mlMap.getSource('vias-usuarios-source');
+      if (source && source._data?.features?.length > 0) {
+        source._data.features.forEach(f => {
+          const grade = (f.properties?.grado1 || '').toLowerCase().trim();
+          if (grade) counts[grade] = (counts[grade] || 0) + 1;
+        });
+        return counts;
+      }
+    } catch (e) {}
+  }
+  // Fallback: consultar Firestore directamente
+  if (!schoolId || typeof firebase === 'undefined' || !firebase.firestore) return counts;
   try {
-    const source = mlMap.getSource('vias-usuarios-source');
-    if (!source) return counts;
-    const features = source._data?.features || mlMap.querySourceFeatures('vias-usuarios-source');
-    features.forEach(f => {
-      const grade = (f.properties?.grado1 || '').toLowerCase().trim();
+    const db = firebase.firestore();
+    const snapshot = await db.collection('pending_routes')
+      .where('schoolId', '==', schoolId)
+      .where('status', '==', 'approved')
+      .get();
+    snapshot.forEach(doc => {
+      const grade = (doc.data().grado1 || doc.data().geojsonFeature?.properties?.grado1 || '').toLowerCase().trim();
       if (grade) counts[grade] = (counts[grade] || 0) + 1;
     });
   } catch (e) {}
@@ -5733,7 +5750,7 @@ async function loadSchoolStats(schoolId, chartId) {
         });
 
         // Sumar vías aprobadas de Spotters
-        const spotterCounts = getSpotterGradeCounts();
+        const spotterCounts = await getSpotterGradeCounts(schoolId);
         Object.entries(spotterCounts).forEach(([grade, count]) => {
           gradeCounts[grade] = (gradeCounts[grade] || 0) + count;
           total += count;
@@ -7378,6 +7395,7 @@ function renderDonutChart(gradeData) {
   `;
 
   // Añadir interactividad a los segmentos
+  const svgEl = container.querySelector('svg');
   const svgSegments = container.querySelectorAll('.bs-donut-segment');
   const centerText = document.getElementById('bs-donut-center');
 
@@ -7386,17 +7404,19 @@ function renderDonutChart(gradeData) {
       const grade = segment.getAttribute('data-grade');
       const count = segment.getAttribute('data-count');
       const color = segment.getAttribute('stroke');
-
       centerText.innerHTML = `
-        <div class="bs-donut-total" style="color: ${color};">${grade}</div>
+        <div class="bs-donut-total" style="color: ${color};">${grade.toUpperCase()}</div>
         <div class="bs-donut-label">${count} Vías</div>
       `;
     });
+  });
 
-    segment.addEventListener('mouseleave', () => {
+  // Restaurar total cuando el ratón sale del SVG (no de cada segmento)
+  if (svgEl) {
+    svgEl.addEventListener('mouseleave', () => {
       centerText.innerHTML = defaultCenterContent;
     });
-  });
+  }
 }
 
 // ============================================
@@ -7465,7 +7485,7 @@ async function loadBottomSheetStats(schoolId) {
     });
 
     // Sumar vías aprobadas de Spotters
-    const spotterCounts = getSpotterGradeCounts();
+    const spotterCounts = await getSpotterGradeCounts(schoolId);
     Object.entries(spotterCounts).forEach(([grade, count]) => {
       gradeCount[grade] = (gradeCount[grade] || 0) + count;
       totalVias += count;
