@@ -3029,8 +3029,8 @@ function getVariantLabel(props) {
   const union = props.union;
 
   if (!union) {
-    // Trinomio: usar el índice del slide activo
-    const idx = Number(props._trinomialIndex) || 0;
+    // Trinomio: _variantIndex es 0-based (0 = principal, 1+ = variantes)
+    const idx = Number(props._variantIndex) || 0;
     if (idx === 0) return '';
     return `<small class="ml-route-variant-tag">(Variante ${idx})</small>`;
   }
