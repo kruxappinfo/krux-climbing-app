@@ -3322,6 +3322,8 @@ async function mlShowVariantGroupPopup(groupFeatures, startIndex, coords) {
 async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
   const props = variantData.props;
   const schoolId = mlCurrentSchool || 'valeria';
+  const sectorName = props.sector || '';
+  const encodedSector = encodeURIComponent(sectorName);
 
   // Para B1 (trinomios), usar los campos _display*; para B2/C usar grado1/exp1/long1
   let grade, exp, longM;
@@ -3338,6 +3340,14 @@ async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
   const gradeColor = getGradeColor(grade);
   const routeId = Number(props.id);
   const routeName = props.nombre || 'Sin nombre';
+
+  // Verificar dibujo y permisos en paralelo
+  const [hasDrawing, isSpotter] = await Promise.all([
+    (sectorName && typeof hasRouteDrawing === 'function')
+      ? hasRouteDrawing(schoolId, sectorName, routeId)
+      : Promise.resolve(false),
+    isRoutePopupAdmin()
+  ]);
 
   // Check de ascenso
   const hasAscent = (typeof hasUserAscent === 'function') && hasUserAscent(schoolId, routeId);
@@ -3422,6 +3432,32 @@ async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
         ${iconShare}
       </button>
     </div>
+
+    <!-- Botón Ver vía (si tiene dibujo en la imagen del sector) -->
+    ${hasDrawing ? `
+      <div class="ml-route-view-section">
+        <button class="ml-route-view-btn" onclick="mlViewRouteInSector('${schoolId}', '${encodedSector}', ${routeId})">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          Ver vía
+        </button>
+      </div>
+    ` : ''}
+
+    <!-- Botón Vincular (si no tiene dibujo y es spotter/admin) -->
+    ${!hasDrawing && isSpotter ? `
+      <div class="ml-route-dev-section">
+        <button class="ml-route-dev-btn" onclick="mlOpenDrawingEditor(${routeId})">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+          Vincular con imagen del sector
+        </button>
+      </div>
+    ` : ''}
   `;
 }
 
@@ -3725,6 +3761,39 @@ function mlUpdateBottomSheetContent(props, isTrinomial) {
       <button class="ml-route-action-btn ml-comment-btn" onclick="mlOpenComments(${routeId}, '${encodeURIComponent(routeName)}')" title="Comentarios">${iconComment}</button>
       <button class="ml-route-action-btn" onclick="mlShareRoute(${routeId}, '${encodeURIComponent(routeName)}')" title="Compartir">${iconShare}</button>
     `;
+  }
+
+  // --- Ver vía / Vincular (async, al navegar entre variantes en mobile) ---
+  const viewSection = document.getElementById('rbs-view-section');
+  const btnView = document.getElementById('rbs-btn-view');
+  const devSection = document.getElementById('rbs-dev-section');
+  const btnDev = document.getElementById('rbs-btn-dev');
+  if (viewSection || devSection) {
+    const sectorName = props.sector || '';
+    const encodedSector = encodeURIComponent(sectorName);
+    Promise.all([
+      (sectorName && typeof hasRouteDrawing === 'function')
+        ? hasRouteDrawing(schoolId, sectorName, routeId)
+        : Promise.resolve(false),
+      isRoutePopupAdmin()
+    ]).then(([hasDrawing, isAdmin]) => {
+      if (viewSection && btnView) {
+        if (hasDrawing) {
+          viewSection.classList.remove('hidden');
+          btnView.onclick = () => { hideRouteBottomSheet(); mlViewRouteInSector(schoolId, encodedSector, routeId); };
+        } else {
+          viewSection.classList.add('hidden');
+        }
+      }
+      if (devSection && btnDev) {
+        if (!hasDrawing && isAdmin) {
+          devSection.classList.remove('hidden');
+          btnDev.onclick = () => { hideRouteBottomSheet(); mlOpenDrawingEditor(routeId); };
+        } else {
+          devSection.classList.add('hidden');
+        }
+      }
+    }).catch(() => {});
   }
 }
 
