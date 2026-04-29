@@ -4289,7 +4289,7 @@ async function handleSettingsItemClick(e) {
         break;
 
       case 'settings-donate': {
-        const kofiUrl = 'https://ko-fi.com/kruxapp';
+        const kofiUrl = 'https://ko-fi.com/kruxx_';
         if (window.Capacitor !== undefined) {
           window.open(kofiUrl, '_system');
         } else {
