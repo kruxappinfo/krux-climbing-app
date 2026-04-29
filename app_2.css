@@ -9380,6 +9380,18 @@ body.map-active .top-bar-wrapper {
   background: #ffebee;
 }
 
+.settings-menu-item.donate {
+  color: #ff5e5b;
+}
+
+.settings-menu-item.donate svg {
+  color: #ff5e5b;
+}
+
+.settings-menu-item.donate:hover {
+  background: #fff1f1;
+}
+
 .settings-menu-item.admin-only {
   color: #667eea;
   background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
