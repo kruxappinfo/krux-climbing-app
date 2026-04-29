@@ -4288,6 +4288,16 @@ async function handleSettingsItemClick(e) {
         showToast('Centro de ayuda próximamente', 'info');
         break;
 
+      case 'settings-donate': {
+        const kofiUrl = 'https://ko-fi.com/kruxapp';
+        if (window.Capacitor !== undefined) {
+          window.open(kofiUrl, '_system');
+        } else {
+          window.open(kofiUrl, '_blank', 'noopener,noreferrer');
+        }
+        break;
+      }
+
       case 'settings-logout':
         const confirmLogout = await showConfirm('¿Estás seguro de que quieres cerrar sesión?', 'Cerrar sesión');
         if (confirmLogout) {
