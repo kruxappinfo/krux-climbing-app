@@ -10593,11 +10593,6 @@ function buildInfoLegendModalHTML() {
       </div>`;
   });
 
-  return `
-    <button class="ilp-close-btn" onclick="closeInfoLegendPanel()">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-
     <div class="ilp-header">
       <span class="ilp-map-icon">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -10607,6 +10602,9 @@ function buildInfoLegendModalHTML() {
         </svg>
       </span>
       <span class="ilp-title">Leyenda del mapa</span>
+      <button class="ilp-close-btn" onclick="closeInfoLegendPanel()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
 
     <div class="ilp-tabs-row">
