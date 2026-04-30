@@ -17849,18 +17849,18 @@ body.pwa-standalone .feed-header {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #f3f4f6;
+  background: none;
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6b7280;
+  color: #9ca3af;
   flex-shrink: 0;
-  transition: background 0.15s;
+  transition: color 0.15s;
 }
 
-.ilp-close-btn:hover { background: #e5e7eb; color: #374151; }
+.ilp-close-btn:hover { color: #374151; }
 
 /* Separador */
 .ilp-sep {
@@ -17887,11 +17887,14 @@ body.pwa-standalone .feed-header {
   font-weight: 600;
   color: #9ca3af;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.ilp-tab:hover  { background: #f3f4f6; color: #374151; }
-.ilp-tab.active { background: #6C63FF; color: #ffffff; }
+.ilp-tab:hover          { background: #f3f4f6; color: #374151; }
+.ilp-tab:active         { background: rgba(0, 0, 0, 0.08); transform: scale(0.95); }
+.ilp-tab.active         { background: #6C63FF; color: #ffffff; }
+.ilp-tab.active:active  { background: rgba(0, 0, 0, 0.25); transform: scale(0.95); }
 
 /* Cuerpo con scroll */
 .ilp-body {
