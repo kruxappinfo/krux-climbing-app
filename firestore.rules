@@ -250,6 +250,12 @@ service cloud.firestore {
       allow write: if isAuthenticated();
     }
 
+    // Grade votes (votaciones de grado por ruta)
+    match /grade_votes/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
     // Route suggestions (sugerencias de usuarios para información faltante de vías)
     match /routeSuggestions/{suggestionId} {
       // Admins pueden leer todas las sugerencias
