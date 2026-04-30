@@ -10660,7 +10660,7 @@ function closeInfoLegendPanel() {
 function switchInfoLegendTab(tab, btnEl) {
   const symbolsPanel = document.getElementById('ilp-tab-symbols');
   const colorsPanel  = document.getElementById('ilp-tab-colors');
-  document.querySelectorAll('#info-legend-modal .ilp-tab')
+  document.querySelectorAll('#info-legend-panel .ilp-tab')
     .forEach(t => t.classList.remove('active'));
   if (btnEl) btnEl.classList.add('active');
   if (tab === 'symbols') {

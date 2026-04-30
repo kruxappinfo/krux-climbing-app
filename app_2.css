@@ -17848,19 +17848,20 @@ body.pwa-standalone .feed-header {
 .ilp-close-btn {
   width: 26px;
   height: 26px;
-  border-radius: 50%;
   background: none;
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #9ca3af;
+  color: #111111;
   flex-shrink: 0;
-  transition: color 0.15s;
+  transition: opacity 0.15s;
+  padding: 0;
 }
 
-.ilp-close-btn:hover { color: #374151; }
+.ilp-close-btn:hover  { opacity: 0.6; }
+.ilp-close-btn:active { opacity: 0.4; }
 
 /* Separador */
 .ilp-sep {
@@ -17896,13 +17897,17 @@ body.pwa-standalone .feed-header {
 .ilp-tab.active         { background: #6C63FF; color: #ffffff; }
 .ilp-tab.active:active  { background: rgba(0, 0, 0, 0.25); transform: scale(0.95); }
 
-/* Cuerpo con scroll */
+/* Cuerpo con scroll (scrollbar oculta) */
 .ilp-body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   flex: 1;
   padding-bottom: 6px;
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE/Edge */
 }
+
+.ilp-body::-webkit-scrollbar { display: none; }  /* Chrome/Safari */
 
 /* ---- Tab Símbolos ---- */
 .ilp-symbol-item {
