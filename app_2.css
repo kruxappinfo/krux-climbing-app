@@ -17822,10 +17822,10 @@ body.pwa-standalone .feed-header {
 }
 
 .ilp-map-icon {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   background: #f3f4f6;
-  border-radius: 8px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -17837,10 +17837,12 @@ body.pwa-standalone .feed-header {
   font-size: 14px;
   font-weight: 700;
   color: #1f2937;
+  line-height: 26px; /* igual que el icono para forzar el mismo eje de centrado */
 }
 
 .ilp-close-btn {
-  margin-left: auto;   /* empuja la X al extremo derecho del flex header */
+  margin-left: auto;
+  align-self: center;
   flex-shrink: 0;
   width: 26px;
   height: 26px;
