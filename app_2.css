@@ -17845,8 +17845,12 @@ body.pwa-standalone .feed-header {
   right: 12px;
   width: 26px;
   height: 26px;
-  background: none;
+  background: transparent;
   border: none;
+  outline: none;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -17858,6 +17862,7 @@ body.pwa-standalone .feed-header {
   -webkit-tap-highlight-color: transparent;
 }
 
+.ilp-close-btn:focus  { outline: none; box-shadow: none; }
 .ilp-close-btn:hover  { opacity: 0.5; }
 .ilp-close-btn:active { opacity: 0.3; }
 
