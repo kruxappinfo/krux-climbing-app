@@ -484,6 +484,9 @@ function addMapControls() {
 
   // Botón de filtro por grado (esquina superior derecha)
   addGradeFilterButton();
+
+  // Botón de información / leyenda
+  addInfoLegendButton();
 }
 
 // Estado del modo 3D
@@ -10398,10 +10401,244 @@ function openSymbolsLegendModal() {
   document.body.appendChild(overlay);
 }
 
+// ============================================================
+//  BOTÓN DE INFORMACIÓN / LEYENDA DEL MAPA
+// ============================================================
+
+let mlInfoLegendPanelOpen = false;
+
+function addInfoLegendButton() {
+  if (document.getElementById('btn-info-legend')) return;
+
+  const container = document.getElementById('map');
+  if (!container) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'btn-info-legend';
+  btn.className = 'map-control-btn info-legend-btn';
+  btn.title = 'Leyenda del mapa';
+  btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><circle cx="12" cy="8.5" r="0.5" fill="currentColor" stroke="none"/></svg>`;
+  btn.style.cssText = `
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    background: white;
+    border: none;
+    border-radius: 10px;
+    color: #333;
+    cursor: pointer;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    transition: background 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  `;
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleInfoLegendPanel();
+  });
+
+  container.appendChild(btn);
+
+  // Panel con tabs de leyenda
+  const panel = document.createElement('div');
+  panel.id = 'info-legend-panel';
+  panel.className = 'info-legend-panel';
+  panel.innerHTML = buildInfoLegendPanelHTML();
+  container.appendChild(panel);
+
+  // Ajustar posición vertical según si los otros botones están visibles
+  const updateInfoBtnPosition = () => {
+    if (!mlMap) return;
+    const ccaa = getCurrentCCAA();
+    const otherVisible = mlMap.getZoom() > ccaa.zoom + 1;
+    btn.style.top = otherVisible ? '106px' : '10px';
+    // Reposicionar el panel igualmente
+    const panelEl = document.getElementById('info-legend-panel');
+    if (panelEl) panelEl.style.top = otherVisible ? '106px' : '10px';
+  };
+  mlMap.on('zoom', updateInfoBtnPosition);
+  updateInfoBtnPosition();
+
+  // Cerrar panel al pulsar fuera
+  document.addEventListener('click', (e) => {
+    const panelEl = document.getElementById('info-legend-panel');
+    const btnEl = document.getElementById('btn-info-legend');
+    if (panelEl && btnEl && !panelEl.contains(e.target) && !btnEl.contains(e.target)) {
+      closeInfoLegendPanel();
+    }
+  });
+}
+
+function buildInfoLegendPanelHTML() {
+  // --- Leyenda de colores ---
+  const legendGroups = [
+    { title: 'Principiante (3-4)', grades: ['3a','3b','3c','4a','4b','4c'] },
+    { title: 'Fácil (5)',          grades: ['5a','5a+','5b','5b+','5c','5c+'] },
+    { title: 'Medio (6a-6b)',      grades: ['6a','6a+','6b','6b+'] },
+    { title: 'Medio-Alto (6c-7a)', grades: ['6c','6c+','7a','7a+'] },
+    { title: 'Difícil (7b-7c)',    grades: ['7b','7b+','7c','7c+'] },
+    { title: 'Muy difícil (8)',    grades: ['8a','8a+','8b','8b+','8c','8c+'] },
+    { title: 'Élite (9)',          grades: ['9a','9a+','9b','9b+','9c','9c+'] }
+  ];
+
+  let colorsHTML = '';
+  legendGroups.forEach(group => {
+    colorsHTML += `<div class="grade-legend-group">
+      <div class="grade-legend-group-title">${group.title}</div>
+      <div class="grade-legend-items">`;
+    group.grades.forEach(grade => {
+      const color = typeof MAPLIBRE_GRADE_COLORS !== 'undefined'
+        ? (MAPLIBRE_GRADE_COLORS[grade] || '#888')
+        : '#888';
+      colorsHTML += `
+        <div class="grade-legend-item">
+          <span class="grade-legend-dot" style="background:${color}"></span>
+          <span class="grade-legend-label">${grade}</span>
+        </div>`;
+    });
+    colorsHTML += `</div></div>`;
+  });
+
+  // --- Leyenda de símbolos ---
+  const symbols = [
+    {
+      title: 'Vía deportiva',
+      desc: 'Cada círculo es una vía. El color indica el grado de dificultad.',
+      svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="9" fill="#22c55e" stroke="#fff" stroke-width="2"/></svg>`
+    },
+    {
+      title: 'Vía hecha (tick)',
+      desc: 'Vía ya encadenada y registrada en tu logbook.',
+      svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="#22c55e" stroke="#fff" stroke-width="2"/><polyline points="10,17 14,21 22,12" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+    },
+    {
+      title: 'Vías con variantes',
+      desc: 'Grupo de vías con salida común. Cada anillo es una variante.',
+      svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="16" cy="16" r="13" fill="none" stroke="#3b82f6" stroke-width="2.5"/><circle cx="16" cy="16" r="9.5" fill="none" stroke="#fff" stroke-width="1"/><circle cx="16" cy="16" r="8.5" fill="none" stroke="#f59e0b" stroke-width="2.5"/><circle cx="16" cy="16" r="5" fill="#ef4444"/></svg>`
+    },
+    {
+      title: 'Sector',
+      desc: 'Línea coloreada que delimita un sector de escalada.',
+      svg: `<svg viewBox="0 0 32 32"><path d="M3 22 C 9 8, 22 26, 29 10" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" opacity="0.7"/><path d="M3 22 C 9 8, 22 26, 29 10" fill="none" stroke="#a855f7" stroke-width="3.5" stroke-linecap="round"/></svg>`
+    },
+    {
+      title: 'Ruta de acceso',
+      desc: 'Sendero de aproximación al sector (línea naranja discontinua).',
+      svg: `<svg viewBox="0 0 32 32"><path d="M3 26 C 10 22, 14 10, 22 8 L 29 6" fill="none" stroke="#FF6B00" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 3"/></svg>`
+    },
+    {
+      title: 'Parking',
+      desc: 'Aparcamiento recomendado. Pulsa para ver indicaciones.',
+      svg: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#4285f4" stroke="#fff" stroke-width="2"/><text x="12" y="17" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold" font-family="sans-serif">P</text></svg>`
+    },
+    {
+      title: 'Punto de interés (POI)',
+      desc: 'Fuente, refugio, bar, peligro… El emoji indica el tipo.',
+      svg: `<svg viewBox="0 0 32 32"><text x="16" y="22" text-anchor="middle" font-size="20">🚰</text></svg>`
+    },
+    {
+      title: 'Escuela abierta',
+      desc: 'Escuela con cartografía publicada. Pulsa para explorarla.',
+      svg: `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#22c55e"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g></svg>`
+    },
+    {
+      title: 'Escuela en desarrollo',
+      desc: 'Datos parciales o en construcción.',
+      svg: `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#f59e0b"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g><g transform="translate(36,10)"><circle cx="0" cy="0" r="8" fill="#fff" stroke="#f59e0b" stroke-width="1.5"/><text x="0" y="3.5" text-anchor="middle" font-size="10">🔨</text></g></svg>`
+    }
+  ];
+
+  let symbolsHTML = '';
+  symbols.forEach(s => {
+    symbolsHTML += `
+      <div class="symbol-legend-item">
+        <div class="symbol-legend-icon">${s.svg}</div>
+        <div class="symbol-legend-text">
+          <div class="symbol-legend-title">${s.title}</div>
+          <div class="symbol-legend-desc">${s.desc}</div>
+        </div>
+      </div>`;
+  });
+
+  return `
+    <div class="ilp-header">
+      <span class="ilp-title">Leyenda del mapa</span>
+      <button class="ilp-close-btn" onclick="closeInfoLegendPanel()" title="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="ilp-tabs">
+      <button class="ilp-tab active" data-tab="colors" onclick="switchInfoLegendTab('colors', this)">Colores</button>
+      <button class="ilp-tab" data-tab="symbols" onclick="switchInfoLegendTab('symbols', this)">Símbolos</button>
+    </div>
+    <div class="ilp-body">
+      <div class="ilp-tab-content" id="ilp-tab-colors">
+        ${colorsHTML}
+      </div>
+      <div class="ilp-tab-content ilp-hidden" id="ilp-tab-symbols">
+        <div class="symbols-legend-body" style="padding:0;">
+          ${symbolsHTML}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function toggleInfoLegendPanel() {
+  if (mlInfoLegendPanelOpen) {
+    closeInfoLegendPanel();
+  } else {
+    openInfoLegendPanel();
+  }
+}
+
+function openInfoLegendPanel() {
+  const panel = document.getElementById('info-legend-panel');
+  const btn = document.getElementById('btn-info-legend');
+  if (!panel) return;
+  panel.classList.add('open');
+  if (btn) btn.classList.add('active');
+  mlInfoLegendPanelOpen = true;
+  closeGradeFilterPanel();
+}
+
+function closeInfoLegendPanel() {
+  const panel = document.getElementById('info-legend-panel');
+  const btn = document.getElementById('btn-info-legend');
+  if (!panel) return;
+  panel.classList.remove('open');
+  if (btn) btn.classList.remove('active');
+  mlInfoLegendPanelOpen = false;
+}
+
+function switchInfoLegendTab(tab, btnEl) {
+  const colorsPanel = document.getElementById('ilp-tab-colors');
+  const symbolsPanel = document.getElementById('ilp-tab-symbols');
+  const tabs = document.querySelectorAll('.ilp-tab');
+  tabs.forEach(t => t.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+  if (tab === 'colors') {
+    colorsPanel.classList.remove('ilp-hidden');
+    symbolsPanel.classList.add('ilp-hidden');
+  } else {
+    symbolsPanel.classList.remove('ilp-hidden');
+    colorsPanel.classList.add('ilp-hidden');
+  }
+}
+
 // Exponer funciones para uso desde HTML onclick
 window.resetGradeFilter = resetGradeFilter;
 window.openGradeLegendModal = openGradeLegendModal;
 window.openSymbolsLegendModal = openSymbolsLegendModal;
+window.closeInfoLegendPanel = closeInfoLegendPanel;
+window.switchInfoLegendTab = switchInfoLegendTab;
 
 // Exponer función para uso externo
 window.loadApprovedRoutesFromFirestore = loadApprovedRoutesFromFirestore;

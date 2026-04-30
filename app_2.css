@@ -17758,6 +17758,147 @@ body.pwa-standalone .feed-header {
 }
 
 /* =============================================
+   INFO LEGEND BUTTON & PANEL
+   ============================================= */
+
+.info-legend-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  background: white;
+  border: none;
+  border-radius: 10px;
+  color: #333;
+  cursor: pointer;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  transition: background 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.info-legend-btn:hover {
+  background: #f5f5f5;
+}
+
+.info-legend-btn:active {
+  transform: scale(0.93);
+}
+
+.info-legend-btn.active {
+  background: #f0f0f0;
+}
+
+.info-legend-panel {
+  position: absolute;
+  top: 10px;
+  right: 58px;
+  width: 280px;
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  z-index: 1001;
+  opacity: 0;
+  transform: translateX(8px) scale(0.96);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+  overflow: hidden;
+}
+
+.info-legend-panel.open {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+}
+
+.ilp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid #f3f4f6;
+  flex-shrink: 0;
+}
+
+.ilp-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.ilp-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #9ca3af;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ilp-close-btn:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.ilp-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 4px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.ilp-tab {
+  flex: 1;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ilp-tab:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.ilp-tab.active {
+  background: #6366f1;
+  color: white;
+}
+
+.ilp-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 10px 12px 14px;
+  flex: 1;
+}
+
+.ilp-tab-content {
+  /* visible by default */
+}
+
+.ilp-hidden {
+  display: none;
+}
+
+/* =============================================
    POI Popup - Puntos de Interés
    ============================================= */
 
