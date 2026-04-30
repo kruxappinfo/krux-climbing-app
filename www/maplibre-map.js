@@ -484,6 +484,9 @@ function addMapControls() {
 
   // Botón de filtro por grado (esquina superior derecha)
   addGradeFilterButton();
+
+  // Botón de información / leyenda
+  addInfoLegendButton();
 }
 
 // Estado del modo 3D
@@ -3116,6 +3119,11 @@ async function showRoutePopup(props, coords) {
   const estadoData = await getEstadoVotes(schoolId, routeId);
   const estadoHTML = generateEstadoStarsHTML(routeId, schoolId, estadoData.avg, estadoData.userVote);
 
+  // Obtener votaciones de grado desde Firestore
+  const gradeVoteData = await getGradeVotes(schoolId, routeId);
+  const gradeSliderHTML = generateGradeSliderHTML(routeId, schoolId, grade, gradeVoteData);
+  const consensusBadgeHTML = buildConsensusBadgeHTML(grade, gradeVoteData);
+
   const variantLabel = getVariantLabel(props);
 
   const html = `
@@ -3125,6 +3133,7 @@ async function showRoutePopup(props, coords) {
         ${ascentCheckHTML}
         <span class="ml-route-name">${routeName}${variantLabel}</span>
         <span class="ml-route-grade" style="background-color: ${gradeColor}">${grade}</span>
+        ${consensusBadgeHTML}
       </div>
 
       <!-- Info items con iconos + sugerencias independientes por campo -->
@@ -3165,6 +3174,9 @@ async function showRoutePopup(props, coords) {
           </div>
         `}
       </div>
+
+      <!-- Slider de votación de grado -->
+      ${gradeSliderHTML}
 
       <!-- Indicador de Aleje -->
       ${alejeHTML}
@@ -3411,6 +3423,9 @@ async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
       ` : ''}
     </div>
 
+    <!-- Grado (votación, cargado asíncronamente) -->
+    <div id="ml-variant-grade-${routeId}"></div>
+
     <!-- Aleje (cargado asíncronamente) -->
     <div id="ml-variant-aleje-${routeId}"><div style="text-align:center;color:#888;font-size:13px;">Cargando...</div></div>
 
@@ -3468,6 +3483,17 @@ function mlLoadVariantSlideAsyncData(variantData, isTrinomial) {
   const props = variantData.props;
   const schoolId = mlCurrentSchool || 'valeria';
   const routeId = Number(props.id);
+  const variantGrade = props._displayGrado || props.grado1 || '?';
+
+  // Grado
+  if (typeof getGradeVotes === 'function') {
+    getGradeVotes(schoolId, routeId).then(gradeVoteData => {
+      const el = document.getElementById(`ml-variant-grade-${routeId}`);
+      if (el && typeof generateGradeSliderHTML === 'function') {
+        el.innerHTML = generateGradeSliderHTML(routeId, schoolId, variantGrade, gradeVoteData);
+      }
+    }).catch(() => {});
+  }
 
   // Aleje
   if (typeof getAlejeVotes === 'function') {
@@ -3725,6 +3751,31 @@ function mlUpdateBottomSheetContent(props, isTrinomial) {
     infoContainer.innerHTML = infoHTML;
   }
 
+  // --- Grado (async) ---
+  const gradeContainer = document.getElementById('rbs-grade-container');
+  if (gradeContainer && typeof getGradeVotes === 'function') {
+    getGradeVotes(schoolId, routeId).then(gradeVoteData => {
+      if (typeof generateGradeSliderHTML === 'function') {
+        gradeContainer.innerHTML = generateGradeSliderHTML(routeId, schoolId, grade, gradeVoteData);
+      }
+      // Update consensus badge in RBS header
+      if (typeof buildConsensusBadgeHTML === 'function') {
+        const rbsBadge = document.getElementById('rbs-consensus-badge');
+        if (rbsBadge) {
+          const officialIdx = ALL_GRADES_ORDERED.indexOf(grade);
+          const showBadge = gradeVoteData.voteCount >= GRADE_CONSENSUS_THRESHOLD &&
+            officialIdx !== -1 && Math.round(gradeVoteData.avgGradeIdx) !== officialIdx;
+          if (showBadge) {
+            rbsBadge.textContent = `${ALL_GRADES_ORDERED[Math.round(gradeVoteData.avgGradeIdx)]} · consenso`;
+            rbsBadge.style.display = '';
+          } else {
+            rbsBadge.style.display = 'none';
+          }
+        }
+      }
+    }).catch(() => { gradeContainer.innerHTML = ''; });
+  }
+
   // --- Aleje (async) ---
   const alejeContainer = document.getElementById('rbs-aleje-container');
   if (alejeContainer && typeof getAlejeVotes === 'function') {
@@ -3968,6 +4019,229 @@ async function getAlejeVotes(schoolId, routeId) {
   } catch (e) {
     console.error('[Aleje] Error obteniendo votos:', e);
     return { avg: null, userVote: null };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// GRADE VOTING SLIDER
+// ─────────────────────────────────────────────────────────────────
+
+const GRADE_CONSENSUS_THRESHOLD = 21;
+
+async function getGradeVotes(schoolId, routeId) {
+  try {
+    if (typeof firebase === 'undefined' || !firebase.firestore) {
+      return { voteCount: 0, avgGradeIdx: null, userVoteIdx: null };
+    }
+    const db = firebase.firestore();
+    const doc = await db.collection('grade_votes').doc(`${schoolId}_${routeId}`).get();
+    if (!doc.exists) return { voteCount: 0, avgGradeIdx: null, userVoteIdx: null };
+    const votes = doc.data().votes || {};
+    const values = Object.values(votes);
+    if (values.length === 0) return { voteCount: 0, avgGradeIdx: null, userVoteIdx: null };
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    let userVoteIdx = null;
+    if (typeof auth !== 'undefined' && auth.currentUser) {
+      const v = votes[auth.currentUser.uid];
+      userVoteIdx = (v !== undefined) ? v : null;
+    }
+    return { voteCount: values.length, avgGradeIdx: avg, userVoteIdx };
+  } catch (e) {
+    console.error('[GradeVotes] Error obteniendo votos:', e);
+    return { voteCount: 0, avgGradeIdx: null, userVoteIdx: null };
+  }
+}
+
+function buildConsensusBadgeHTML(grade, gradeVoteData) {
+  if (!gradeVoteData || gradeVoteData.voteCount < GRADE_CONSENSUS_THRESHOLD) return '';
+  const officialIdx = ALL_GRADES_ORDERED.indexOf(grade);
+  if (officialIdx === -1) return '';
+  const consensusIdx = Math.round(gradeVoteData.avgGradeIdx);
+  if (consensusIdx === officialIdx) return '';
+  return `<span class="ml-grade-consensus-badge">${ALL_GRADES_ORDERED[consensusIdx]} · consenso</span>`;
+}
+
+function generateGradeSliderHTML(routeId, schoolId, grade, gradeVoteData) {
+  const officialIdx = ALL_GRADES_ORDERED.indexOf(grade);
+  if (officialIdx === -1) return '';
+
+  // Build 5-label window centered on official grade, clamped to array bounds
+  const labelIndices = [];
+  for (let offset = -2; offset <= 2; offset++) {
+    labelIndices.push(Math.max(0, Math.min(ALL_GRADES_ORDERED.length - 1, officialIdx + offset)));
+  }
+  const officialStep = labelIndices.indexOf(officialIdx);
+
+  const voteCount = gradeVoteData ? gradeVoteData.voteCount : 0;
+  const avgGradeIdx = gradeVoteData ? gradeVoteData.avgGradeIdx : null;
+  const userVoteIdx = gradeVoteData ? gradeVoteData.userVoteIdx : null;
+  const hasUserVote = userVoteIdx !== null;
+
+  let sliderValue = officialStep;
+  if (hasUserVote) {
+    const stepPos = labelIndices.indexOf(userVoteIdx);
+    if (stepPos !== -1) {
+      sliderValue = stepPos;
+    } else {
+      // User voted outside the window — snap to closest label
+      let minDist = Infinity;
+      labelIndices.forEach((idx, pos) => {
+        const dist = Math.abs(idx - userVoteIdx);
+        if (dist < minDist) { minDist = dist; sliderValue = pos; }
+      });
+    }
+  }
+
+  const labelsHTML = labelIndices.map(idx =>
+    `<span class="ml-grade-slider-lbl">${ALL_GRADES_ORDERED[idx]}</span>`
+  ).join('');
+
+  // Tick position: account for 22px thumb half-width inset
+  const tickLeft = `calc(11px + ${officialStep} * (100% - 22px) / 4)`;
+
+  let metaText = '';
+  if (voteCount > 0 && avgGradeIdx !== null) {
+    const avgGrade = ALL_GRADES_ORDERED[Math.round(avgGradeIdx)];
+    metaText = `${voteCount} ${voteCount === 1 ? 'voto' : 'votos'} · media ${avgGrade}`;
+  }
+
+  let feedbackHTML = '';
+  if (hasUserVote) {
+    const votedGrade = ALL_GRADES_ORDERED[userVoteIdx] || grade;
+    let color, suffix;
+    if (userVoteIdx < officialIdx) { color = '#16a34a'; suffix = 'más fácil que el grado oficial'; }
+    else if (userVoteIdx === officialIdx) { color = '#2563eb'; suffix = 'mismo grado oficial'; }
+    else { color = '#dc2626'; suffix = 'más difícil que el grado oficial'; }
+    feedbackHTML = `<div class="ml-grade-slider-feedback"><span class="ml-grade-slider-feedback-text" style="color:${color}">${votedGrade} · ${suffix}</span></div>`;
+  }
+
+  return `
+    <div class="ml-grade-slider" data-route="${routeId}" data-school="${schoolId}" data-official-idx="${officialIdx}" data-label-indices="${labelIndices.join(',')}">
+      <div class="ml-grade-slider-header">
+        <span class="ml-route-aleje-label">Grado ${!hasUserVote ? '<span class="ml-route-aleje-hint">(vota)</span>' : ''}</span>
+        ${metaText ? `<span class="ml-grade-slider-meta">${metaText}</span>` : ''}
+      </div>
+      <div class="ml-grade-slider-labels">${labelsHTML}</div>
+      <div class="ml-grade-slider-track-wrap">
+        <input type="range" class="ml-grade-slider-input" min="0" max="4" step="1" value="${sliderValue}"
+               data-label-indices="${labelIndices.join(',')}"
+               data-official-idx="${officialIdx}"
+               data-route="${routeId}"
+               data-school="${schoolId}"
+               oninput="mlGradeSliderInput(this)"
+               onchange="mlVoteGrade(${routeId}, '${schoolId}', parseInt(this.getAttribute('data-label-indices').split(',')[parseInt(this.value)]))" />
+        <div class="ml-grade-slider-tick" style="left:${tickLeft}"></div>
+      </div>
+      ${feedbackHTML}
+    </div>
+  `;
+}
+
+function mlGradeSliderInput(input) {
+  const labelIndices = input.getAttribute('data-label-indices').split(',').map(Number);
+  const officialIdx = parseInt(input.getAttribute('data-official-idx'));
+  const gradeIdx = labelIndices[parseInt(input.value)];
+  const grade = ALL_GRADES_ORDERED[gradeIdx];
+
+  const container = input.closest('.ml-grade-slider');
+  if (!container) return;
+
+  let feedbackEl = container.querySelector('.ml-grade-slider-feedback');
+  if (!feedbackEl) {
+    feedbackEl = document.createElement('div');
+    feedbackEl.className = 'ml-grade-slider-feedback';
+    container.appendChild(feedbackEl);
+  }
+  let textEl = feedbackEl.querySelector('.ml-grade-slider-feedback-text');
+  if (!textEl) {
+    textEl = document.createElement('span');
+    textEl.className = 'ml-grade-slider-feedback-text';
+    feedbackEl.appendChild(textEl);
+  }
+
+  let color, suffix;
+  if (gradeIdx < officialIdx) { color = '#16a34a'; suffix = 'más fácil que el grado oficial'; }
+  else if (gradeIdx === officialIdx) { color = '#2563eb'; suffix = 'mismo grado oficial'; }
+  else { color = '#dc2626'; suffix = 'más difícil que el grado oficial'; }
+
+  textEl.textContent = `${grade} · ${suffix}`;
+  textEl.style.color = color;
+}
+
+async function mlVoteGrade(routeId, schoolId, gradeIdx) {
+  try {
+    if (typeof auth === 'undefined' || !auth.currentUser) {
+      if (typeof showToast === 'function') showToast('Inicia sesión para votar el grado');
+      return;
+    }
+    const userId = auth.currentUser.uid;
+    const db = firebase.firestore();
+    const gradeRef = db.collection('grade_votes').doc(`${schoolId}_${routeId}`);
+    const doc = await gradeRef.get();
+    const votes = doc.exists ? (doc.data().votes || {}) : {};
+
+    votes[userId] = gradeIdx;
+    await gradeRef.set(
+      { schoolId, routeId, votes, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+
+    const values = Object.values(votes);
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    const consensusIdx = Math.round(avg);
+    const avgGrade = ALL_GRADES_ORDERED[consensusIdx];
+
+    // Update label hint
+    const container = document.querySelector(`.ml-grade-slider[data-route="${routeId}"]`);
+    if (container) {
+      const label = container.querySelector('.ml-route-aleje-label');
+      if (label) label.innerHTML = 'Grado';
+
+      let metaEl = container.querySelector('.ml-grade-slider-meta');
+      if (!metaEl) {
+        metaEl = document.createElement('span');
+        metaEl.className = 'ml-grade-slider-meta';
+        container.querySelector('.ml-grade-slider-header').appendChild(metaEl);
+      }
+      metaEl.textContent = `${values.length} ${values.length === 1 ? 'voto' : 'votos'} · media ${avgGrade}`;
+    }
+
+    // Update consensus badge in popup header
+    const officialIdx = container ? parseInt(container.getAttribute('data-official-idx')) : -1;
+    if (officialIdx !== -1) {
+      const showBadge = values.length >= GRADE_CONSENSUS_THRESHOLD && consensusIdx !== officialIdx;
+      const badgeText = `${ALL_GRADES_ORDERED[consensusIdx]} · consenso`;
+
+      const popupHeader = document.querySelector('.ml-route-popup-new .ml-route-header');
+      if (popupHeader) {
+        let badge = popupHeader.querySelector('.ml-grade-consensus-badge');
+        if (showBadge) {
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'ml-grade-consensus-badge';
+            popupHeader.appendChild(badge);
+          }
+          badge.textContent = badgeText;
+        } else if (badge) {
+          badge.remove();
+        }
+      }
+
+      const rbsBadge = document.getElementById('rbs-consensus-badge');
+      if (rbsBadge) {
+        if (showBadge) {
+          rbsBadge.textContent = badgeText;
+          rbsBadge.style.display = '';
+        } else {
+          rbsBadge.style.display = 'none';
+        }
+      }
+    }
+
+    if (typeof showToast === 'function') showToast('Grado actualizado');
+  } catch (e) {
+    console.error('[GradeVotes] Error votando:', e);
+    if (typeof showToast === 'function') showToast('Error al votar el grado');
   }
 }
 
@@ -6934,6 +7208,26 @@ async function showRouteBottomSheet(props, coords) {
     infoContainer.innerHTML = infoHTML;
   }
 
+  // --- Grado ---
+  const gradeContainer2 = document.getElementById('rbs-grade-container');
+  if (gradeContainer2) {
+    getGradeVotes(schoolId, routeId).then(gradeVoteData => {
+      gradeContainer2.innerHTML = generateGradeSliderHTML(routeId, schoolId, grade, gradeVoteData);
+      const rbsBadge = document.getElementById('rbs-consensus-badge');
+      if (rbsBadge) {
+        const officialIdx = ALL_GRADES_ORDERED.indexOf(grade);
+        const showBadge = gradeVoteData.voteCount >= GRADE_CONSENSUS_THRESHOLD &&
+          officialIdx !== -1 && Math.round(gradeVoteData.avgGradeIdx) !== officialIdx;
+        if (showBadge) {
+          rbsBadge.textContent = `${ALL_GRADES_ORDERED[Math.round(gradeVoteData.avgGradeIdx)]} · consenso`;
+          rbsBadge.style.display = '';
+        } else {
+          rbsBadge.style.display = 'none';
+        }
+      }
+    }).catch(() => { gradeContainer2.innerHTML = ''; });
+  }
+
   // --- Aleje ---
   const alejeContainer = document.getElementById('rbs-aleje-container');
   if (alejeContainer) {
@@ -8202,6 +8496,11 @@ async function showUserRoutePopup(props, coords) {
   const estadoData = await getEstadoVotes(schoolId, routeId);
   const estadoHTML = generateEstadoStarsHTML(routeId, schoolId, estadoData.avg, estadoData.userVote);
 
+  // Obtener votaciones de grado desde Firestore
+  const gradeVoteData = await getGradeVotes(schoolId, routeId);
+  const gradeSliderHTML = generateGradeSliderHTML(routeId, schoolId, grade, gradeVoteData);
+  const consensusBadgeHTML = buildConsensusBadgeHTML(grade, gradeVoteData);
+
   const html = `
     <div class="ml-route-popup-new">
       <!-- Header: Check + Nombre + Grado + Badge Usuario -->
@@ -8209,6 +8508,7 @@ async function showUserRoutePopup(props, coords) {
         ${ascentCheckHTML}
         <span class="ml-route-name">${routeName}</span>
         <span class="ml-route-grade" style="background-color: ${gradeColor}">${grade}</span>
+        ${consensusBadgeHTML}
       </div>
 
       <!-- Info items con iconos + sugerencias independientes por campo -->
@@ -8249,6 +8549,9 @@ async function showUserRoutePopup(props, coords) {
           </div>
         `}
       </div>
+
+      <!-- Slider de votación de grado -->
+      ${gradeSliderHTML}
 
       <!-- Indicador de Aleje -->
       ${alejeHTML}
@@ -10398,10 +10701,277 @@ function openSymbolsLegendModal() {
   document.body.appendChild(overlay);
 }
 
+// ============================================================
+//  BOTÓN DE INFORMACIÓN / LEYENDA DEL MAPA
+// ============================================================
+
+let mlInfoLegendPanelOpen = false;
+
+function addInfoLegendButton() {
+  if (document.getElementById('btn-info-legend')) return;
+
+  const container = document.getElementById('map');
+  if (!container) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'btn-info-legend';
+  btn.className = 'map-control-btn info-legend-btn';
+  btn.title = 'Leyenda del mapa';
+  btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><circle cx="12" cy="8.5" r="0.5" fill="currentColor" stroke="none"/></svg>`;
+  btn.style.cssText = `
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    background: white;
+    border: none;
+    border-radius: 10px;
+    color: #333;
+    cursor: pointer;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    transition: background 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  `;
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleInfoLegendPanel();
+  });
+
+  container.appendChild(btn);
+
+  // Panel desplegable (mismo patrón que grade-filter-panel)
+  const panel = document.createElement('div');
+  panel.id = 'info-legend-panel';
+  panel.className = 'info-legend-panel';
+  panel.innerHTML = buildInfoLegendModalHTML();
+  container.appendChild(panel);
+
+  // Ajustar posición vertical según si los otros botones están visibles
+  const updateInfoBtnPosition = () => {
+    if (!mlMap) return;
+    const ccaa = getCurrentCCAA();
+    const otherVisible = mlMap.getZoom() > ccaa.zoom + 1;
+    const top = otherVisible ? '106px' : '10px';
+    btn.style.top = top;
+    panel.style.top = top;
+  };
+  mlMap.on('zoom', updateInfoBtnPosition);
+  updateInfoBtnPosition();
+
+  // Cerrar panel al pulsar fuera
+  document.addEventListener('click', (e) => {
+    const panelEl = document.getElementById('info-legend-panel');
+    const btnEl = document.getElementById('btn-info-legend');
+    if (panelEl && btnEl && !panelEl.contains(e.target) && !btnEl.contains(e.target)) {
+      closeInfoLegendPanel();
+    }
+  });
+}
+
+// Devuelve color de texto (#000 o #fff) con contraste adecuado sobre un color hex
+function ilpContrastColor(hex) {
+  if (!hex || hex.length < 7) return '#ffffff';
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.55 ? '#1a1a1a' : '#ffffff';
+}
+
+function buildInfoLegendModalHTML() {
+  // ---- Tab Colores ----
+  const legendGroups = [
+    { label: 'PRINCIPIANTE · 3-4', grades: ['3a','3b','3c','4a','4b','4c'] },
+    { label: 'FÁCIL · 5',          grades: ['5a','5a+','5b','5b+','5c','5c+'] },
+    { label: 'MEDIO · 6A-6B',      grades: ['6a','6a+','6b','6b+'] },
+    { label: 'MEDIO-ALTO · 6C-7A', grades: ['6c','6c+','7a','7a+'] },
+    { label: 'DIFÍCIL · 7B-7C',    grades: ['7b','7b+','7c','7c+'] },
+    { label: 'MUY DIFÍCIL · 8',    grades: ['8a','8a+','8b','8b+','8c','8c+'] },
+    { label: 'ÉLITE · 9',          grades: ['9a','9a+','9b','9b+','9c','9c+'] }
+  ];
+
+  let colorsHTML = '';
+  legendGroups.forEach(group => {
+    colorsHTML += `<div class="ilp-grade-group">
+      <div class="ilp-grade-group-label">${group.label}</div>
+      <div class="ilp-grade-chips">`;
+    group.grades.forEach(grade => {
+      const bg = typeof MAPLIBRE_GRADE_COLORS !== 'undefined'
+        ? (MAPLIBRE_GRADE_COLORS[grade] || '#888')
+        : '#888';
+      const fg = ilpContrastColor(bg);
+      colorsHTML += `<span class="ilp-grade-chip" style="background:${bg};color:${fg}">${grade}</span>`;
+    });
+    colorsHTML += `</div></div>`;
+  });
+
+  // ---- Tab Símbolos ----
+  const symbols = [
+    {
+      title: 'Vía deportiva',
+      badge: null,
+      desc: 'Cada círculo es una vía. El color indica la dificultad.',
+      iconBg: '#dcfce7',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><circle cx="16" cy="16" r="9" fill="#22c55e" stroke="#fff" stroke-width="2"/></svg>`
+    },
+    {
+      title: 'Vía hecha',
+      badge: 'tick',
+      desc: 'Vía encadenada y registrada en tu logbook.',
+      iconBg: '#dcfce7',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><circle cx="16" cy="16" r="11" fill="#22c55e" stroke="#fff" stroke-width="1.5"/><polyline points="10,17 14,21 22,12" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+    },
+    {
+      title: 'Vías con variantes',
+      badge: null,
+      desc: 'Grupo con salida común. Cada anillo es una variante.',
+      iconBg: '#fef9ee',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><circle cx="16" cy="16" r="13" fill="none" stroke="#3b82f6" stroke-width="2"/><circle cx="16" cy="16" r="9" fill="none" stroke="#f59e0b" stroke-width="2"/><circle cx="16" cy="16" r="5" fill="#ef4444"/></svg>`
+    },
+    {
+      title: 'Sector',
+      badge: null,
+      desc: 'Línea coloreada que delimita un sector de escalada.',
+      iconBg: '#f3e8ff',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><path d="M4 24 C 10 10, 22 28, 28 10" fill="none" stroke="#a855f7" stroke-width="3" stroke-linecap="round"/></svg>`
+    },
+    {
+      title: 'Ruta de acceso',
+      badge: null,
+      desc: 'Sendero de aproximación (línea naranja discontinua).',
+      iconBg: '#fff7ed',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><path d="M4 26 C 10 22, 16 10, 28 6" fill="none" stroke="#f97316" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="4 3"/></svg>`
+    },
+    {
+      title: 'Parking',
+      badge: null,
+      desc: 'Aparcamiento recomendado. Pulsa para ver indicaciones.',
+      iconBg: '#dbeafe',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><circle cx="16" cy="16" r="12" fill="#4285f4"/><text x="16" y="21" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold" font-family="sans-serif">P</text></svg>`
+    },
+    {
+      title: 'Punto de interés (POI)',
+      badge: null,
+      desc: 'Fuente, refugio, bar, peligro… El emoji indica el tipo.',
+      iconBg: '#f3f4f6',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><text x="16" y="23" text-anchor="middle" font-size="20">🚰</text></svg>`
+    },
+    {
+      title: 'Escuela abierta',
+      badge: null,
+      desc: 'Cartografía publicada. Pulsa para explorar sectores y vías.',
+      iconBg: '#dcfce7',
+      svg: `<svg viewBox="0 0 48 48" width="32" height="32"><circle cx="24" cy="24" r="22" fill="#22c55e"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g></svg>`
+    },
+    {
+      title: 'Escuela en desarrollo',
+      badge: null,
+      desc: 'Datos parciales o en construcción.',
+      iconBg: '#fef9c3',
+      svg: `<svg viewBox="0 0 48 48" width="32" height="32"><circle cx="24" cy="24" r="22" fill="#f59e0b"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g></svg>`
+    }
+  ];
+
+  let symbolsHTML = '';
+  symbols.forEach(s => {
+    const badge = s.badge
+      ? `<span class="ilp-badge">${s.badge}</span>`
+      : '';
+    symbolsHTML += `
+      <div class="ilp-symbol-item">
+        <div class="ilp-symbol-icon-wrap" style="background:${s.iconBg}">${s.svg}</div>
+        <div class="ilp-symbol-info">
+          <div class="ilp-symbol-title">${s.title}${badge}</div>
+          <div class="ilp-symbol-desc">${s.desc}</div>
+        </div>
+      </div>`;
+  });
+
+  return `
+    <div class="ilp-header">
+      <span class="ilp-map-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+          <line x1="8" y1="2" x2="8" y2="18"/>
+          <line x1="16" y1="6" x2="16" y2="22"/>
+        </svg>
+      </span>
+      <span class="ilp-title">Leyenda del mapa</span>
+      <button class="ilp-close-btn" onclick="closeInfoLegendPanel()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div class="ilp-tabs-row">
+      <button class="ilp-tab active" onclick="switchInfoLegendTab('symbols', this)">Símbolos</button>
+      <button class="ilp-tab" onclick="switchInfoLegendTab('colors', this)">Grados</button>
+    </div>
+
+    <div class="ilp-body">
+      <div id="ilp-tab-symbols" class="ilp-tab-content">
+        ${symbolsHTML}
+      </div>
+      <div id="ilp-tab-colors" class="ilp-tab-content ilp-hidden">
+        ${colorsHTML}
+      </div>
+    </div>
+  `;
+}
+
+function toggleInfoLegendPanel() {
+  if (mlInfoLegendPanelOpen) {
+    closeInfoLegendPanel();
+  } else {
+    openInfoLegendPanel();
+  }
+}
+
+function openInfoLegendPanel() {
+  const panel = document.getElementById('info-legend-panel');
+  const btn   = document.getElementById('btn-info-legend');
+  if (!panel) return;
+  closeGradeFilterPanel();
+  panel.classList.add('open');
+  if (btn) btn.classList.add('active');
+  mlInfoLegendPanelOpen = true;
+}
+
+function closeInfoLegendPanel() {
+  const panel = document.getElementById('info-legend-panel');
+  const btn   = document.getElementById('btn-info-legend');
+  if (!panel) return;
+  panel.classList.remove('open');
+  if (btn) btn.classList.remove('active');
+  mlInfoLegendPanelOpen = false;
+}
+
+function switchInfoLegendTab(tab, btnEl) {
+  const symbolsPanel = document.getElementById('ilp-tab-symbols');
+  const colorsPanel  = document.getElementById('ilp-tab-colors');
+  document.querySelectorAll('#info-legend-panel .ilp-tab')
+    .forEach(t => t.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+  if (tab === 'symbols') {
+    symbolsPanel.classList.remove('ilp-hidden');
+    colorsPanel.classList.add('ilp-hidden');
+  } else {
+    colorsPanel.classList.remove('ilp-hidden');
+    symbolsPanel.classList.add('ilp-hidden');
+  }
+}
+
 // Exponer funciones para uso desde HTML onclick
 window.resetGradeFilter = resetGradeFilter;
 window.openGradeLegendModal = openGradeLegendModal;
 window.openSymbolsLegendModal = openSymbolsLegendModal;
+window.closeInfoLegendPanel = closeInfoLegendPanel;
+window.switchInfoLegendTab = switchInfoLegendTab;
 
 // Exponer función para uso externo
 window.loadApprovedRoutesFromFirestore = loadApprovedRoutesFromFirestore;

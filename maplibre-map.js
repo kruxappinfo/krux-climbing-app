@@ -3119,6 +3119,11 @@ async function showRoutePopup(props, coords) {
   const estadoData = await getEstadoVotes(schoolId, routeId);
   const estadoHTML = generateEstadoStarsHTML(routeId, schoolId, estadoData.avg, estadoData.userVote);
 
+  // Obtener votaciones de grado desde Firestore
+  const gradeVoteData = await getGradeVotes(schoolId, routeId);
+  const gradeSliderHTML = generateGradeSliderHTML(routeId, schoolId, grade, gradeVoteData);
+  const consensusBadgeHTML = buildConsensusBadgeHTML(grade, gradeVoteData);
+
   const variantLabel = getVariantLabel(props);
 
   const html = `
@@ -3128,6 +3133,7 @@ async function showRoutePopup(props, coords) {
         ${ascentCheckHTML}
         <span class="ml-route-name">${routeName}${variantLabel}</span>
         <span class="ml-route-grade" style="background-color: ${gradeColor}">${grade}</span>
+        ${consensusBadgeHTML}
       </div>
 
       <!-- Info items con iconos + sugerencias independientes por campo -->
@@ -3168,6 +3174,9 @@ async function showRoutePopup(props, coords) {
           </div>
         `}
       </div>
+
+      <!-- Slider de votación de grado -->
+      ${gradeSliderHTML}
 
       <!-- Indicador de Aleje -->
       ${alejeHTML}
@@ -3414,6 +3423,9 @@ async function mlBuildVariantSlideHTML(variantData, isTrinomial) {
       ` : ''}
     </div>
 
+    <!-- Grado (votación, cargado asíncronamente) -->
+    <div id="ml-variant-grade-${routeId}"></div>
+
     <!-- Aleje (cargado asíncronamente) -->
     <div id="ml-variant-aleje-${routeId}"><div style="text-align:center;color:#888;font-size:13px;">Cargando...</div></div>
 
@@ -3471,6 +3483,17 @@ function mlLoadVariantSlideAsyncData(variantData, isTrinomial) {
   const props = variantData.props;
   const schoolId = mlCurrentSchool || 'valeria';
   const routeId = Number(props.id);
+  const variantGrade = props._displayGrado || props.grado1 || '?';
+
+  // Grado
+  if (typeof getGradeVotes === 'function') {
+    getGradeVotes(schoolId, routeId).then(gradeVoteData => {
+      const el = document.getElementById(`ml-variant-grade-${routeId}`);
+      if (el && typeof generateGradeSliderHTML === 'function') {
+        el.innerHTML = generateGradeSliderHTML(routeId, schoolId, variantGrade, gradeVoteData);
+      }
+    }).catch(() => {});
+  }
 
   // Aleje
   if (typeof getAlejeVotes === 'function') {
@@ -3728,6 +3751,31 @@ function mlUpdateBottomSheetContent(props, isTrinomial) {
     infoContainer.innerHTML = infoHTML;
   }
 
+  // --- Grado (async) ---
+  const gradeContainer = document.getElementById('rbs-grade-container');
+  if (gradeContainer && typeof getGradeVotes === 'function') {
+    getGradeVotes(schoolId, routeId).then(gradeVoteData => {
+      if (typeof generateGradeSliderHTML === 'function') {
+        gradeContainer.innerHTML = generateGradeSliderHTML(routeId, schoolId, grade, gradeVoteData);
+      }
+      // Update consensus badge in RBS header
+      if (typeof buildConsensusBadgeHTML === 'function') {
+        const rbsBadge = document.getElementById('rbs-consensus-badge');
+        if (rbsBadge) {
+          const officialIdx = ALL_GRADES_ORDERED.indexOf(grade);
+          const showBadge = gradeVoteData.voteCount >= GRADE_CONSENSUS_THRESHOLD &&
+            officialIdx !== -1 && Math.round(gradeVoteData.avgGradeIdx) !== officialIdx;
+          if (showBadge) {
+            rbsBadge.textContent = `${ALL_GRADES_ORDERED[Math.round(gradeVoteData.avgGradeIdx)]} · consenso`;
+            rbsBadge.style.display = '';
+          } else {
+            rbsBadge.style.display = 'none';
+          }
+        }
+      }
+    }).catch(() => { gradeContainer.innerHTML = ''; });
+  }
+
   // --- Aleje (async) ---
   const alejeContainer = document.getElementById('rbs-aleje-container');
   if (alejeContainer && typeof getAlejeVotes === 'function') {
@@ -3971,6 +4019,229 @@ async function getAlejeVotes(schoolId, routeId) {
   } catch (e) {
     console.error('[Aleje] Error obteniendo votos:', e);
     return { avg: null, userVote: null };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// GRADE VOTING SLIDER
+// ─────────────────────────────────────────────────────────────────
+
+const GRADE_CONSENSUS_THRESHOLD = 21;
+
+async function getGradeVotes(schoolId, routeId) {
+  try {
+    if (typeof firebase === 'undefined' || !firebase.firestore) {
+      return { voteCount: 0, avgGradeIdx: null, userVoteIdx: null };
+    }
+    const db = firebase.firestore();
+    const doc = await db.collection('grade_votes').doc(`${schoolId}_${routeId}`).get();
+    if (!doc.exists) return { voteCount: 0, avgGradeIdx: null, userVoteIdx: null };
+    const votes = doc.data().votes || {};
+    const values = Object.values(votes);
+    if (values.length === 0) return { voteCount: 0, avgGradeIdx: null, userVoteIdx: null };
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    let userVoteIdx = null;
+    if (typeof auth !== 'undefined' && auth.currentUser) {
+      const v = votes[auth.currentUser.uid];
+      userVoteIdx = (v !== undefined) ? v : null;
+    }
+    return { voteCount: values.length, avgGradeIdx: avg, userVoteIdx };
+  } catch (e) {
+    console.error('[GradeVotes] Error obteniendo votos:', e);
+    return { voteCount: 0, avgGradeIdx: null, userVoteIdx: null };
+  }
+}
+
+function buildConsensusBadgeHTML(grade, gradeVoteData) {
+  if (!gradeVoteData || gradeVoteData.voteCount < GRADE_CONSENSUS_THRESHOLD) return '';
+  const officialIdx = ALL_GRADES_ORDERED.indexOf(grade);
+  if (officialIdx === -1) return '';
+  const consensusIdx = Math.round(gradeVoteData.avgGradeIdx);
+  if (consensusIdx === officialIdx) return '';
+  return `<span class="ml-grade-consensus-badge">${ALL_GRADES_ORDERED[consensusIdx]} · consenso</span>`;
+}
+
+function generateGradeSliderHTML(routeId, schoolId, grade, gradeVoteData) {
+  const officialIdx = ALL_GRADES_ORDERED.indexOf(grade);
+  if (officialIdx === -1) return '';
+
+  // Build 5-label window centered on official grade, clamped to array bounds
+  const labelIndices = [];
+  for (let offset = -2; offset <= 2; offset++) {
+    labelIndices.push(Math.max(0, Math.min(ALL_GRADES_ORDERED.length - 1, officialIdx + offset)));
+  }
+  const officialStep = labelIndices.indexOf(officialIdx);
+
+  const voteCount = gradeVoteData ? gradeVoteData.voteCount : 0;
+  const avgGradeIdx = gradeVoteData ? gradeVoteData.avgGradeIdx : null;
+  const userVoteIdx = gradeVoteData ? gradeVoteData.userVoteIdx : null;
+  const hasUserVote = userVoteIdx !== null;
+
+  let sliderValue = officialStep;
+  if (hasUserVote) {
+    const stepPos = labelIndices.indexOf(userVoteIdx);
+    if (stepPos !== -1) {
+      sliderValue = stepPos;
+    } else {
+      // User voted outside the window — snap to closest label
+      let minDist = Infinity;
+      labelIndices.forEach((idx, pos) => {
+        const dist = Math.abs(idx - userVoteIdx);
+        if (dist < minDist) { minDist = dist; sliderValue = pos; }
+      });
+    }
+  }
+
+  const labelsHTML = labelIndices.map(idx =>
+    `<span class="ml-grade-slider-lbl">${ALL_GRADES_ORDERED[idx]}</span>`
+  ).join('');
+
+  // Tick position: account for 22px thumb half-width inset
+  const tickLeft = `calc(11px + ${officialStep} * (100% - 22px) / 4)`;
+
+  let metaText = '';
+  if (voteCount > 0 && avgGradeIdx !== null) {
+    const avgGrade = ALL_GRADES_ORDERED[Math.round(avgGradeIdx)];
+    metaText = `${voteCount} ${voteCount === 1 ? 'voto' : 'votos'} · media ${avgGrade}`;
+  }
+
+  let feedbackHTML = '';
+  if (hasUserVote) {
+    const votedGrade = ALL_GRADES_ORDERED[userVoteIdx] || grade;
+    let color, suffix;
+    if (userVoteIdx < officialIdx) { color = '#16a34a'; suffix = 'más fácil que el grado oficial'; }
+    else if (userVoteIdx === officialIdx) { color = '#2563eb'; suffix = 'mismo grado oficial'; }
+    else { color = '#dc2626'; suffix = 'más difícil que el grado oficial'; }
+    feedbackHTML = `<div class="ml-grade-slider-feedback"><span class="ml-grade-slider-feedback-text" style="color:${color}">${votedGrade} · ${suffix}</span></div>`;
+  }
+
+  return `
+    <div class="ml-grade-slider" data-route="${routeId}" data-school="${schoolId}" data-official-idx="${officialIdx}" data-label-indices="${labelIndices.join(',')}">
+      <div class="ml-grade-slider-header">
+        <span class="ml-route-aleje-label">Grado ${!hasUserVote ? '<span class="ml-route-aleje-hint">(vota)</span>' : ''}</span>
+        ${metaText ? `<span class="ml-grade-slider-meta">${metaText}</span>` : ''}
+      </div>
+      <div class="ml-grade-slider-labels">${labelsHTML}</div>
+      <div class="ml-grade-slider-track-wrap">
+        <input type="range" class="ml-grade-slider-input" min="0" max="4" step="1" value="${sliderValue}"
+               data-label-indices="${labelIndices.join(',')}"
+               data-official-idx="${officialIdx}"
+               data-route="${routeId}"
+               data-school="${schoolId}"
+               oninput="mlGradeSliderInput(this)"
+               onchange="mlVoteGrade(${routeId}, '${schoolId}', parseInt(this.getAttribute('data-label-indices').split(',')[parseInt(this.value)]))" />
+        <div class="ml-grade-slider-tick" style="left:${tickLeft}"></div>
+      </div>
+      ${feedbackHTML}
+    </div>
+  `;
+}
+
+function mlGradeSliderInput(input) {
+  const labelIndices = input.getAttribute('data-label-indices').split(',').map(Number);
+  const officialIdx = parseInt(input.getAttribute('data-official-idx'));
+  const gradeIdx = labelIndices[parseInt(input.value)];
+  const grade = ALL_GRADES_ORDERED[gradeIdx];
+
+  const container = input.closest('.ml-grade-slider');
+  if (!container) return;
+
+  let feedbackEl = container.querySelector('.ml-grade-slider-feedback');
+  if (!feedbackEl) {
+    feedbackEl = document.createElement('div');
+    feedbackEl.className = 'ml-grade-slider-feedback';
+    container.appendChild(feedbackEl);
+  }
+  let textEl = feedbackEl.querySelector('.ml-grade-slider-feedback-text');
+  if (!textEl) {
+    textEl = document.createElement('span');
+    textEl.className = 'ml-grade-slider-feedback-text';
+    feedbackEl.appendChild(textEl);
+  }
+
+  let color, suffix;
+  if (gradeIdx < officialIdx) { color = '#16a34a'; suffix = 'más fácil que el grado oficial'; }
+  else if (gradeIdx === officialIdx) { color = '#2563eb'; suffix = 'mismo grado oficial'; }
+  else { color = '#dc2626'; suffix = 'más difícil que el grado oficial'; }
+
+  textEl.textContent = `${grade} · ${suffix}`;
+  textEl.style.color = color;
+}
+
+async function mlVoteGrade(routeId, schoolId, gradeIdx) {
+  try {
+    if (typeof auth === 'undefined' || !auth.currentUser) {
+      if (typeof showToast === 'function') showToast('Inicia sesión para votar el grado');
+      return;
+    }
+    const userId = auth.currentUser.uid;
+    const db = firebase.firestore();
+    const gradeRef = db.collection('grade_votes').doc(`${schoolId}_${routeId}`);
+    const doc = await gradeRef.get();
+    const votes = doc.exists ? (doc.data().votes || {}) : {};
+
+    votes[userId] = gradeIdx;
+    await gradeRef.set(
+      { schoolId, routeId, votes, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+
+    const values = Object.values(votes);
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    const consensusIdx = Math.round(avg);
+    const avgGrade = ALL_GRADES_ORDERED[consensusIdx];
+
+    // Update label hint
+    const container = document.querySelector(`.ml-grade-slider[data-route="${routeId}"]`);
+    if (container) {
+      const label = container.querySelector('.ml-route-aleje-label');
+      if (label) label.innerHTML = 'Grado';
+
+      let metaEl = container.querySelector('.ml-grade-slider-meta');
+      if (!metaEl) {
+        metaEl = document.createElement('span');
+        metaEl.className = 'ml-grade-slider-meta';
+        container.querySelector('.ml-grade-slider-header').appendChild(metaEl);
+      }
+      metaEl.textContent = `${values.length} ${values.length === 1 ? 'voto' : 'votos'} · media ${avgGrade}`;
+    }
+
+    // Update consensus badge in popup header
+    const officialIdx = container ? parseInt(container.getAttribute('data-official-idx')) : -1;
+    if (officialIdx !== -1) {
+      const showBadge = values.length >= GRADE_CONSENSUS_THRESHOLD && consensusIdx !== officialIdx;
+      const badgeText = `${ALL_GRADES_ORDERED[consensusIdx]} · consenso`;
+
+      const popupHeader = document.querySelector('.ml-route-popup-new .ml-route-header');
+      if (popupHeader) {
+        let badge = popupHeader.querySelector('.ml-grade-consensus-badge');
+        if (showBadge) {
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'ml-grade-consensus-badge';
+            popupHeader.appendChild(badge);
+          }
+          badge.textContent = badgeText;
+        } else if (badge) {
+          badge.remove();
+        }
+      }
+
+      const rbsBadge = document.getElementById('rbs-consensus-badge');
+      if (rbsBadge) {
+        if (showBadge) {
+          rbsBadge.textContent = badgeText;
+          rbsBadge.style.display = '';
+        } else {
+          rbsBadge.style.display = 'none';
+        }
+      }
+    }
+
+    if (typeof showToast === 'function') showToast('Grado actualizado');
+  } catch (e) {
+    console.error('[GradeVotes] Error votando:', e);
+    if (typeof showToast === 'function') showToast('Error al votar el grado');
   }
 }
 
@@ -6937,6 +7208,26 @@ async function showRouteBottomSheet(props, coords) {
     infoContainer.innerHTML = infoHTML;
   }
 
+  // --- Grado ---
+  const gradeContainer2 = document.getElementById('rbs-grade-container');
+  if (gradeContainer2) {
+    getGradeVotes(schoolId, routeId).then(gradeVoteData => {
+      gradeContainer2.innerHTML = generateGradeSliderHTML(routeId, schoolId, grade, gradeVoteData);
+      const rbsBadge = document.getElementById('rbs-consensus-badge');
+      if (rbsBadge) {
+        const officialIdx = ALL_GRADES_ORDERED.indexOf(grade);
+        const showBadge = gradeVoteData.voteCount >= GRADE_CONSENSUS_THRESHOLD &&
+          officialIdx !== -1 && Math.round(gradeVoteData.avgGradeIdx) !== officialIdx;
+        if (showBadge) {
+          rbsBadge.textContent = `${ALL_GRADES_ORDERED[Math.round(gradeVoteData.avgGradeIdx)]} · consenso`;
+          rbsBadge.style.display = '';
+        } else {
+          rbsBadge.style.display = 'none';
+        }
+      }
+    }).catch(() => { gradeContainer2.innerHTML = ''; });
+  }
+
   // --- Aleje ---
   const alejeContainer = document.getElementById('rbs-aleje-container');
   if (alejeContainer) {
@@ -8205,6 +8496,11 @@ async function showUserRoutePopup(props, coords) {
   const estadoData = await getEstadoVotes(schoolId, routeId);
   const estadoHTML = generateEstadoStarsHTML(routeId, schoolId, estadoData.avg, estadoData.userVote);
 
+  // Obtener votaciones de grado desde Firestore
+  const gradeVoteData = await getGradeVotes(schoolId, routeId);
+  const gradeSliderHTML = generateGradeSliderHTML(routeId, schoolId, grade, gradeVoteData);
+  const consensusBadgeHTML = buildConsensusBadgeHTML(grade, gradeVoteData);
+
   const html = `
     <div class="ml-route-popup-new">
       <!-- Header: Check + Nombre + Grado + Badge Usuario -->
@@ -8212,6 +8508,7 @@ async function showUserRoutePopup(props, coords) {
         ${ascentCheckHTML}
         <span class="ml-route-name">${routeName}</span>
         <span class="ml-route-grade" style="background-color: ${gradeColor}">${grade}</span>
+        ${consensusBadgeHTML}
       </div>
 
       <!-- Info items con iconos + sugerencias independientes por campo -->
@@ -8252,6 +8549,9 @@ async function showUserRoutePopup(props, coords) {
           </div>
         `}
       </div>
+
+      <!-- Slider de votación de grado -->
+      ${gradeSliderHTML}
 
       <!-- Indicador de Aleje -->
       ${alejeHTML}

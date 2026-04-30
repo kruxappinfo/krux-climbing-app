@@ -12129,6 +12129,115 @@ img[loading="lazy"]:not([src=""]) {
   box-shadow: 0 0 3px rgba(0,0,0,0.3);
 }
 
+/* Grade voting slider */
+.ml-grade-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0;
+  margin-bottom: 12px;
+}
+
+.ml-grade-slider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ml-grade-slider-meta {
+  font-size: 12px;
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.ml-grade-slider-labels {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  margin-bottom: 2px;
+}
+
+.ml-grade-slider-lbl {
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 500;
+  text-align: center;
+}
+
+.ml-grade-slider-track-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 28px;
+}
+
+input[type="range"].ml-grade-slider-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: #d1d5db;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+}
+
+input[type="range"].ml-grade-slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1f2937;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+
+input[type="range"].ml-grade-slider-input::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1f2937;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+  border: none;
+}
+
+.ml-grade-slider-tick {
+  position: absolute;
+  top: 50%;
+  transform: translateX(-50%) translateY(-50%);
+  width: 3px;
+  height: 22px;
+  background: #9ca3af;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ml-grade-slider-feedback {
+  min-height: 18px;
+}
+
+.ml-grade-slider-feedback-text {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ml-grade-consensus-badge {
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #e5e7eb;
+  color: #374151;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
 /* Estado de la Vía - Sistema de votación por estrellas */
 .ml-route-estado {
   display: flex;

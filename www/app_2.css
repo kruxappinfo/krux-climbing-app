@@ -9380,6 +9380,18 @@ body.map-active .top-bar-wrapper {
   background: #ffebee;
 }
 
+.settings-menu-item.donate {
+  color: #ff5e5b;
+}
+
+.settings-menu-item.donate svg {
+  color: #ff5e5b;
+}
+
+.settings-menu-item.donate:hover {
+  background: #fff1f1;
+}
+
 .settings-menu-item.admin-only {
   color: #667eea;
   background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
@@ -11816,6 +11828,15 @@ img[loading="lazy"]:not([src=""]) {
   line-height: 1.2;
 }
 
+.ml-route-variant-tag {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: #9ca3af;
+  letter-spacing: 0.02em;
+  margin-top: 2px;
+}
+
 .ml-route-grade {
   padding: 6px 14px;
   border-radius: 8px;
@@ -12106,6 +12127,115 @@ img[loading="lazy"]:not([src=""]) {
   background: #1f2937;
   border-radius: 2px;
   box-shadow: 0 0 3px rgba(0,0,0,0.3);
+}
+
+/* Grade voting slider */
+.ml-grade-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0;
+  margin-bottom: 12px;
+}
+
+.ml-grade-slider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ml-grade-slider-meta {
+  font-size: 12px;
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.ml-grade-slider-labels {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  margin-bottom: 2px;
+}
+
+.ml-grade-slider-lbl {
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 500;
+  text-align: center;
+}
+
+.ml-grade-slider-track-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 28px;
+}
+
+input[type="range"].ml-grade-slider-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: #d1d5db;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+}
+
+input[type="range"].ml-grade-slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1f2937;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+
+input[type="range"].ml-grade-slider-input::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1f2937;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+  border: none;
+}
+
+.ml-grade-slider-tick {
+  position: absolute;
+  top: 50%;
+  transform: translateX(-50%) translateY(-50%);
+  width: 3px;
+  height: 22px;
+  background: #9ca3af;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ml-grade-slider-feedback {
+  min-height: 18px;
+}
+
+.ml-grade-slider-feedback-text {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ml-grade-consensus-badge {
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #e5e7eb;
+  color: #374151;
+  flex-shrink: 0;
+  margin-left: 4px;
 }
 
 /* Estado de la Vía - Sistema de votación por estrellas */
@@ -17735,6 +17865,249 @@ body.pwa-standalone .feed-header {
   line-height: 1.4;
   color: #6b7280;
 }
+
+/* =============================================
+   INFO LEGEND BUTTON & PANEL
+   ============================================= */
+
+.info-legend-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  background: white;
+  border: none;
+  border-radius: 10px;
+  color: #333;
+  cursor: pointer;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  transition: background 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.info-legend-btn:hover  { background: #f5f5f5; }
+.info-legend-btn:active { transform: scale(0.93); }
+.info-legend-btn.active { background: #f0f0f0; }
+
+/* Panel desplegable — mismo patrón que grade-filter-panel */
+.info-legend-panel {
+  position: absolute;
+  top: 10px;
+  right: 58px;           /* a la izquierda del botón */
+  width: 280px;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  z-index: 1001;
+  opacity: 0;
+  transform: translateX(6px) scale(0.96);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  max-height: 72vh;
+  overflow: hidden;
+}
+
+.info-legend-panel.open {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Header */
+.ilp-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 12px 10px 14px;
+  flex-shrink: 0;
+}
+
+.ilp-map-icon {
+  width: 26px;
+  height: 26px;
+  background: #f3f4f6;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4b5563;
+  flex-shrink: 0;
+}
+
+.ilp-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
+  line-height: 26px; /* igual que el icono para forzar el mismo eje de centrado */
+}
+
+.ilp-close-btn {
+  margin-left: auto;
+  align-self: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #111111;
+  transition: opacity 0.15s;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ilp-close-btn:focus,
+.ilp-close-btn:focus-visible,
+.ilp-close-btn:focus-within { outline: none !important; box-shadow: none !important; background: transparent !important; }
+.ilp-close-btn:hover  { opacity: 0.5; }
+.ilp-close-btn:active { opacity: 0.3; background: transparent !important; }
+
+/* Separador */
+.ilp-sep {
+  height: 0;
+  border-top: 1px solid #f3f4f6;
+  flex-shrink: 0;
+}
+
+/* Tabs */
+.ilp-tabs-row {
+  display: flex;
+  gap: 5px;
+  padding: 8px 10px;
+  flex-shrink: 0;
+  background: transparent;
+}
+
+.ilp-tab {
+  flex: 1;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ilp-tab:hover          { background: #f3f4f6; color: #374151; }
+.ilp-tab:active         { background: rgba(0, 0, 0, 0.08); transform: scale(0.95); }
+.ilp-tab.active         { background: #111111; color: #ffffff; }
+.ilp-tab.active:active  { background: rgba(0, 0, 0, 0.6); transform: scale(0.95); }
+
+/* Cuerpo con scroll (scrollbar oculta) */
+.ilp-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
+  padding-bottom: 6px;
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE/Edge */
+}
+
+.ilp-body::-webkit-scrollbar { display: none; }  /* Chrome/Safari */
+
+/* ---- Tab Símbolos ---- */
+.ilp-symbol-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.ilp-symbol-item:last-child { border-bottom: none; }
+
+.ilp-symbol-icon-wrap {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ilp-symbol-info  { flex: 1; min-width: 0; padding-top: 1px; }
+
+.ilp-symbol-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.ilp-symbol-desc {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #6b7280;
+}
+
+/* Badge (tick) */
+.ilp-badge {
+  display: inline-block;
+  background: #22c55e;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+/* ---- Tab Colores ---- */
+.ilp-grade-group {
+  padding: 10px 14px 4px;
+}
+
+.ilp-grade-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #9ca3af;
+  margin-bottom: 7px;
+}
+
+.ilp-grade-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+
+.ilp-grade-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ilp-tab-content { /* visible */ }
+.ilp-hidden      { display: none; }
 
 /* =============================================
    POI Popup - Puntos de Interés
