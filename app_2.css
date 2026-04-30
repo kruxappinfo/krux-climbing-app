@@ -17874,6 +17874,7 @@ body.pwa-standalone .feed-header {
   gap: 5px;
   padding: 8px 10px;
   flex-shrink: 0;
+  background: transparent;
 }
 
 .ilp-tab {

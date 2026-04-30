@@ -10609,8 +10609,6 @@ function buildInfoLegendModalHTML() {
       <span class="ilp-title">Leyenda del mapa</span>
     </div>
 
-    <div class="ilp-sep"></div>
-
     <div class="ilp-tabs-row">
       <button class="ilp-tab active" onclick="switchInfoLegendTab('symbols', this)">Símbolos</button>
       <button class="ilp-tab" onclick="switchInfoLegendTab('colors', this)">Grados</button>
