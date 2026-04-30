@@ -10594,30 +10594,27 @@ function buildInfoLegendModalHTML() {
   });
 
   return `
+    <button class="ilp-close-btn" onclick="closeInfoLegendPanel()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+
     <div class="ilp-header">
-      <div class="ilp-header-left">
-        <span class="ilp-map-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
-            <line x1="8" y1="2" x2="8" y2="18"/>
-            <line x1="16" y1="6" x2="16" y2="22"/>
-          </svg>
-        </span>
-        <span class="ilp-title">Leyenda del mapa</span>
-      </div>
-      <button class="ilp-close-btn" onclick="closeInfoLegendPanel()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
+      <span class="ilp-map-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+          <line x1="8" y1="2" x2="8" y2="18"/>
+          <line x1="16" y1="6" x2="16" y2="22"/>
+        </svg>
+      </span>
+      <span class="ilp-title">Leyenda del mapa</span>
     </div>
 
     <div class="ilp-sep"></div>
 
     <div class="ilp-tabs-row">
       <button class="ilp-tab active" onclick="switchInfoLegendTab('symbols', this)">Símbolos</button>
-      <button class="ilp-tab" onclick="switchInfoLegendTab('colors', this)">Colores</button>
+      <button class="ilp-tab" onclick="switchInfoLegendTab('colors', this)">Grados</button>
     </div>
-
-    <div class="ilp-sep"></div>
 
     <div class="ilp-body">
       <div id="ilp-tab-symbols" class="ilp-tab-content">

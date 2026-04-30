@@ -17816,15 +17816,9 @@ body.pwa-standalone .feed-header {
 .ilp-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 13px 14px 10px;
-  flex-shrink: 0;
-}
-
-.ilp-header-left {
-  display: flex;
-  align-items: center;
   gap: 8px;
+  padding: 13px 40px 10px 14px; /* right padding deja espacio a la X flotante */
+  flex-shrink: 0;
 }
 
 .ilp-map-icon {
@@ -17846,6 +17840,9 @@ body.pwa-standalone .feed-header {
 }
 
 .ilp-close-btn {
+  position: absolute;
+  top: 13px;
+  right: 12px;
   width: 26px;
   height: 26px;
   background: none;
@@ -17855,13 +17852,14 @@ body.pwa-standalone .feed-header {
   align-items: center;
   justify-content: center;
   color: #111111;
-  flex-shrink: 0;
+  z-index: 2;
   transition: opacity 0.15s;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.ilp-close-btn:hover  { opacity: 0.6; }
-.ilp-close-btn:active { opacity: 0.4; }
+.ilp-close-btn:hover  { opacity: 0.5; }
+.ilp-close-btn:active { opacity: 0.3; }
 
 /* Separador */
 .ilp-sep {
@@ -17894,8 +17892,8 @@ body.pwa-standalone .feed-header {
 
 .ilp-tab:hover          { background: #f3f4f6; color: #374151; }
 .ilp-tab:active         { background: rgba(0, 0, 0, 0.08); transform: scale(0.95); }
-.ilp-tab.active         { background: #6C63FF; color: #ffffff; }
-.ilp-tab.active:active  { background: rgba(0, 0, 0, 0.25); transform: scale(0.95); }
+.ilp-tab.active         { background: #111111; color: #ffffff; }
+.ilp-tab.active:active  { background: rgba(0, 0, 0, 0.6); transform: scale(0.95); }
 
 /* Cuerpo con scroll (scrollbar oculta) */
 .ilp-body {
