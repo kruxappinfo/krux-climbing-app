@@ -10446,145 +10446,168 @@ function addInfoLegendButton() {
 
   container.appendChild(btn);
 
-  // Panel con tabs de leyenda
-  const panel = document.createElement('div');
-  panel.id = 'info-legend-panel';
-  panel.className = 'info-legend-panel';
-  panel.innerHTML = buildInfoLegendPanelHTML();
-  container.appendChild(panel);
-
   // Ajustar posición vertical según si los otros botones están visibles
   const updateInfoBtnPosition = () => {
     if (!mlMap) return;
     const ccaa = getCurrentCCAA();
     const otherVisible = mlMap.getZoom() > ccaa.zoom + 1;
     btn.style.top = otherVisible ? '106px' : '10px';
-    // Reposicionar el panel igualmente
-    const panelEl = document.getElementById('info-legend-panel');
-    if (panelEl) panelEl.style.top = otherVisible ? '106px' : '10px';
   };
   mlMap.on('zoom', updateInfoBtnPosition);
   updateInfoBtnPosition();
-
-  // Cerrar panel al pulsar fuera
-  document.addEventListener('click', (e) => {
-    const panelEl = document.getElementById('info-legend-panel');
-    const btnEl = document.getElementById('btn-info-legend');
-    if (panelEl && btnEl && !panelEl.contains(e.target) && !btnEl.contains(e.target)) {
-      closeInfoLegendPanel();
-    }
-  });
 }
 
-function buildInfoLegendPanelHTML() {
-  // --- Leyenda de colores ---
+// Devuelve color de texto (#000 o #fff) con contraste adecuado sobre un color hex
+function ilpContrastColor(hex) {
+  if (!hex || hex.length < 7) return '#ffffff';
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.55 ? '#1a1a1a' : '#ffffff';
+}
+
+function buildInfoLegendModalHTML() {
+  // ---- Tab Colores ----
   const legendGroups = [
-    { title: 'Principiante (3-4)', grades: ['3a','3b','3c','4a','4b','4c'] },
-    { title: 'Fácil (5)',          grades: ['5a','5a+','5b','5b+','5c','5c+'] },
-    { title: 'Medio (6a-6b)',      grades: ['6a','6a+','6b','6b+'] },
-    { title: 'Medio-Alto (6c-7a)', grades: ['6c','6c+','7a','7a+'] },
-    { title: 'Difícil (7b-7c)',    grades: ['7b','7b+','7c','7c+'] },
-    { title: 'Muy difícil (8)',    grades: ['8a','8a+','8b','8b+','8c','8c+'] },
-    { title: 'Élite (9)',          grades: ['9a','9a+','9b','9b+','9c','9c+'] }
+    { label: 'PRINCIPIANTE · 3-4', grades: ['3a','3b','3c','4a','4b','4c'] },
+    { label: 'FÁCIL · 5',          grades: ['5a','5a+','5b','5b+','5c','5c+'] },
+    { label: 'MEDIO · 6A-6B',      grades: ['6a','6a+','6b','6b+'] },
+    { label: 'MEDIO-ALTO · 6C-7A', grades: ['6c','6c+','7a','7a+'] },
+    { label: 'DIFÍCIL · 7B-7C',    grades: ['7b','7b+','7c','7c+'] },
+    { label: 'MUY DIFÍCIL · 8',    grades: ['8a','8a+','8b','8b+','8c','8c+'] },
+    { label: 'ÉLITE · 9',          grades: ['9a','9a+','9b','9b+','9c','9c+'] }
   ];
 
   let colorsHTML = '';
   legendGroups.forEach(group => {
-    colorsHTML += `<div class="grade-legend-group">
-      <div class="grade-legend-group-title">${group.title}</div>
-      <div class="grade-legend-items">`;
+    colorsHTML += `<div class="ilp-grade-group">
+      <div class="ilp-grade-group-label">${group.label}</div>
+      <div class="ilp-grade-chips">`;
     group.grades.forEach(grade => {
-      const color = typeof MAPLIBRE_GRADE_COLORS !== 'undefined'
+      const bg = typeof MAPLIBRE_GRADE_COLORS !== 'undefined'
         ? (MAPLIBRE_GRADE_COLORS[grade] || '#888')
         : '#888';
-      colorsHTML += `
-        <div class="grade-legend-item">
-          <span class="grade-legend-dot" style="background:${color}"></span>
-          <span class="grade-legend-label">${grade}</span>
-        </div>`;
+      const fg = ilpContrastColor(bg);
+      colorsHTML += `<span class="ilp-grade-chip" style="background:${bg};color:${fg}">${grade}</span>`;
     });
     colorsHTML += `</div></div>`;
   });
 
-  // --- Leyenda de símbolos ---
+  // ---- Tab Símbolos ----
   const symbols = [
     {
       title: 'Vía deportiva',
-      desc: 'Cada círculo es una vía. El color indica el grado de dificultad.',
-      svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="9" fill="#22c55e" stroke="#fff" stroke-width="2"/></svg>`
+      badge: null,
+      desc: 'Cada círculo es una vía. El color indica la dificultad.',
+      iconBg: '#dcfce7',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><circle cx="16" cy="16" r="9" fill="#22c55e" stroke="#fff" stroke-width="2"/></svg>`
     },
     {
-      title: 'Vía hecha (tick)',
-      desc: 'Vía ya encadenada y registrada en tu logbook.',
-      svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="#22c55e" stroke="#fff" stroke-width="2"/><polyline points="10,17 14,21 22,12" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      title: 'Vía hecha',
+      badge: 'tick',
+      desc: 'Vía encadenada y registrada en tu logbook.',
+      iconBg: '#dcfce7',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><circle cx="16" cy="16" r="11" fill="#22c55e" stroke="#fff" stroke-width="1.5"/><polyline points="10,17 14,21 22,12" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
     },
     {
       title: 'Vías con variantes',
-      desc: 'Grupo de vías con salida común. Cada anillo es una variante.',
-      svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="16" cy="16" r="13" fill="none" stroke="#3b82f6" stroke-width="2.5"/><circle cx="16" cy="16" r="9.5" fill="none" stroke="#fff" stroke-width="1"/><circle cx="16" cy="16" r="8.5" fill="none" stroke="#f59e0b" stroke-width="2.5"/><circle cx="16" cy="16" r="5" fill="#ef4444"/></svg>`
+      badge: null,
+      desc: 'Grupo con salida común. Cada anillo es una variante.',
+      iconBg: '#fef9ee',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><circle cx="16" cy="16" r="13" fill="none" stroke="#3b82f6" stroke-width="2"/><circle cx="16" cy="16" r="9" fill="none" stroke="#f59e0b" stroke-width="2"/><circle cx="16" cy="16" r="5" fill="#ef4444"/></svg>`
     },
     {
       title: 'Sector',
+      badge: null,
       desc: 'Línea coloreada que delimita un sector de escalada.',
-      svg: `<svg viewBox="0 0 32 32"><path d="M3 22 C 9 8, 22 26, 29 10" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" opacity="0.7"/><path d="M3 22 C 9 8, 22 26, 29 10" fill="none" stroke="#a855f7" stroke-width="3.5" stroke-linecap="round"/></svg>`
+      iconBg: '#f3e8ff',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><path d="M4 24 C 10 10, 22 28, 28 10" fill="none" stroke="#a855f7" stroke-width="3" stroke-linecap="round"/></svg>`
     },
     {
       title: 'Ruta de acceso',
-      desc: 'Sendero de aproximación al sector (línea naranja discontinua).',
-      svg: `<svg viewBox="0 0 32 32"><path d="M3 26 C 10 22, 14 10, 22 8 L 29 6" fill="none" stroke="#FF6B00" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 3"/></svg>`
+      badge: null,
+      desc: 'Sendero de aproximación (línea naranja discontinua).',
+      iconBg: '#fff7ed',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><path d="M4 26 C 10 22, 16 10, 28 6" fill="none" stroke="#f97316" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="4 3"/></svg>`
     },
     {
       title: 'Parking',
+      badge: null,
       desc: 'Aparcamiento recomendado. Pulsa para ver indicaciones.',
-      svg: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#4285f4" stroke="#fff" stroke-width="2"/><text x="12" y="17" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold" font-family="sans-serif">P</text></svg>`
+      iconBg: '#dbeafe',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><circle cx="16" cy="16" r="12" fill="#4285f4"/><text x="16" y="21" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold" font-family="sans-serif">P</text></svg>`
     },
     {
       title: 'Punto de interés (POI)',
+      badge: null,
       desc: 'Fuente, refugio, bar, peligro… El emoji indica el tipo.',
-      svg: `<svg viewBox="0 0 32 32"><text x="16" y="22" text-anchor="middle" font-size="20">🚰</text></svg>`
+      iconBg: '#f3f4f6',
+      svg: `<svg viewBox="0 0 32 32" width="32" height="32"><text x="16" y="23" text-anchor="middle" font-size="20">🚰</text></svg>`
     },
     {
       title: 'Escuela abierta',
-      desc: 'Escuela con cartografía publicada. Pulsa para explorarla.',
-      svg: `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#22c55e"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g></svg>`
+      badge: null,
+      desc: 'Cartografía publicada. Pulsa para explorar sectores y vías.',
+      iconBg: '#dcfce7',
+      svg: `<svg viewBox="0 0 48 48" width="32" height="32"><circle cx="24" cy="24" r="22" fill="#22c55e"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g></svg>`
     },
     {
       title: 'Escuela en desarrollo',
+      badge: null,
       desc: 'Datos parciales o en construcción.',
-      svg: `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#f59e0b"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g><g transform="translate(36,10)"><circle cx="0" cy="0" r="8" fill="#fff" stroke="#f59e0b" stroke-width="1.5"/><text x="0" y="3.5" text-anchor="middle" font-size="10">🔨</text></g></svg>`
+      iconBg: '#fef9c3',
+      svg: `<svg viewBox="0 0 48 48" width="32" height="32"><circle cx="24" cy="24" r="22" fill="#f59e0b"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g></svg>`
     }
   ];
 
   let symbolsHTML = '';
   symbols.forEach(s => {
+    const badge = s.badge
+      ? `<span class="ilp-badge">${s.badge}</span>`
+      : '';
     symbolsHTML += `
-      <div class="symbol-legend-item">
-        <div class="symbol-legend-icon">${s.svg}</div>
-        <div class="symbol-legend-text">
-          <div class="symbol-legend-title">${s.title}</div>
-          <div class="symbol-legend-desc">${s.desc}</div>
+      <div class="ilp-symbol-item">
+        <div class="ilp-symbol-icon-wrap" style="background:${s.iconBg}">${s.svg}</div>
+        <div class="ilp-symbol-info">
+          <div class="ilp-symbol-title">${s.title}${badge}</div>
+          <div class="ilp-symbol-desc">${s.desc}</div>
         </div>
       </div>`;
   });
 
   return `
-    <div class="ilp-header">
-      <span class="ilp-title">Leyenda del mapa</span>
-      <button class="ilp-close-btn" onclick="closeInfoLegendPanel()" title="Cerrar">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="ilp-tabs">
-      <button class="ilp-tab active" data-tab="colors" onclick="switchInfoLegendTab('colors', this)">Colores</button>
-      <button class="ilp-tab" data-tab="symbols" onclick="switchInfoLegendTab('symbols', this)">Símbolos</button>
-    </div>
-    <div class="ilp-body">
-      <div class="ilp-tab-content" id="ilp-tab-colors">
-        ${colorsHTML}
+    <div class="ilp-modal-content">
+      <div class="ilp-header">
+        <div class="ilp-header-left">
+          <span class="ilp-map-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+              <line x1="8" y1="2" x2="8" y2="18"/>
+              <line x1="16" y1="6" x2="16" y2="22"/>
+            </svg>
+          </span>
+          <span class="ilp-title">Leyenda del mapa</span>
+        </div>
+        <button class="ilp-close-btn" onclick="closeInfoLegendPanel()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
-      <div class="ilp-tab-content ilp-hidden" id="ilp-tab-symbols">
-        <div class="symbols-legend-body" style="padding:0;">
+
+      <div class="ilp-sep"></div>
+
+      <div class="ilp-tabs-row">
+        <button class="ilp-tab active" onclick="switchInfoLegendTab('symbols', this)">Símbolos</button>
+        <button class="ilp-tab" onclick="switchInfoLegendTab('colors', this)">Colores</button>
+      </div>
+
+      <div class="ilp-sep"></div>
+
+      <div class="ilp-body">
+        <div id="ilp-tab-symbols" class="ilp-tab-content">
           ${symbolsHTML}
+        </div>
+        <div id="ilp-tab-colors" class="ilp-tab-content ilp-hidden">
+          ${colorsHTML}
         </div>
       </div>
     </div>
@@ -10600,36 +10623,45 @@ function toggleInfoLegendPanel() {
 }
 
 function openInfoLegendPanel() {
-  const panel = document.getElementById('info-legend-panel');
+  const existing = document.getElementById('info-legend-modal');
+  if (existing) existing.remove();
+
+  closeGradeFilterPanel();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'info-legend-modal';
+  overlay.className = 'ilp-overlay';
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeInfoLegendPanel();
+  });
+  overlay.innerHTML = buildInfoLegendModalHTML();
+  document.body.appendChild(overlay);
+
   const btn = document.getElementById('btn-info-legend');
-  if (!panel) return;
-  panel.classList.add('open');
   if (btn) btn.classList.add('active');
   mlInfoLegendPanelOpen = true;
-  closeGradeFilterPanel();
 }
 
 function closeInfoLegendPanel() {
-  const panel = document.getElementById('info-legend-panel');
+  const modal = document.getElementById('info-legend-modal');
+  if (modal) modal.remove();
   const btn = document.getElementById('btn-info-legend');
-  if (!panel) return;
-  panel.classList.remove('open');
   if (btn) btn.classList.remove('active');
   mlInfoLegendPanelOpen = false;
 }
 
 function switchInfoLegendTab(tab, btnEl) {
-  const colorsPanel = document.getElementById('ilp-tab-colors');
   const symbolsPanel = document.getElementById('ilp-tab-symbols');
-  const tabs = document.querySelectorAll('.ilp-tab');
-  tabs.forEach(t => t.classList.remove('active'));
+  const colorsPanel  = document.getElementById('ilp-tab-colors');
+  document.querySelectorAll('#info-legend-modal .ilp-tab')
+    .forEach(t => t.classList.remove('active'));
   if (btnEl) btnEl.classList.add('active');
-  if (tab === 'colors') {
-    colorsPanel.classList.remove('ilp-hidden');
-    symbolsPanel.classList.add('ilp-hidden');
-  } else {
+  if (tab === 'symbols') {
     symbolsPanel.classList.remove('ilp-hidden');
     colorsPanel.classList.add('ilp-hidden');
+  } else {
+    colorsPanel.classList.remove('ilp-hidden');
+    symbolsPanel.classList.add('ilp-hidden');
   }
 }
 
