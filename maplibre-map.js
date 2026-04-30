@@ -10446,15 +10446,33 @@ function addInfoLegendButton() {
 
   container.appendChild(btn);
 
+  // Panel desplegable (mismo patrón que grade-filter-panel)
+  const panel = document.createElement('div');
+  panel.id = 'info-legend-panel';
+  panel.className = 'info-legend-panel';
+  panel.innerHTML = buildInfoLegendModalHTML();
+  container.appendChild(panel);
+
   // Ajustar posición vertical según si los otros botones están visibles
   const updateInfoBtnPosition = () => {
     if (!mlMap) return;
     const ccaa = getCurrentCCAA();
     const otherVisible = mlMap.getZoom() > ccaa.zoom + 1;
-    btn.style.top = otherVisible ? '106px' : '10px';
+    const top = otherVisible ? '106px' : '10px';
+    btn.style.top = top;
+    panel.style.top = top;
   };
   mlMap.on('zoom', updateInfoBtnPosition);
   updateInfoBtnPosition();
+
+  // Cerrar panel al pulsar fuera
+  document.addEventListener('click', (e) => {
+    const panelEl = document.getElementById('info-legend-panel');
+    const btnEl = document.getElementById('btn-info-legend');
+    if (panelEl && btnEl && !panelEl.contains(e.target) && !btnEl.contains(e.target)) {
+      closeInfoLegendPanel();
+    }
+  });
 }
 
 // Devuelve color de texto (#000 o #fff) con contraste adecuado sobre un color hex
@@ -10576,39 +10594,37 @@ function buildInfoLegendModalHTML() {
   });
 
   return `
-    <div class="ilp-modal-content">
-      <div class="ilp-header">
-        <div class="ilp-header-left">
-          <span class="ilp-map-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
-              <line x1="8" y1="2" x2="8" y2="18"/>
-              <line x1="16" y1="6" x2="16" y2="22"/>
-            </svg>
-          </span>
-          <span class="ilp-title">Leyenda del mapa</span>
-        </div>
-        <button class="ilp-close-btn" onclick="closeInfoLegendPanel()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+    <div class="ilp-header">
+      <div class="ilp-header-left">
+        <span class="ilp-map-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+            <line x1="8" y1="2" x2="8" y2="18"/>
+            <line x1="16" y1="6" x2="16" y2="22"/>
+          </svg>
+        </span>
+        <span class="ilp-title">Leyenda del mapa</span>
       </div>
+      <button class="ilp-close-btn" onclick="closeInfoLegendPanel()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
 
-      <div class="ilp-sep"></div>
+    <div class="ilp-sep"></div>
 
-      <div class="ilp-tabs-row">
-        <button class="ilp-tab active" onclick="switchInfoLegendTab('symbols', this)">Símbolos</button>
-        <button class="ilp-tab" onclick="switchInfoLegendTab('colors', this)">Colores</button>
+    <div class="ilp-tabs-row">
+      <button class="ilp-tab active" onclick="switchInfoLegendTab('symbols', this)">Símbolos</button>
+      <button class="ilp-tab" onclick="switchInfoLegendTab('colors', this)">Colores</button>
+    </div>
+
+    <div class="ilp-sep"></div>
+
+    <div class="ilp-body">
+      <div id="ilp-tab-symbols" class="ilp-tab-content">
+        ${symbolsHTML}
       </div>
-
-      <div class="ilp-sep"></div>
-
-      <div class="ilp-body">
-        <div id="ilp-tab-symbols" class="ilp-tab-content">
-          ${symbolsHTML}
-        </div>
-        <div id="ilp-tab-colors" class="ilp-tab-content ilp-hidden">
-          ${colorsHTML}
-        </div>
+      <div id="ilp-tab-colors" class="ilp-tab-content ilp-hidden">
+        ${colorsHTML}
       </div>
     </div>
   `;
@@ -10623,29 +10639,20 @@ function toggleInfoLegendPanel() {
 }
 
 function openInfoLegendPanel() {
-  const existing = document.getElementById('info-legend-modal');
-  if (existing) existing.remove();
-
+  const panel = document.getElementById('info-legend-panel');
+  const btn   = document.getElementById('btn-info-legend');
+  if (!panel) return;
   closeGradeFilterPanel();
-
-  const overlay = document.createElement('div');
-  overlay.id = 'info-legend-modal';
-  overlay.className = 'ilp-overlay';
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) closeInfoLegendPanel();
-  });
-  overlay.innerHTML = buildInfoLegendModalHTML();
-  document.body.appendChild(overlay);
-
-  const btn = document.getElementById('btn-info-legend');
+  panel.classList.add('open');
   if (btn) btn.classList.add('active');
   mlInfoLegendPanelOpen = true;
 }
 
 function closeInfoLegendPanel() {
-  const modal = document.getElementById('info-legend-modal');
-  if (modal) modal.remove();
-  const btn = document.getElementById('btn-info-legend');
+  const panel = document.getElementById('info-legend-panel');
+  const btn   = document.getElementById('btn-info-legend');
+  if (!panel) return;
+  panel.classList.remove('open');
   if (btn) btn.classList.remove('active');
   mlInfoLegendPanelOpen = false;
 }

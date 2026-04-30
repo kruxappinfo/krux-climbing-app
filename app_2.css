@@ -17758,7 +17758,7 @@ body.pwa-standalone .feed-header {
 }
 
 /* =============================================
-   INFO LEGEND BUTTON & MODAL
+   INFO LEGEND BUTTON & PANEL
    ============================================= */
 
 .info-legend-btn {
@@ -17782,45 +17782,34 @@ body.pwa-standalone .feed-header {
   touch-action: manipulation;
 }
 
-.info-legend-btn:hover { background: #f5f5f5; }
+.info-legend-btn:hover  { background: #f5f5f5; }
 .info-legend-btn:active { transform: scale(0.93); }
-.info-legend-btn.active { background: #efefef; }
+.info-legend-btn.active { background: #f0f0f0; }
 
-/* Overlay backdrop */
-.ilp-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  animation: ilpFadeIn 0.2s ease;
-}
-
-@keyframes ilpFadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-/* Modal card - dark theme */
-.ilp-modal-content {
-  background: #2c2c2e;
-  border-radius: 18px;
-  width: 100%;
-  max-width: 360px;
-  max-height: 82vh;
+/* Panel desplegable — mismo patrón que grade-filter-panel */
+.info-legend-panel {
+  position: absolute;
+  top: 10px;
+  right: 58px;           /* a la izquierda del botón */
+  width: 280px;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  z-index: 1001;
+  opacity: 0;
+  transform: translateX(6px) scale(0.96);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
   display: flex;
   flex-direction: column;
+  max-height: 72vh;
   overflow: hidden;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
-  animation: ilpSlideUp 0.25s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
-@keyframes ilpSlideUp {
-  from { transform: translateY(24px); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
+.info-legend-panel.open {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
 }
 
 /* Header */
@@ -17828,111 +17817,104 @@ body.pwa-standalone .feed-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 18px 14px;
+  padding: 13px 14px 10px;
   flex-shrink: 0;
 }
 
 .ilp-header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .ilp-map-icon {
-  width: 38px;
-  height: 38px;
-  background: rgba(255,255,255,0.1);
-  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  background: #f3f4f6;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255,255,255,0.85);
+  color: #4b5563;
   flex-shrink: 0;
 }
 
 .ilp-title {
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 700;
-  color: #ffffff;
-  letter-spacing: -0.3px;
+  color: #1f2937;
 }
 
 .ilp-close-btn {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.12);
+  background: #f3f4f6;
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255,255,255,0.7);
+  color: #6b7280;
   flex-shrink: 0;
   transition: background 0.15s;
 }
 
-.ilp-close-btn:hover { background: rgba(255,255,255,0.2); }
+.ilp-close-btn:hover { background: #e5e7eb; color: #374151; }
 
-/* Separator */
+/* Separador */
 .ilp-sep {
   height: 0;
-  border-top: 0.5px solid rgba(255,255,255,0.12);
+  border-top: 1px solid #f3f4f6;
   flex-shrink: 0;
 }
 
-/* Tabs row */
+/* Tabs */
 .ilp-tabs-row {
   display: flex;
-  gap: 6px;
-  padding: 10px 14px;
+  gap: 5px;
+  padding: 8px 10px;
   flex-shrink: 0;
 }
 
 .ilp-tab {
   flex: 1;
-  padding: 8px 14px;
+  padding: 6px 10px;
   background: transparent;
   border: none;
   border-radius: 10px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: rgba(255,255,255,0.4);
+  color: #9ca3af;
   cursor: pointer;
-  transition: background 0.18s, color 0.18s;
+  transition: background 0.15s, color 0.15s;
 }
 
-.ilp-tab:hover {
-  color: rgba(255,255,255,0.7);
-}
+.ilp-tab:hover  { background: #f3f4f6; color: #374151; }
+.ilp-tab.active { background: #6C63FF; color: #ffffff; }
 
-.ilp-tab.active {
-  background: #6C63FF;
-  color: #ffffff;
-}
-
-/* Scrollable body */
+/* Cuerpo con scroll */
 .ilp-body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 6px 0 8px;
   flex: 1;
+  padding-bottom: 6px;
 }
 
-/* ---- Tab: Símbolos ---- */
+/* ---- Tab Símbolos ---- */
 .ilp-symbol-item {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
-  padding: 14px 18px;
-  border-bottom: 0.5px solid rgba(255,255,255,0.07);
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid #f3f4f6;
 }
 
 .ilp-symbol-item:last-child { border-bottom: none; }
 
 .ilp-symbol-icon-wrap {
-  width: 52px;
-  height: 52px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -17940,71 +17922,69 @@ body.pwa-standalone .feed-header {
   flex-shrink: 0;
 }
 
-.ilp-symbol-info { flex: 1; min-width: 0; padding-top: 2px; }
+.ilp-symbol-info  { flex: 1; min-width: 0; padding-top: 1px; }
 
 .ilp-symbol-title {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
-  color: #ffffff;
-  margin-bottom: 3px;
+  color: #1f2937;
+  margin-bottom: 2px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: wrap;
 }
 
 .ilp-symbol-desc {
-  font-size: 13px;
-  line-height: 1.45;
-  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+  line-height: 1.4;
+  color: #6b7280;
 }
 
-/* Badge (e.g. "tick") */
+/* Badge (tick) */
 .ilp-badge {
   display: inline-block;
   background: #22c55e;
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
-  letter-spacing: 0.3px;
 }
 
-/* ---- Tab: Colores ---- */
+/* ---- Tab Colores ---- */
 .ilp-grade-group {
-  padding: 12px 18px 4px;
+  padding: 10px 14px 4px;
 }
 
 .ilp-grade-group-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.6px;
-  color: rgba(255,255,255,0.35);
-  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+  color: #9ca3af;
+  margin-bottom: 7px;
 }
 
 .ilp-grade-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 5px;
+  margin-bottom: 4px;
 }
 
 .ilp-grade-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  padding: 7px 10px;
-  border-radius: 10px;
-  font-size: 13px;
+  min-width: 40px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.2px;
 }
 
-.ilp-tab-content { /* visible by default */ }
-.ilp-hidden { display: none; }
+.ilp-tab-content { /* visible */ }
+.ilp-hidden      { display: none; }
 
 /* =============================================
    POI Popup - Puntos de Interés
