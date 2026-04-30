@@ -17841,14 +17841,14 @@ body.pwa-standalone .feed-header {
 
 .ilp-close-btn {
   position: absolute;
-  top: 13px;
+  top: 15px;        /* centrado con la línea del header (icon 30px + padding 13px top) */
   right: 12px;
   width: 26px;
   height: 26px;
-  background: transparent;
-  border: none;
-  outline: none;
-  box-shadow: none;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   -webkit-appearance: none;
   appearance: none;
   cursor: pointer;
@@ -17862,9 +17862,11 @@ body.pwa-standalone .feed-header {
   -webkit-tap-highlight-color: transparent;
 }
 
-.ilp-close-btn:focus  { outline: none; box-shadow: none; }
+.ilp-close-btn:focus,
+.ilp-close-btn:focus-visible,
+.ilp-close-btn:focus-within { outline: none !important; box-shadow: none !important; background: transparent !important; }
 .ilp-close-btn:hover  { opacity: 0.5; }
-.ilp-close-btn:active { opacity: 0.3; }
+.ilp-close-btn:active { opacity: 0.3; background: transparent !important; }
 
 /* Separador */
 .ilp-sep {
