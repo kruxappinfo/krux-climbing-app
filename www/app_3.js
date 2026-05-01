@@ -11033,22 +11033,21 @@ async function loadActivityData() {
       }
     });
 
-    // Calculate stats for filtered ascents (or all if no filter matches)
-    const statsAscents = filteredAscents.length > 0 ? filteredAscents : allAscents;
-    calculateAndUpdateStats(statsAscents);
+    calculateAndUpdateStats(filteredAscents);
 
     // Update histogram with ALL ascents (histogram uses its own time filtering)
     requestAnimationFrame(() => {
       updateCombinedHistogram(allAscents);
     });
 
-    // Render activity list
-    renderActivityList(statsAscents.slice(0, 50));
+    // Render activity list using filtered ascents; fallback to all for the list only
+    const listAscents = filteredAscents.length > 0 ? filteredAscents : allAscents;
+    renderActivityList(listAscents.slice(0, 50));
 
     // Show/hide empty state
     const emptyState = document.getElementById('activity-empty');
     if (emptyState) {
-      emptyState.style.display = statsAscents.length === 0 ? 'flex' : 'none';
+      emptyState.style.display = listAscents.length === 0 ? 'flex' : 'none';
     }
 
   } catch (error) {
@@ -11066,11 +11065,11 @@ function resetAllStats() {
   updateStatValue('stat-flash-rate', '0%');
   updateStatValue('stat-main-style', '-');
 
-  // Slide 2: Metros
-  updateStatValue('stat-total-meters', '0<small>m</small>');
-  updateStatValue('stat-avg-meters', '0<small>m</small>');
-  updateStatValue('stat-avg-aleje', '0<small>m</small>');
-  updateStatValue('stat-max-aleje', '0<small>m</small>');
+  // Slide 2: Intentos y Valoración
+  updateStatValue('stat-total-tries', '0');
+  updateStatValue('stat-avg-tries', '0');
+  updateStatValue('stat-rated-routes', '0');
+  updateStatValue('stat-avg-rating', '-');
 
   // Slide 3: Escuelas y Sectores
   updateStatValue('stat-top-school', '-');
@@ -11094,40 +11093,34 @@ function calculateAndUpdateStats(ascents) {
   const styles = {};
   const schools = {};
   const sectors = {};
-  let totalMeters = 0;
-  let totalAleje = 0;
-  let maxAleje = 0;
-  let alejeCount = 0;
+  const climbingDays = new Set();
+  let totalTries = 0;
+  let totalRating = 0;
+  let ratedCount = 0;
   let flashCount = 0;
 
   // Process each ascent
   ascents.forEach(ascent => {
     // Grades
-    if (ascent.grade) {
-      grades.push(ascent.grade.toLowerCase());
-    }
+    if (ascent.grade) grades.push(ascent.grade.toLowerCase());
 
     // Styles count
     if (ascent.style) {
       styles[ascent.style] = (styles[ascent.style] || 0) + 1;
-      if (ascent.style === 'flash' || ascent.style === 'onsight') {
-        flashCount++;
-      }
+      if (ascent.style === 'flash' || ascent.style === 'onsight') flashCount++;
     }
 
-    // Meters
-    if (ascent.meters || ascent.height) {
-      const meters = ascent.meters || ascent.height || 0;
-      totalMeters += meters;
-    }
+    // Climbing days (unique calendar dates)
+    const d = ascent.date?.toDate ? ascent.date.toDate() : new Date(ascent.date);
+    if (d && !isNaN(d)) climbingDays.add(d.toISOString().split('T')[0]);
 
-    // Aleje (distance between quickdraws)
-    if (ascent.aleje) {
-      totalAleje += ascent.aleje;
-      alejeCount++;
-      if (ascent.aleje > maxAleje) {
-        maxAleje = ascent.aleje;
-      }
+    // Tries
+    if (ascent.tries && ascent.tries > 0) totalTries += ascent.tries;
+
+    // Rating
+    if (ascent.rating && ascent.rating > 0) {
+      totalRating += ascent.rating;
+      ratedCount++;
     }
 
     // Schools and Sectors
@@ -11135,7 +11128,6 @@ function calculateAndUpdateStats(ascents) {
       const schoolName = ascent.schoolName || ascent.school;
       schools[schoolName] = (schools[schoolName] || 0) + 1;
     }
-
     if (ascent.sectorName || ascent.sector) {
       const sectorName = ascent.sectorName || ascent.sector;
       sectors[sectorName] = (sectors[sectorName] || 0) + 1;
@@ -11143,39 +11135,31 @@ function calculateAndUpdateStats(ascents) {
   });
 
   // === SLIDE 1: Rendimiento ===
-  // Total vías
   updateStatValue('stat-total-routes', ascents.length);
+  updateStatValue('stat-placeholder-1', climbingDays.size);
 
-  // Grado máximo
   const maxGrade = findMaxGrade(grades);
   updateStatValue('stat-max-grade', maxGrade || '-');
 
-  // Grado medio
   const avgGrade = calculateAverageGrade(grades, gradeOrder);
   updateStatValue('stat-avg-grade', avgGrade || '-');
 
-  // Flash rate
   const flashRate = ascents.length > 0 ? Math.round((flashCount / ascents.length) * 100) : 0;
   updateStatValue('stat-flash-rate', flashRate + '%');
 
-  // Estilo predominante
   const mainStyle = getMainStyle(styles);
   updateStatValue('stat-main-style', mainStyle);
 
-  // === SLIDE 2: Metros ===
-  // Metros totales
-  updateStatValue('stat-total-meters', totalMeters + '<small>m</small>');
+  // === SLIDE 2: Intentos y Valoración ===
+  updateStatValue('stat-total-tries', totalTries);
 
-  // Media metros por vía
-  const avgMeters = ascents.length > 0 ? Math.round(totalMeters / ascents.length) : 0;
-  updateStatValue('stat-avg-meters', avgMeters + '<small>m</small>');
+  const avgTries = ascents.length > 0 ? (totalTries / ascents.length).toFixed(1) : 0;
+  updateStatValue('stat-avg-tries', avgTries);
 
-  // Aleje promedio
-  const avgAleje = alejeCount > 0 ? (totalAleje / alejeCount).toFixed(1) : 0;
-  updateStatValue('stat-avg-aleje', avgAleje + '<small>m</small>');
+  updateStatValue('stat-rated-routes', ratedCount);
 
-  // Máximo aleje
-  updateStatValue('stat-max-aleje', maxAleje.toFixed(1) + '<small>m</small>');
+  const avgRating = ratedCount > 0 ? (totalRating / ratedCount).toFixed(1) : '-';
+  updateStatValue('stat-avg-rating', avgRating !== '-' ? avgRating + '<small>/5</small>' : '-');
 
   // === SLIDE 3: Escuelas y Sectores ===
   // Escuela más visitada
@@ -11290,37 +11274,37 @@ function renderActivityList(ascents) {
     return;
   }
 
-  ascents.forEach(ascent => {
     const styleIcon = {
-      flash: '⚡',
-      redpoint: '🔴',
-      onsight: '👁️',
-      project: '🎯'
-    };
+    flash: '⚡',
+    redpoint: '🔴',
+    onsight: '👁️',
+    toprope: '🔁',
+    lead: '🧗',
+    project: '🎯'
+  };
 
-    const icon = styleIcon[ascent.style] || 'x”';
-    const date = ascent.date?.toDate?.() || new Date();
-    const formattedDate = date.toLocaleDateString('es-ES', {
-      day: 'numeric',
-      month: 'short'
-    });
+  ascents.forEach(ascent => {
+    const icon = styleIcon[ascent.style] || '🧗';
+    const rawDate = ascent.date?.toDate ? ascent.date.toDate() : new Date(ascent.date);
+    const formattedDate = !isNaN(rawDate) ? rawDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : '';
+    const location = [ascent.schoolName, ascent.sector].filter(Boolean).join(' · ') || 'Ubicación desconocida';
 
     const itemHtml = `
       <div class="activity-item" data-id="${ascent.id}">
         <div class="activity-item-icon ${ascent.style || ''}">${icon}</div>
         <div class="activity-item-content">
           <div class="activity-item-header">
-            <h4 class="activity-item-name">${ascent.routeName || 'Ví­a sin nombre'}</h4>
+            <h4 class="activity-item-name">${ascent.routeName || 'Vía sin nombre'}</h4>
             <span class="activity-item-grade">${ascent.grade || '-'}</span>
           </div>
           <div class="activity-item-meta">
-            <span class="activity-item-location">📍 ${ascent.location || 'Ubicación desconocida'}</span>
-            <span class="activity-item-date">x¦ ${formattedDate}</span>
+            <span class="activity-item-location">📍 ${location}</span>
+            <span class="activity-item-date">📅 ${formattedDate}</span>
           </div>
-          ${ascent.attempts || ascent.duration ? `
+          ${ascent.tries > 1 || ascent.rating > 0 ? `
             <div class="activity-item-stats">
-              ${ascent.attempts ? `<span class="activity-stat-mini">x${ascent.attempts} intentos</span>` : ''}
-              ${ascent.duration ? `<span class="activity-stat-mini">x${ascent.duration} min</span>` : ''}
+              ${ascent.tries > 1 ? `<span class="activity-stat-mini">${ascent.tries} intentos</span>` : ''}
+              ${ascent.rating > 0 ? `<span class="activity-stat-mini">${'\u2605'.repeat(ascent.rating)}</span>` : ''}
             </div>
           ` : ''}
         </div>

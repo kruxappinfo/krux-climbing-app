@@ -519,21 +519,24 @@
                 </div>
               </div>
 
-              <!-- Slide 2: Metros y Distancia -->
+              <!-- Slide 2: Intentos y Valoración -->
               <div class="stats-carousel-slide" data-slide="1">
                 <div class="activity-stats-grid">
                   <div class="activity-stat-card">
                     <div class="stat-icon stat-icon-meters">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2">
-                        <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-                        <path d="M2 17l10 5 10-5"></path>
-                        <path d="M2 12l10 5 10-5"></path>
+                        <line x1="8" y1="6" x2="21" y2="6"></line>
+                        <line x1="8" y1="12" x2="21" y2="12"></line>
+                        <line x1="8" y1="18" x2="21" y2="18"></line>
+                        <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                        <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                        <line x1="3" y1="18" x2="3.01" y2="18"></line>
                       </svg>
                     </div>
                     <div class="stat-content">
-                      <span class="stat-label">Metros totales</span>
-                      <span class="stat-value" id="stat-total-meters">1.250<small>m</small></span>
+                      <span class="stat-label">Intentos totales</span>
+                      <span class="stat-value" id="stat-total-tries">0</span>
                     </div>
                   </div>
 
@@ -547,8 +550,8 @@
                       </svg>
                     </div>
                     <div class="stat-content">
-                      <span class="stat-label">Media metros/vía</span>
-                      <span class="stat-value" id="stat-avg-meters">27<small>m</small></span>
+                      <span class="stat-label">Media intentos/vía</span>
+                      <span class="stat-value" id="stat-avg-tries">0</span>
                     </div>
                   </div>
 
@@ -556,15 +559,12 @@
                     <div class="stat-icon stat-icon-aleje">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2">
-                        <path d="M4 19l8-8"></path>
-                        <path d="M4 19h5"></path>
-                        <path d="M4 19v-5"></path>
-                        <circle cx="18" cy="6" r="3"></circle>
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
                       </svg>
                     </div>
                     <div class="stat-content">
-                      <span class="stat-label">Aleje promedio</span>
-                      <span class="stat-value" id="stat-avg-aleje">3.2<small>m</small></span>
+                      <span class="stat-label">Vías valoradas</span>
+                      <span class="stat-value" id="stat-rated-routes">0</span>
                     </div>
                   </div>
 
@@ -572,13 +572,12 @@
                     <div class="stat-icon stat-icon-max-aleje">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2">
-                        <path d="M13 17l5-5-5-5"></path>
-                        <path d="M6 17l5-5-5-5"></path>
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
                       </svg>
                     </div>
                     <div class="stat-content">
-                      <span class="stat-label">Máximo aleje</span>
-                      <span class="stat-value" id="stat-max-aleje">5.8<small>m</small></span>
+                      <span class="stat-label">Valoración media</span>
+                      <span class="stat-value" id="stat-avg-rating">-</span>
                     </div>
                   </div>
                 </div>
