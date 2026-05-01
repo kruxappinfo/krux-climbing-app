@@ -4106,14 +4106,6 @@ function generateGradeSliderHTML(routeId, schoolId, grade, gradeVoteData) {
   }
 
   let feedbackHTML = '';
-  if (hasUserVote) {
-    const votedGrade = ALL_GRADES_ORDERED[userVoteIdx] || grade;
-    let color, suffix;
-    if (userVoteIdx < officialIdx) { color = '#16a34a'; suffix = 'más fácil que el grado oficial'; }
-    else if (userVoteIdx === officialIdx) { color = '#2563eb'; suffix = 'mismo grado oficial'; }
-    else { color = '#dc2626'; suffix = 'más difícil que el grado oficial'; }
-    feedbackHTML = `<div class="ml-grade-slider-feedback"><span class="ml-grade-slider-feedback-text" style="color:${color}">${votedGrade} · ${suffix}</span></div>`;
-  }
 
   return `
     <div class="ml-grade-slider" data-route="${routeId}" data-school="${schoolId}" data-official-idx="${officialIdx}" data-label-indices="${labelIndices.join(',')}">
@@ -4146,25 +4138,6 @@ function mlGradeSliderInput(input) {
   const container = input.closest('.ml-grade-slider');
   if (!container) return;
 
-  let feedbackEl = container.querySelector('.ml-grade-slider-feedback');
-  if (!feedbackEl) {
-    feedbackEl = document.createElement('div');
-    feedbackEl.className = 'ml-grade-slider-feedback';
-    container.appendChild(feedbackEl);
-  }
-  let textEl = feedbackEl.querySelector('.ml-grade-slider-feedback-text');
-  if (!textEl) {
-    textEl = document.createElement('span');
-    textEl.className = 'ml-grade-slider-feedback-text';
-    feedbackEl.appendChild(textEl);
-  }
-
-  let color, suffix;
-  if (gradeIdx < officialIdx) { color = '#16a34a'; suffix = 'más fácil que el grado oficial'; }
-  else if (gradeIdx === officialIdx) { color = '#2563eb'; suffix = 'mismo grado oficial'; }
-  else { color = '#dc2626'; suffix = 'más difícil que el grado oficial'; }
-
-  textEl.textContent = `${grade} · ${suffix}`;
   textEl.style.color = color;
 }
 
