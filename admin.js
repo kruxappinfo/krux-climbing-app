@@ -398,10 +398,34 @@ function createRouteCard(route) {
     `;
 }
 
+const SPOTTER_POINTS = {
+    pending_routes: 10,
+    pending_poi: 5,
+    pending_schools: 15,
+    pending_sectors: 15
+};
+
+async function awardSpotterPoints(collection, docId) {
+    try {
+        const doc = await db.collection(collection).doc(docId).get();
+        if (!doc.exists) return;
+        const createdBy = doc.data().createdBy;
+        if (!createdBy) return;
+        const points = SPOTTER_POINTS[collection];
+        if (!points) return;
+        await db.collection('admins').doc(createdBy).update({
+            points: firebase.firestore.FieldValue.increment(points)
+        });
+    } catch (e) {
+        console.warn('[Admin] No se pudieron otorgar puntos al spotter:', e);
+    }
+}
+
 async function approveRoute(routeId) {
     if (!confirm('¿Aprobar esta vía?')) return;
 
     try {
+        await awardSpotterPoints('pending_routes', routeId);
         await db.collection('pending_routes').doc(routeId).update({
             status: 'approved',
             approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1184,6 +1208,7 @@ async function approveRouteFromMap(routeId) {
     if (!confirm('¿Aprobar esta vía?')) return;
 
     try {
+        await awardSpotterPoints('pending_routes', routeId);
         await db.collection('pending_routes').doc(routeId).update({
             status: 'approved',
             approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -2970,6 +2995,7 @@ async function loadPendingPOI() {
 async function approveItem(collection, docId, reloadFn) {
     if (!confirm('¿Aprobar este elemento?')) return;
     try {
+        await awardSpotterPoints(collection, docId);
         await db.collection(collection).doc(docId).update({
             status: 'approved',
             approvedAt: firebase.firestore.FieldValue.serverTimestamp(),

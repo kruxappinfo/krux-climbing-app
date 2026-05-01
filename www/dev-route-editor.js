@@ -879,7 +879,6 @@ async function saveDevRoute() {
     // Guardar en colección de vías pendientes
     const docRef = await db.collection('pending_routes').add(routeData);
     devPendingRouteDocId = docRef.id;
-    awardSpotterPoints(10);
 
     // NO añadir al mapa temporal - la vía solo será visible cuando se complete el dibujo
     // y sea aprobada por un admin
@@ -1326,7 +1325,6 @@ async function savePOI() {
     };
 
     await db.collection('pending_poi').add(poiData);
-    awardSpotterPoints(5);
 
     showDevToast('Punto de interes guardado correctamente', 'success');
     deactivatePOIMode();
@@ -1491,7 +1489,6 @@ async function saveSchool() {
     };
 
     await db.collection('pending_schools').add(schoolData);
-    awardSpotterPoints(15);
 
     showDevToast('Escuela propuesta correctamente', 'success');
     deactivateSchoolMode();
@@ -1820,7 +1817,6 @@ async function saveSector() {
     };
 
     await db.collection('pending_sectors').add(sectorData);
-    awardSpotterPoints(15);
 
     showDevToast('Sector propuesto correctamente', 'success');
     deactivateSectorMode();
@@ -2037,18 +2033,5 @@ window.saveSector = saveSector;
 window.undoSectorVertex = undoSectorVertex;
 window.finishSectorDraw = finishSectorDraw;
 window.toggleSectorDates = toggleSectorDates;
-
-async function awardSpotterPoints(points) {
-  try {
-    const user = auth.currentUser;
-    if (!user) return;
-    const db = firebase.firestore();
-    await db.collection('admins').doc(user.uid).update({
-      points: firebase.firestore.FieldValue.increment(points)
-    });
-  } catch (e) {
-    console.warn('[Spotter] No se pudieron actualizar los puntos:', e);
-  }
-}
 
 console.log('[Spotter] Modulo cargado');
