@@ -2737,6 +2737,21 @@ async function checkSpotterStatus() {
 }
 
 // Update UI based on spotter status
+async function loadSpotterPoints() {
+    const pointsEl = document.getElementById('spotter-points');
+    const pointsValueEl = document.getElementById('spotter-points-value');
+    if (!pointsEl || !pointsValueEl || !currentUser) return;
+    try {
+        const db = firebase.firestore();
+        const doc = await db.collection('admins').doc(currentUser.uid).get();
+        const points = (doc.exists && doc.data().points) ? doc.data().points : 0;
+        pointsValueEl.textContent = points;
+        pointsEl.classList.remove('hidden');
+    } catch (e) {
+        console.warn('[Spotter] No se pudieron cargar los puntos:', e);
+    }
+}
+
 function updateSpotterUI() {
     const becomeSpotterBtn = document.getElementById('become-spotter-btn');
     const spotterBadge = document.getElementById('spotter-badge');
@@ -2753,9 +2768,12 @@ function updateSpotterUI() {
             // Show spotter badge, hide button
             if (spotterBadge) spotterBadge.classList.remove('hidden');
             if (becomeSpotterBtn) becomeSpotterBtn.classList.add('hidden');
+            loadSpotterPoints();
             break;
 
-        case 'pending':
+        case 'pending': {
+            const _pts = document.getElementById('spotter-points');
+            if (_pts) _pts.classList.add('hidden');
             // Show pending badge, hide button
             if (spotterBadge) spotterBadge.classList.add('hidden');
             if (becomeSpotterBtn) becomeSpotterBtn.classList.add('hidden');
@@ -2774,18 +2792,23 @@ function updateSpotterUI() {
                 profileBioSection.after(pendingBadge);
             }
             break;
+        }
 
-        case 'rejected':
-            // Allow to apply again
+        case 'rejected': {
+            const _pts = document.getElementById('spotter-points');
+            if (_pts) _pts.classList.add('hidden');
             if (spotterBadge) spotterBadge.classList.add('hidden');
             if (becomeSpotterBtn) becomeSpotterBtn.classList.remove('hidden');
             break;
+        }
 
-        default: // 'none'
-            // Show button, hide badge
+        default: {
+            const _pts = document.getElementById('spotter-points');
+            if (_pts) _pts.classList.add('hidden');
             if (spotterBadge) spotterBadge.classList.add('hidden');
             if (becomeSpotterBtn) becomeSpotterBtn.classList.remove('hidden');
             break;
+        }
     }
 }
 

@@ -16774,6 +16774,31 @@ body.pwa-standalone .feed-header {
   display: none;
 }
 
+.spotter-points {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+  margin-bottom: 10px;
+}
+
+.spotter-points svg {
+  width: 11px;
+  height: 11px;
+  fill: #b45309;
+  flex-shrink: 0;
+}
+
+.spotter-points.hidden {
+  display: none;
+}
+
 /* Become Spotter Button - Modern & Minimalist */
 .become-spotter-btn {
   display: inline-flex;
