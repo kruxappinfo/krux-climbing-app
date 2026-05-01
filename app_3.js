@@ -10063,13 +10063,12 @@ function initActivityView() {
   // Initial calculation
   calculateCalories();
 
-  // Chart tabs
-  const chartTabs = document.querySelectorAll('.chart-tab');
+  // Progress chart tabs (data-chart only — histogram tabs use data-histogram and are handled separately)
+  const chartTabs = document.querySelectorAll('.chart-tab[data-chart]');
   chartTabs.forEach(tab => {
     tab.addEventListener('click', () => {
       chartTabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
-      // Here you would update the chart based on the selected period
       const period = tab.dataset.chart;
       updateActivityChart(period);
     });
