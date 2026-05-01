@@ -10427,8 +10427,7 @@ function initCombinedHistogram() {
     });
   });
 
-  // Render demo data on init
-  renderDemoHistogram();
+  renderEmptyHistogram();
 }
 
 function updateCombinedHistogram(ascents) {
@@ -10443,7 +10442,7 @@ function updateCombinedHistogram(ascents) {
   if (!barsContainer || !svgLines) return;
 
   if (!ascents || ascents.length === 0) {
-    renderDemoHistogram();
+    renderEmptyHistogram();
     return;
   }
 
@@ -10455,7 +10454,7 @@ function updateCombinedHistogram(ascents) {
   ]).filter(i => i >= 0);
 
   if (allGradeIndices.length === 0) {
-    renderDemoHistogram();
+    renderEmptyHistogram();
     return;
   }
 
@@ -10665,57 +10664,19 @@ function smoothSplinePath(points, tension = 0.1) {
   return path;
 }
 
-function renderDemoHistogram() {
-  let demoData = [];
-  const grades = ['5c', '6a', '6a+', '6b', '6b+', '6c', '6c+', '7a', '7a+'];
-
-  // Función para generar datos aleatorios de demo
-  function randomGrade(min, max) {
-    const minIdx = grades.indexOf(min);
-    const maxIdx = grades.indexOf(max);
-    return grades[Math.floor(Math.random() * (maxIdx - minIdx + 1)) + minIdx];
-  }
+function renderEmptyHistogram() {
+  const now = new Date();
+  let slots = [];
 
   if (currentHistogramPeriod === 'week') {
-    // Semana: lun-dom
     const dayLabels = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
-    demoData = dayLabels.map(label => ({
-      label,
-      ascents: Math.floor(Math.random() * 15) + 2,
-      maxGrade: randomGrade('6b+', '7a+'),
-      avgGrade: randomGrade('6a', '6b+'),
-      minGrade: randomGrade('5c', '6a')
-    }));
+    slots = dayLabels.map(label => ({ label }));
   } else if (currentHistogramPeriod === 'month') {
-    // Mes: todos los días del mes actual
-    const now = new Date();
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    for (let day = 1; day <= daysInMonth; day++) {
-      demoData.push({
-        label: day.toString(),
-        ascents: Math.floor(Math.random() * 12) + 1,
-        maxGrade: randomGrade('6b+', '7a+'),
-        avgGrade: randomGrade('6a', '6b+'),
-        minGrade: randomGrade('5c', '6a')
-      });
-    }
+    for (let day = 1; day <= daysInMonth; day++) slots.push({ label: day.toString() });
   } else {
-    // Año: 12 meses
-    const monthLabels = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-    demoData = [
-      { label: 'ene', ascents: 125, maxGrade: '7a', avgGrade: '6a+', minGrade: '5c' },
-      { label: 'feb', ascents: 108, maxGrade: '6c+', avgGrade: '6a', minGrade: '5c' },
-      { label: 'mar', ascents: 132, maxGrade: '7a+', avgGrade: '6b', minGrade: '5c' },
-      { label: 'abr', ascents: 140, maxGrade: '7a+', avgGrade: '6b+', minGrade: '5c' },
-      { label: 'may', ascents: 78, maxGrade: '7a', avgGrade: '6a+', minGrade: '5b' },
-      { label: 'jun', ascents: 52, maxGrade: '6b+', avgGrade: '6a', minGrade: '5b' },
-      { label: 'jul', ascents: 65, maxGrade: '6c', avgGrade: '6b', minGrade: '5c' },
-      { label: 'ago', ascents: 95, maxGrade: '6c+', avgGrade: '6b', minGrade: '5c' },
-      { label: 'sep', ascents: 82, maxGrade: '6c', avgGrade: '6a+', minGrade: '5b' },
-      { label: 'oct', ascents: 130, maxGrade: '7a', avgGrade: '6b', minGrade: '5c' },
-      { label: 'nov', ascents: 148, maxGrade: '7a+', avgGrade: '6b+', minGrade: '5c' },
-      { label: 'dic', ascents: 118, maxGrade: '7a', avgGrade: '6a+', minGrade: '5b' }
-    ];
+    ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+      .forEach(label => slots.push({ label }));
   }
 
   const barsContainer = document.getElementById('histogram-bars');
@@ -10724,39 +10685,22 @@ function renderDemoHistogram() {
   const gradeAxis = document.getElementById('histogram-grade-axis');
   const ascentAxis = document.getElementById('histogram-ascent-axis');
 
-  if (!barsContainer || !svgLines) return;
+  if (!barsContainer) return;
 
-  const maxAscents = Math.max(...demoData.map(d => d.ascents));
+  updateGradeAxis(gradeAxis, getGradeIndex('5c'), getGradeIndex('7a'));
+  updateAscentAxis(ascentAxis, 10);
 
-  // Calcular rango de grados adaptativo basado en los datos de demo
-  const allGradeIndices = demoData.flatMap(d => [
-    getGradeIndex(d.maxGrade), getGradeIndex(d.avgGrade), getGradeIndex(d.minGrade)
-  ]).filter(i => i >= 0);
-
-  const minGradeIdx = allGradeIndices.length > 0
-    ? Math.max(0, Math.min(...allGradeIndices) - 1)
-    : getGradeIndex('5a');
-  const maxGradeIdx = allGradeIndices.length > 0
-    ? Math.min(HISTOGRAM_GRADE_ORDER.length - 1, Math.max(...allGradeIndices) + 1)
-    : getGradeIndex('7a+');
-  const gradeRange = maxGradeIdx - minGradeIdx || 1;
-
-  // Usar funciones adaptativas para los ejes
-  updateGradeAxis(gradeAxis, minGradeIdx, maxGradeIdx);
-  updateAscentAxis(ascentAxis, maxAscents);
-
-  barsContainer.innerHTML = demoData.map(item => {
-    const height = (item.ascents / maxAscents) * 100;
-    return `<div class="histogram-bar" style="height: ${height}%;" data-value="${item.ascents}"></div>`;
-  }).join('');
+  barsContainer.innerHTML = slots.map(() =>
+    `<div class="histogram-bar" style="height: 0%;"></div>`
+  ).join('');
 
   if (xAxisContainer) {
-    xAxisContainer.innerHTML = demoData.map(item =>
-      `<span class="histogram-x-label">${item.label}</span>`
+    xAxisContainer.innerHTML = slots.map(s =>
+      `<span class="histogram-x-label">${s.label}</span>`
     ).join('');
   }
 
-  renderHistogramLines(svgLines, demoData, minGradeIdx, gradeRange);
+  if (svgLines) svgLines.innerHTML = '';
 }
 
 // ========== HISTOGRAM CAROUSEL ==========
@@ -10838,7 +10782,7 @@ function updateGradeDistributionChart(ascents) {
   const filteredAscents = filterAscentsForPeriod(ascents, currentHistogramPeriod);
 
   if (!filteredAscents || filteredAscents.length === 0) {
-    renderDemoGradeDistribution();
+    renderEmptyGradeDistribution();
     return;
   }
 
@@ -10859,7 +10803,7 @@ function updateGradeDistributionChart(ascents) {
   });
 
   if (sortedGrades.length === 0) {
-    renderDemoGradeDistribution();
+    renderEmptyGradeDistribution();
     return;
   }
 
@@ -10931,49 +10875,22 @@ function updateGradeDistributionYAxis(container, maxCount) {
   ).join('');
 }
 
-function renderDemoGradeDistribution() {
+function renderEmptyGradeDistribution() {
   const barsContainer = document.getElementById('grade-distribution-bars');
   const xAxisContainer = document.getElementById('grade-distribution-x-axis');
   const yAxisContainer = document.getElementById('grade-distribution-y-axis');
 
   if (!barsContainer) return;
-
-  // Demo data similar to the screenshot
-  const demoData = [
-    { grade: '5a', count: 1 },
-    { grade: '5b', count: 2 },
-    { grade: '5c', count: 5 },
-    { grade: '6a', count: 11 },
-    { grade: '6a+', count: 19 },
-    { grade: '6b', count: 27 },
-    { grade: '6b+', count: 14 },
-    { grade: '6c', count: 7 },
-    { grade: '6c+', count: 3 },
-    { grade: '7a', count: 1 }
-  ];
-
-  const maxCount = Math.max(...demoData.map(d => d.count));
-
-  // Render bars
-  barsContainer.innerHTML = demoData.map(item => {
-    const height = (item.count / maxCount) * 100;
-    return `<div class="grade-distribution-bar" style="height: ${height}%;" data-value="${item.count}"></div>`;
-  }).join('');
-
-  // Render X axis (grades)
-  xAxisContainer.innerHTML = demoData.map(item =>
-    `<span class="grade-distribution-x-label">${item.grade}</span>`
-  ).join('');
-
-  // Render Y axis
-  updateGradeDistributionYAxis(yAxisContainer, maxCount);
+  barsContainer.innerHTML = '<p class="chart-empty-msg">Sin ascensiones registradas</p>';
+  if (xAxisContainer) xAxisContainer.innerHTML = '';
+  if (yAxisContainer) yAxisContainer.innerHTML = '';
 }
 
 // Initialize on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
   initCombinedHistogram();
   initHistogramCarousel();
-  renderDemoGradeDistribution();
+  renderEmptyGradeDistribution();
 });
 // ========== END COMBINED HISTOGRAM ==========
 

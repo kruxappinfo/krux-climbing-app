@@ -5313,6 +5313,15 @@ button.secondary:hover {
   gap: 2px;
 }
 
+.chart-empty-msg {
+  width: 100%;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+  padding: 40px 0;
+  margin: 0;
+}
+
 .grade-distribution-bar {
   flex: 1;
   max-width: 40px;
