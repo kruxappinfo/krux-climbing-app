@@ -10085,8 +10085,11 @@ function initActivityView() {
     });
   });
 
-  // Stats Carousel
+  // Stats Carousel (stub — el HTML ya no tiene carrusel pero la función hace early-return seguro)
   initStatsCarousel();
+
+  // Mode Toggle: Roca / Rocódromo
+  initModeToggle();
 
   // Period selector dropdown
   initPeriodSelector();
@@ -10095,13 +10098,171 @@ function initActivityView() {
   const newAscentBtn = document.getElementById('new-ascent-btn');
   if (newAscentBtn) {
     newAscentBtn.addEventListener('click', () => {
-      // Open ascent modal or redirect to ascent form
       showToast('Funcionalidad de nueva ascensión próximamente', 'info');
     });
   }
 
   // Load user activity data
   loadActivityData();
+}
+
+function initModeToggle() {
+  const toggle = document.getElementById('activity-mode-toggle');
+  if (!toggle) return;
+
+  const buttons = toggle.querySelectorAll('.mode-toggle-btn');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.mode === 'rocodromo') {
+        showToast('Sección de rocódromo próximamente 🏋️', 'info');
+        return;
+      }
+      buttons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+}
+
+function renderActivityHeatmap(ascents) {
+  const container = document.getElementById('activity-heatmap');
+  const monthLabelsEl = document.getElementById('heatmap-month-labels');
+  const yearLabel = document.getElementById('heatmap-year');
+  if (!container) return;
+
+  const now = new Date();
+  const year = now.getFullYear();
+  if (yearLabel) yearLabel.textContent = year;
+
+  // Mapa fecha → nº ascensiones
+  const countByDate = {};
+  ascents.forEach(a => {
+    const d = parseAscentDate(a.date);
+    if (!d || d.getFullYear() !== year) return;
+    const key = `${year}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    countByDate[key] = (countByDate[key] || 0) + 1;
+  });
+
+  const maxCount = Math.max(...Object.values(countByDate), 1);
+  const colors = ['#eef0f5', '#c7c9f5', '#9599ef', '#6366f1', '#4338ca'];
+
+  // Empezar desde el lunes de la semana del 1 de enero
+  const startOfYear = new Date(year, 0, 1);
+  const dowJan1 = startOfYear.getDay(); // 0=dom
+  const gridStart = new Date(startOfYear);
+  gridStart.setDate(gridStart.getDate() - (dowJan1 === 0 ? 6 : dowJan1 - 1));
+
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+
+  const cells = [];
+  const monthPositions = {};
+
+  for (let week = 0; week < 53; week++) {
+    for (let day = 0; day < 7; day++) {
+      const date = new Date(gridStart);
+      date.setDate(gridStart.getDate() + week * 7 + day);
+
+      const isCurrentYear = date.getFullYear() === year;
+      const isFuture = date > today;
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const count = countByDate[key] || 0;
+
+      // Registrar posición del primer día de cada mes
+      if (isCurrentYear && date.getDate() === 1 && !monthPositions[date.getMonth()]) {
+        monthPositions[date.getMonth()] = week;
+      }
+
+      let bg;
+      if (!isCurrentYear || isFuture) {
+        bg = '#f0f0f3';
+      } else if (count === 0) {
+        bg = colors[0];
+      } else {
+        const intensity = Math.min(Math.ceil((count / maxCount) * 4), 4);
+        bg = colors[intensity];
+      }
+
+      const dateStr = isCurrentYear ? `${key}: ${count} vía${count !== 1 ? 's' : ''}` : '';
+      cells.push(`<div class="heatmap-cell" style="background:${bg}" title="${dateStr}"></div>`);
+    }
+  }
+
+  container.innerHTML = cells.join('');
+
+  // Etiquetas de mes
+  if (monthLabelsEl) {
+    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const labelCells = Array(53).fill('');
+    Object.entries(monthPositions).forEach(([month, col]) => {
+      labelCells[col] = `<div class="heatmap-month-label">${monthNames[parseInt(month)]}</div>`;
+    });
+    monthLabelsEl.innerHTML = labelCells.map(c =>
+      c || '<div class="heatmap-month-label"></div>'
+    ).join('');
+  }
+}
+
+function renderGradePyramid(ascents) {
+  const container = document.getElementById('grade-pyramid');
+  if (!container) return;
+
+  const gradeOrder = [
+    '5', '5+', '6a', '6a+', '6b', '6b+', '6c', '6c+',
+    '7a', '7a+', '7b', '7b+', '7c', '7c+', '8a', '8a+', '8b', '8b+'
+  ];
+
+  const gradeCounts = {};
+  ascents.forEach(a => {
+    if (!a.grade) return;
+    const g = a.grade.toLowerCase();
+    if (gradeOrder.includes(g)) gradeCounts[g] = (gradeCounts[g] || 0) + 1;
+  });
+
+  const gradeData = gradeOrder
+    .map(g => ({ grade: g, count: gradeCounts[g] || 0 }))
+    .filter(d => d.count > 0)
+    .sort((a, b) => gradeOrder.indexOf(b.grade) - gradeOrder.indexOf(a.grade));
+
+  if (gradeData.length === 0) {
+    container.innerHTML = '<div class="grade-pyramid-empty">Registra ascensiones para ver tu pirámide</div>';
+    return;
+  }
+
+  const maxCount = Math.max(...gradeData.map(d => d.count));
+
+  const gradeColors = {
+    '5': '#60a5fa', '5+': '#60a5fa',
+    '6a': '#34d399', '6a+': '#2dd4bf',
+    '6b': '#22c55e', '6b+': '#16a34a',
+    '6c': '#facc15', '6c+': '#eab308',
+    '7a': '#fb923c', '7a+': '#f97316',
+    '7b': '#ef4444', '7b+': '#dc2626',
+    '7c': '#c026d3', '7c+': '#a21caf',
+    '8a': '#9333ea', '8a+': '#7c3aed',
+    '8b': '#6d28d9', '8b+': '#5b21b6'
+  };
+
+  const rows = gradeData.map(({ grade, count }) => {
+    const pct = Math.max((count / maxCount) * 100, 6);
+    const color = gradeColors[grade] || '#6366f1';
+    return `<div class="pyramid-row">
+      <span class="pyramid-grade-label">${grade}</span>
+      <div class="pyramid-bars">
+        <div class="pyramid-bar-fill" style="width:${pct}%;background:${color}"></div>
+      </div>
+      <span class="pyramid-count">${count}</span>
+    </div>`;
+  });
+
+  const consolidated = gradeData.filter(d => d.count >= 5);
+  const consolidatedHtml = consolidated.length > 0
+    ? `<div class="pyramid-consolidated-marker">
+        <div class="pyramid-marker-line"></div>
+        <span>Grado consolidado: <strong>${consolidated[0].grade}</strong> (≥5 vías)</span>
+       </div>`
+    : '';
+
+  container.innerHTML = rows.join('') + consolidatedHtml;
 }
 
 
@@ -10919,10 +11080,13 @@ async function loadActivityData() {
     // Update histogram with ALL ascents (histogram uses its own time filtering)
     requestAnimationFrame(() => {
       updateCombinedHistogram(allAscents);
-      // Refresh progress chart with the active tab period
       const activeChartTab = document.querySelector('.chart-tab.active');
       updateActivityChart(activeChartTab ? activeChartTab.dataset.chart : 'week');
     });
+
+    // Heatmap anual y pirámide de grados (usan TODOS los ascensos)
+    renderActivityHeatmap(allAscents);
+    renderGradePyramid(allAscents);
 
     // Activity list shows all ascents (not period-filtered) so recent activity is always visible
     renderActivityList(allAscents.slice(0, 50));
