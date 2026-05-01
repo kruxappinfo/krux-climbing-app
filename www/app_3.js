@@ -10935,9 +10935,8 @@ async function loadActivityData() {
     const nowD = now.getDate();
 
     // Process all ascents and filter by period using local date components
-    // (same logic as histogram so counts are always consistent)
-    const allAscents = [];
-    const filteredAscents = [];
+    // Build all three buckets in one pass — same parseAscentDate used everywhere
+    const allAscents = [], yearAscents = [], monthAscents = [], dayAscents = [];
 
     snapshot.forEach(doc => {
       const data = doc.data();
@@ -10946,26 +10945,33 @@ async function loadActivityData() {
 
       const d = parseAscentDate(data.date);
       if (!d) return;
-      const dY = d.getFullYear(), dM = d.getMonth(), dD = d.getDate();
-
-      let inPeriod = false;
-      switch (currentStatsPeriod) {
-        case 'day':
-          inPeriod = dY === nowY && dM === nowM && dD === nowD;
-          break;
-        case 'year':
-          inPeriod = dY === nowY;
-          break;
-        case 'month':
-        default:
-          inPeriod = dY === nowY && dM === nowM;
-          break;
-      }
-      if (inPeriod) filteredAscents.push(ascentData);
+      if (d.getFullYear() !== nowY) return;
+      yearAscents.push(ascentData);
+      if (d.getMonth() !== nowM) return;
+      monthAscents.push(ascentData);
+      if (d.getDate() === nowD) dayAscents.push(ascentData);
     });
 
-    // Stats use filtered period; fall back to all ascents if period has no data
-    const statsAscents = filteredAscents.length > 0 ? filteredAscents : allAscents;
+    // Hierarchical fallback: selected period → next broader period → all-time
+    // Prevents month showing more than year (e.g. month empty → falls back to year, not all-time)
+    let statsAscents;
+    switch (currentStatsPeriod) {
+      case 'day':
+        statsAscents = dayAscents.length   > 0 ? dayAscents
+                     : monthAscents.length > 0 ? monthAscents
+                     : yearAscents.length  > 0 ? yearAscents
+                     : allAscents;
+        break;
+      case 'year':
+        statsAscents = yearAscents.length > 0 ? yearAscents : allAscents;
+        break;
+      case 'month':
+      default:
+        statsAscents = monthAscents.length > 0 ? monthAscents
+                     : yearAscents.length  > 0 ? yearAscents
+                     : allAscents;
+        break;
+    }
     calculateAndUpdateStats(statsAscents);
 
     // Update histogram with ALL ascents (histogram uses its own time filtering)
