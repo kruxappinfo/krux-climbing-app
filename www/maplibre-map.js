@@ -4120,13 +4120,77 @@ function generateGradeSliderHTML(routeId, schoolId, grade, gradeVoteData) {
                data-official-idx="${officialIdx}"
                data-route="${routeId}"
                data-school="${schoolId}"
+               data-user-vote-step="${hasUserVote ? sliderValue : -1}"
                oninput="mlGradeSliderInput(this)"
+               onclick="mlGradeSliderClick(this)"
                onchange="mlVoteGrade(${routeId}, '${schoolId}', parseInt(this.getAttribute('data-label-indices').split(',')[parseInt(this.value)]))" />
         <div class="ml-grade-slider-tick" style="left:${tickLeft}"></div>
       </div>
       ${feedbackHTML}
     </div>
   `;
+}
+
+function mlGradeSliderClick(input) {
+  const userVoteStep = parseInt(input.getAttribute('data-user-vote-step'));
+  if (userVoteStep === -1) return;
+  if (parseInt(input.value) === userVoteStep) {
+    const routeId = input.getAttribute('data-route');
+    const schoolId = input.getAttribute('data-school');
+    mlCancelGradeVote(routeId, schoolId, input);
+  }
+}
+
+async function mlCancelGradeVote(routeId, schoolId, input) {
+  try {
+    if (typeof auth === 'undefined' || !auth.currentUser) return;
+    const userId = auth.currentUser.uid;
+    const db = firebase.firestore();
+    const gradeRef = db.collection('grade_votes').doc(`${schoolId}_${routeId}`);
+    const doc = await gradeRef.get();
+    if (!doc.exists) return;
+    const votes = doc.data().votes || {};
+    delete votes[userId];
+    await gradeRef.set(
+      { schoolId, routeId, votes, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+
+    const container = input.closest('.ml-grade-slider');
+    const officialIdx = parseInt(container.getAttribute('data-official-idx'));
+    const labelIndices = input.getAttribute('data-label-indices').split(',').map(Number);
+    const officialStep = labelIndices.indexOf(officialIdx);
+    input.value = officialStep;
+    input.setAttribute('data-user-vote-step', '-1');
+
+    const label = container.querySelector('.ml-route-aleje-label');
+    if (label) label.innerHTML = 'Grado <span class="ml-route-aleje-hint">(vota)</span>';
+
+    const values = Object.values(votes);
+    const metaEl = container.querySelector('.ml-grade-slider-meta');
+    if (values.length > 0) {
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      const avgGrade = ALL_GRADES_ORDERED[Math.round(avg)];
+      if (metaEl) metaEl.textContent = `${values.length} ${values.length === 1 ? 'voto' : 'votos'} · media ${avgGrade}`;
+    } else if (metaEl) {
+      metaEl.remove();
+    }
+
+    const showBadge = values.length >= GRADE_CONSENSUS_THRESHOLD && values.length > 0 &&
+      Math.round(values.reduce((a, b) => a + b, 0) / values.length) !== officialIdx;
+    const popupHeader = document.querySelector('.ml-route-popup-new .ml-route-header');
+    if (popupHeader) {
+      const badge = popupHeader.querySelector('.ml-grade-consensus-badge');
+      if (!showBadge && badge) badge.remove();
+    }
+    const rbsBadge = document.getElementById('rbs-consensus-badge');
+    if (rbsBadge && !showBadge) rbsBadge.style.display = 'none';
+
+    if (typeof showToast === 'function') showToast('Voto cancelado');
+  } catch (e) {
+    console.error('[GradeVotes] Error cancelando voto:', e);
+    if (typeof showToast === 'function') showToast('Error al cancelar el voto');
+  }
 }
 
 function mlGradeSliderInput(input) {
@@ -4210,6 +4274,10 @@ async function mlVoteGrade(routeId, schoolId, gradeIdx) {
         }
       }
     }
+
+    // Track voted step for cancel-on-retap
+    const sliderInput = container ? container.querySelector('.ml-grade-slider-input') : null;
+    if (sliderInput) sliderInput.setAttribute('data-user-vote-step', sliderInput.value);
 
     if (typeof showToast === 'function') showToast('Grado actualizado');
   } catch (e) {
