@@ -10446,7 +10446,19 @@ function updateCombinedHistogram(ascents) {
     return;
   }
 
-  const histogramData = processHistogramData(ascents, currentHistogramPeriod);
+  let histogramData = processHistogramData(ascents, currentHistogramPeriod);
+
+  // If no data in current period but user has historical data, switch to year view
+  const hasPeriodData = histogramData.some(d => d.ascents > 0);
+  if (!hasPeriodData && currentHistogramPeriod !== 'year') {
+    currentHistogramPeriod = 'year';
+    document.querySelectorAll('[data-histogram]').forEach(t => {
+      t.classList.toggle('active', t.dataset.histogram === 'year');
+    });
+    const title = document.getElementById('histogram-title');
+    if (title) title.textContent = 'Progreso anual';
+    histogramData = processHistogramData(ascents, 'year');
+  }
 
   const maxAscents = Math.max(...histogramData.map(d => d.ascents), 1);
   const allGradeIndices = histogramData.flatMap(d => [
@@ -10950,21 +10962,22 @@ async function loadActivityData() {
       }
     });
 
-    calculateAndUpdateStats(filteredAscents);
+    // Stats use filtered period; fall back to all ascents if period has no data
+    const statsAscents = filteredAscents.length > 0 ? filteredAscents : allAscents;
+    calculateAndUpdateStats(statsAscents);
 
     // Update histogram with ALL ascents (histogram uses its own time filtering)
     requestAnimationFrame(() => {
       updateCombinedHistogram(allAscents);
     });
 
-    // Render activity list using filtered ascents; fallback to all for the list only
-    const listAscents = filteredAscents.length > 0 ? filteredAscents : allAscents;
-    renderActivityList(listAscents.slice(0, 50));
+    // Activity list mirrors stats source
+    renderActivityList(statsAscents.slice(0, 50));
 
     // Show/hide empty state
     const emptyState = document.getElementById('activity-empty');
     if (emptyState) {
-      emptyState.style.display = listAscents.length === 0 ? 'flex' : 'none';
+      emptyState.style.display = allAscents.length === 0 ? 'flex' : 'none';
     }
 
   } catch (error) {
