@@ -10397,6 +10397,13 @@ let cachedAscentsForHistogram = [];
 const HISTOGRAM_GRADE_ORDER = ['4', '4+', '5', '5+', '5a', '5b', '5c', '6a', '6a+', '6b', '6b+', '6c', '6c+',
   '7a', '7a+', '7b', '7b+', '7c', '7c+', '8a', '8a+', '8b', '8b+', '8c', '8c+', '9a'];
 
+// Single canonical date parser used by ALL filtering logic
+function parseAscentDate(dateField) {
+  if (!dateField) return null;
+  const d = dateField.toDate ? dateField.toDate() : new Date(dateField);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function getGradeIndex(grade) {
   if (!grade) return -1;
   return HISTOGRAM_GRADE_ORDER.indexOf(grade.toLowerCase().trim());
@@ -10505,33 +10512,31 @@ function processHistogramData(ascents, period) {
     for (let i = 0; i < 7; i++) {
       const date = new Date(monday);
       date.setDate(monday.getDate() + i);
+      const dY = date.getFullYear(), dM = date.getMonth(), dD = date.getDate();
       const dayAscents = (ascents || []).filter(a => {
-        const ascentDate = a.date?.toDate?.() || new Date(a.date);
-        return ascentDate.toDateString() === date.toDateString();
+        const ad = parseAscentDate(a.date);
+        return ad && ad.getFullYear() === dY && ad.getMonth() === dM && ad.getDate() === dD;
       });
       data.push(processAscentsForPeriod(dayAscents, dayLabels[i]));
     }
   } else if (period === 'month') {
-    // Mostrar todos los días del mes actual
     const year = now.getFullYear();
     const month = now.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
     for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month, day);
       const dayAscents = (ascents || []).filter(a => {
-        const ascentDate = a.date?.toDate?.() || new Date(a.date);
-        return ascentDate.toDateString() === date.toDateString();
+        const ad = parseAscentDate(a.date);
+        return ad && ad.getFullYear() === year && ad.getMonth() === month && ad.getDate() === day;
       });
       data.push(processAscentsForPeriod(dayAscents, day.toString()));
     }
   } else {
-    // Año: mostrar 12 meses (sin cambios)
     const monthLabels = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
     for (let i = 0; i < 12; i++) {
       const monthAscents = (ascents || []).filter(a => {
-        const ascentDate = a.date?.toDate?.() || new Date(a.date);
-        return ascentDate.getFullYear() === now.getFullYear() && ascentDate.getMonth() === i;
+        const ad = parseAscentDate(a.date);
+        return ad && ad.getFullYear() === now.getFullYear() && ad.getMonth() === i;
       });
       data.push(processAscentsForPeriod(monthAscents, monthLabels[i]));
     }
@@ -10842,30 +10847,26 @@ function filterAscentsForPeriod(ascents, period) {
 
   const now = new Date();
 
+  const nowY = now.getFullYear(), nowM = now.getMonth();
+
   return ascents.filter(ascent => {
-    const ascentDate = ascent.date?.toDate?.() || new Date(ascent.date);
-    if (!ascentDate || isNaN(ascentDate.getTime())) return false;
+    const ad = parseAscentDate(ascent.date);
+    if (!ad) return false;
 
     if (period === 'week') {
-      // Current week (Monday to Sunday)
       const currentDay = now.getDay();
       const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay;
       const monday = new Date(now);
       monday.setDate(now.getDate() + mondayOffset);
       monday.setHours(0, 0, 0, 0);
-
       const sunday = new Date(monday);
       sunday.setDate(monday.getDate() + 6);
       sunday.setHours(23, 59, 59, 999);
-
-      return ascentDate >= monday && ascentDate <= sunday;
+      return ad >= monday && ad <= sunday;
     } else if (period === 'month') {
-      // Current month
-      return ascentDate.getFullYear() === now.getFullYear() &&
-        ascentDate.getMonth() === now.getMonth();
+      return ad.getFullYear() === nowY && ad.getMonth() === nowM;
     } else {
-      // Current year
-      return ascentDate.getFullYear() === now.getFullYear();
+      return ad.getFullYear() === nowY;
     }
   });
 }
@@ -10928,24 +10929,13 @@ async function loadActivityData() {
       return;
     }
 
-    // Get date range based on period
     const now = new Date();
-    let startDate;
+    const nowY = now.getFullYear();
+    const nowM = now.getMonth();
+    const nowD = now.getDate();
 
-    switch (currentStatsPeriod) {
-      case 'day':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'year':
-        startDate = new Date(now.getFullYear(), 0, 1);
-        break;
-      case 'month':
-      default:
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        break;
-    }
-
-    // Process all ascents and filter by period
+    // Process all ascents and filter by period using local date components
+    // (same logic as histogram so counts are always consistent)
     const allAscents = [];
     const filteredAscents = [];
 
@@ -10954,12 +10944,24 @@ async function loadActivityData() {
       const ascentData = { id: doc.id, ...data };
       allAscents.push(ascentData);
 
-      // Check if ascent is within the selected period
-      // Handle both Firestore Timestamp and regular Date
-      const ascentDate = data.date?.toDate ? data.date.toDate() : new Date(data.date);
-      if (ascentDate && ascentDate >= startDate) {
-        filteredAscents.push(ascentData);
+      const d = parseAscentDate(data.date);
+      if (!d) return;
+      const dY = d.getFullYear(), dM = d.getMonth(), dD = d.getDate();
+
+      let inPeriod = false;
+      switch (currentStatsPeriod) {
+        case 'day':
+          inPeriod = dY === nowY && dM === nowM && dD === nowD;
+          break;
+        case 'year':
+          inPeriod = dY === nowY;
+          break;
+        case 'month':
+        default:
+          inPeriod = dY === nowY && dM === nowM;
+          break;
       }
+      if (inPeriod) filteredAscents.push(ascentData);
     });
 
     // Stats use filtered period; fall back to all ascents if period has no data
@@ -11041,8 +11043,8 @@ function calculateAndUpdateStats(ascents) {
     }
 
     // Climbing days (unique calendar dates)
-    const d = ascent.date?.toDate ? ascent.date.toDate() : new Date(ascent.date);
-    if (d && !isNaN(d)) climbingDays.add(d.toISOString().split('T')[0]);
+    const d = parseAscentDate(ascent.date);
+    if (d) climbingDays.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
 
     // Tries
     if (ascent.tries && ascent.tries > 0) totalTries += ascent.tries;
@@ -11215,8 +11217,8 @@ function renderActivityList(ascents) {
 
   ascents.forEach(ascent => {
     const icon = styleIcon[ascent.style] || '🧗';
-    const rawDate = ascent.date?.toDate ? ascent.date.toDate() : new Date(ascent.date);
-    const formattedDate = !isNaN(rawDate) ? rawDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : '';
+    const rawDate = parseAscentDate(ascent.date);
+    const formattedDate = rawDate ? rawDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : '';
     const location = [ascent.schoolName, ascent.sector].filter(Boolean).join(' · ') || 'Ubicación desconocida';
 
     const itemHtml = `
