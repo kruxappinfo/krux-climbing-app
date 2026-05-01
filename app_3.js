@@ -10418,19 +10418,7 @@ function updateCombinedHistogram(ascents) {
     return;
   }
 
-  let histogramData = processHistogramData(ascents, currentHistogramPeriod);
-
-  // If no data in current period but user has historical data, switch to year view
-  const hasPeriodData = histogramData.some(d => d.ascents > 0);
-  if (!hasPeriodData && currentHistogramPeriod !== 'year') {
-    currentHistogramPeriod = 'year';
-    document.querySelectorAll('[data-histogram]').forEach(t => {
-      t.classList.toggle('active', t.dataset.histogram === 'year');
-    });
-    const title = document.getElementById('histogram-title');
-    if (title) title.textContent = 'Progreso anual';
-    histogramData = processHistogramData(ascents, 'year');
-  }
+  const histogramData = processHistogramData(ascents, currentHistogramPeriod);
 
   const maxAscents = Math.max(...histogramData.map(d => d.ascents), 1);
   const allGradeIndices = histogramData.flatMap(d => [
