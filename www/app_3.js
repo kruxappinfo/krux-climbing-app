@@ -10103,51 +10103,8 @@ function initActivityView() {
 
   // Load user activity data
   loadActivityData();
-
-  // Load demo data for preview
-  loadDemoStats();
 }
 
-function loadDemoStats() {
-  // Demo data for testing - simulates real statistics
-  const demoData = {
-    // Slide 1: Rendimiento
-    totalRoutes: 47,
-    maxGrade: '7b+',
-    avgGrade: '6c',
-    flashRate: 68,
-    mainStyle: 'Redpoint',
-
-    // Slide 2: Metros
-    totalMeters: 1250,
-    avgMeters: 27,
-    avgAleje: 3.2,
-    maxAleje: 5.8,
-
-    // Slide 3: Escuelas y Sectores
-    topSchool: 'Siurana',
-    schoolsCount: 8,
-    topSector: 'El Pati',
-    sectorsCount: 23
-  };
-
-  // Update all stats with demo data
-  updateStatValue('stat-total-routes', demoData.totalRoutes);
-  updateStatValue('stat-max-grade', demoData.maxGrade);
-  updateStatValue('stat-avg-grade', demoData.avgGrade);
-  updateStatValue('stat-flash-rate', demoData.flashRate + '%');
-  updateStatValue('stat-main-style', demoData.mainStyle);
-
-  updateStatValue('stat-total-meters', demoData.totalMeters + '<small>m</small>');
-  updateStatValue('stat-avg-meters', demoData.avgMeters + '<small>m</small>');
-  updateStatValue('stat-avg-aleje', demoData.avgAleje + '<small>m</small>');
-  updateStatValue('stat-max-aleje', demoData.maxAleje + '<small>m</small>');
-
-  updateStatValue('stat-top-school', demoData.topSchool);
-  updateStatValue('stat-schools-count', demoData.schoolsCount);
-  updateStatValue('stat-top-sector', demoData.topSector);
-  updateStatValue('stat-sectors-count', demoData.sectorsCount);
-}
 
 // Stats Carousel functionality
 let currentStatsSlide = 0;
@@ -10306,69 +10263,78 @@ function initPeriodSelector() {
 }
 
 function updateActivityChart(period) {
-  // Mock data for different periods
-  const chartData = {
-    week: [
-      { label: 'L', value: 2 },
-      { label: 'M', value: 5 },
-      { label: 'X', value: 3 },
-      { label: 'J', value: 7 },
-      { label: 'V', value: 9 },
-      { label: 'S', value: 12 },
-      { label: 'D', value: 6 }
-    ],
-    month: [
-      { label: 'S1', value: 25 },
-      { label: 'S2', value: 32 },
-      { label: 'S3', value: 28 },
-      { label: 'S4', value: 44 }
-    ],
-    year: [
-      { label: 'E', value: 45 },
-      { label: 'F', value: 52 },
-      { label: 'M', value: 48 },
-      { label: 'A', value: 65 },
-      { label: 'M', value: 58 },
-      { label: 'J', value: 72 },
-      { label: 'J', value: 85 },
-      { label: 'A', value: 78 },
-      { label: 'S', value: 62 },
-      { label: 'O', value: 55 },
-      { label: 'N', value: 68 },
-      { label: 'D', value: 44 }
-    ]
-  };
-
-  const data = chartData[period] || chartData.week;
-  const maxValue = Math.max(...data.map(d => d.value));
-
   const chartContainer = document.getElementById('activity-chart');
   if (!chartContainer) return;
 
-  chartContainer.innerHTML = data.map((item, index) => {
+  const now = new Date();
+  const nowY = now.getFullYear();
+  const nowM = now.getMonth();
+  const ascents = cachedAscentsForHistogram;
+
+  let data = [];
+
+  if (period === 'week') {
+    const dayOfWeek = now.getDay(); // 0=Sun
+    const mondayOffset = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
+    const monday = new Date(now);
+    monday.setHours(0, 0, 0, 0);
+    monday.setDate(now.getDate() + mondayOffset);
+
+    const dayLabels = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+    data = dayLabels.map((label, i) => {
+      const day = new Date(monday);
+      day.setDate(monday.getDate() + i);
+      const dY = day.getFullYear(), dM = day.getMonth(), dD = day.getDate();
+      const count = ascents.filter(a => {
+        const d = parseAscentDate(a.date);
+        return d && d.getFullYear() === dY && d.getMonth() === dM && d.getDate() === dD;
+      }).length;
+      return { label, value: count };
+    });
+
+  } else if (period === 'month') {
+    const weekRanges = [[1, 7], [8, 14], [15, 21], [22, 31]];
+    data = weekRanges.map(([start, end], i) => {
+      const count = ascents.filter(a => {
+        const d = parseAscentDate(a.date);
+        if (!d) return false;
+        const dom = d.getDate();
+        return d.getFullYear() === nowY && d.getMonth() === nowM && dom >= start && dom <= end;
+      }).length;
+      return { label: 'S' + (i + 1), value: count };
+    });
+
+  } else {
+    const monthLabels = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+    data = monthLabels.map((label, m) => {
+      const count = ascents.filter(a => {
+        const d = parseAscentDate(a.date);
+        return d && d.getFullYear() === nowY && d.getMonth() === m;
+      }).length;
+      return { label, value: count };
+    });
+  }
+
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+  const maxValue = Math.max(...data.map(d => d.value), 1);
+
+  chartContainer.innerHTML = data.map(item => {
     const height = (item.value / maxValue) * 100;
-    const isHighlight = item.value === maxValue;
-    return `
-      <div class="chart-bar-wrapper">
-        <div class="chart-bar ${isHighlight ? 'chart-bar-highlight' : ''}" 
-             style="height: ${height}%;" 
-             data-value="${item.value}"></div>
-        <span class="chart-label">${item.label}</span>
-      </div>
-    `;
+    const isHighlight = item.value === maxValue && item.value > 0;
+    return '<div class="chart-bar-wrapper">' +
+      '<div class="chart-bar ' + (isHighlight ? 'chart-bar-highlight' : '') + '"' +
+      ' style="height: ' + height + '%;"' +
+      ' data-value="' + item.value + '"></div>' +
+      '<span class="chart-label">' + item.label + '</span>' +
+      '</div>';
   }).join('');
 
-  // Update summary
-  const total = data.reduce((sum, d) => sum + d.value, 0);
   const avg = (total / data.length).toFixed(1);
-
   const chartTotal = document.getElementById('chart-total');
   const chartAvg = document.getElementById('chart-avg');
-
   if (chartTotal) chartTotal.textContent = total;
   if (chartAvg) chartAvg.textContent = avg;
 
-  // Update summary labels based on period
   const summaryLabels = document.querySelectorAll('.summary-label');
   if (summaryLabels.length >= 2) {
     const periodLabels = {
@@ -10376,8 +10342,8 @@ function updateActivityChart(period) {
       month: ['vías este mes', 'media semanal'],
       year: ['vías este año', 'media mensual']
     };
-    summaryLabels[0].textContent = periodLabels[period]?.[0] || 'total';
-    summaryLabels[1].textContent = periodLabels[period]?.[1] || 'media';
+    summaryLabels[0].textContent = periodLabels[period] ? periodLabels[period][0] : 'total';
+    summaryLabels[1].textContent = periodLabels[period] ? periodLabels[period][1] : 'media';
   }
 }
 
@@ -10977,6 +10943,9 @@ async function loadActivityData() {
     // Update histogram with ALL ascents (histogram uses its own time filtering)
     requestAnimationFrame(() => {
       updateCombinedHistogram(allAscents);
+      // Refresh progress chart with the active tab period
+      const activeChartTab = document.querySelector('.chart-tab.active');
+      updateActivityChart(activeChartTab ? activeChartTab.dataset.chart : 'week');
     });
 
     // Activity list mirrors stats source
