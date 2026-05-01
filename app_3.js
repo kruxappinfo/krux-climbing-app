@@ -10905,25 +10905,14 @@ async function loadActivityData() {
       if (d.getDate() === nowD) dayAscents.push(ascentData);
     });
 
-    // Hierarchical fallback: selected period → next broader period → all-time
-    // Prevents month showing more than year (e.g. month empty → falls back to year, not all-time)
+    // Strict period filtering: show only data for the selected period.
+    // If empty, calculateAndUpdateStats shows zeros — no fallback to a broader period.
     let statsAscents;
     switch (currentStatsPeriod) {
-      case 'day':
-        statsAscents = dayAscents.length   > 0 ? dayAscents
-                     : monthAscents.length > 0 ? monthAscents
-                     : yearAscents.length  > 0 ? yearAscents
-                     : allAscents;
-        break;
-      case 'year':
-        statsAscents = yearAscents.length > 0 ? yearAscents : allAscents;
-        break;
+      case 'day':   statsAscents = dayAscents;   break;
+      case 'year':  statsAscents = yearAscents;  break;
       case 'month':
-      default:
-        statsAscents = monthAscents.length > 0 ? monthAscents
-                     : yearAscents.length  > 0 ? yearAscents
-                     : allAscents;
-        break;
+      default:      statsAscents = monthAscents; break;
     }
     calculateAndUpdateStats(statsAscents);
 
@@ -10935,8 +10924,8 @@ async function loadActivityData() {
       updateActivityChart(activeChartTab ? activeChartTab.dataset.chart : 'week');
     });
 
-    // Activity list mirrors stats source
-    renderActivityList(statsAscents.slice(0, 50));
+    // Activity list shows all ascents (not period-filtered) so recent activity is always visible
+    renderActivityList(allAscents.slice(0, 50));
 
     // Show/hide empty state
     const emptyState = document.getElementById('activity-empty');
