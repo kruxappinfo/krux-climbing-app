@@ -10006,99 +10006,37 @@ function initViewPostModal() {
 // ================================
 
 function initActivityView() {
-  // Calorie Calculator Logic
-  const climbType = document.getElementById('calc-climb-type');
-  const duration = document.getElementById('calc-duration');
-  const intensity = document.getElementById('calc-intensity');
-  const weight = document.getElementById('calc-weight');
-  const caloriesResult = document.getElementById('calc-calories-result');
-  const equivPizza = document.getElementById('equiv-pizza');
-  const equivRunning = document.getElementById('equiv-running');
-  const equivChocolate = document.getElementById('equiv-chocolate');
-
-  // MET values for different climbing types and intensities
-  const metValues = {
-    boulder: { low: 5.0, medium: 7.5, high: 10.0 },
-    sport: { low: 5.5, medium: 8.0, high: 11.0 },
-    trad: { low: 6.0, medium: 8.5, high: 11.5 },
-    indoor: { low: 4.5, medium: 7.0, high: 9.5 }
-  };
-
-  function calculateCalories() {
-    if (!climbType || !duration || !intensity || !weight || !caloriesResult) return;
-
-    const type = climbType.value;
-    const mins = parseInt(duration.value) || 60;
-    const level = intensity.value;
-    const kg = parseInt(weight.value) || 70;
-
-    const met = metValues[type]?.[level] || 7.0;
-    const calories = Math.round((met * kg * mins) / 60);
-
-    caloriesResult.textContent = calories;
-
-    // Calculate equivalents
-    if (equivPizza) {
-      const pizzaSlices = (calories / 285).toFixed(1);
-      equivPizza.textContent = `${pizzaSlices} porciones de pizza`;
-    }
-    if (equivRunning) {
-      const runningMins = Math.round(calories / 12);
-      equivRunning.textContent = `${runningMins} min corriendo`;
-    }
-    if (equivChocolate) {
-      const chocolateBars = (calories / 210).toFixed(1);
-      equivChocolate.textContent = `${chocolateBars} barras de chocolate`;
-    }
-  }
-
-  // Add event listeners for calculator
-  [climbType, duration, intensity, weight].forEach(el => {
-    if (el) {
-      el.addEventListener('change', calculateCalories);
-      el.addEventListener('input', calculateCalories);
-    }
-  });
-
-  // Initial calculation
-  calculateCalories();
-
-  // Progress chart tabs (data-chart only — histogram tabs use data-histogram and are handled separately)
-  const chartTabs = document.querySelectorAll('.chart-tab[data-chart]');
-  chartTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      chartTabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      const period = tab.dataset.chart;
-      updateActivityChart(period);
+  // Toggle Roca / Rocódromo
+  let currentActivityMode = 'roca';
+  document.querySelectorAll('.act-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentActivityMode = btn.dataset.mode;
+      document.querySelectorAll('.act-mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('content-roca').style.display = currentActivityMode === 'roca' ? '' : 'none';
+      document.getElementById('content-rocodromo').style.display = currentActivityMode === 'rocodromo' ? '' : 'none';
     });
   });
 
-  // Filter chips
-  const filterChips = document.querySelectorAll('.filter-chip');
-  filterChips.forEach(chip => {
+  // Timeline filter chips
+  document.querySelectorAll('.act-tf').forEach(chip => {
     chip.addEventListener('click', () => {
-      filterChips.forEach(c => c.classList.remove('active'));
+      document.querySelectorAll('.act-tf').forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
-      const filter = chip.dataset.filter;
-      filterActivities(filter);
+      filterActivitySessions(chip.dataset.filter);
     });
   });
 
-  // Stats Carousel
-  initStatsCarousel();
-
-  // Period selector dropdown
-  initPeriodSelector();
-
-  // New ascent button
-  const newAscentBtn = document.getElementById('new-ascent-btn');
-  if (newAscentBtn) {
-    newAscentBtn.addEventListener('click', () => {
-      // Open ascent modal or redirect to ascent form
+  // FAB nueva ascensión
+  const fabBtn = document.getElementById('new-ascent-btn');
+  if (fabBtn) {
+    fabBtn.addEventListener('click', () => {
       showToast('Funcionalidad de nueva ascensión próximamente', 'info');
     });
   }
+
+  // Período selector (legacy, mantener por compatibilidad)
+  initPeriodSelector();
 
   // Load user activity data
   loadActivityData();
@@ -10916,16 +10854,21 @@ async function loadActivityData() {
     }
     calculateAndUpdateStats(statsAscents);
 
-    // Update histogram with ALL ascents (histogram uses its own time filtering)
+    // Build new activity components from real data
     requestAnimationFrame(() => {
+      buildActivityHeroCard(allAscents, yearAscents);
+      buildActivityPyramid(allAscents);
+      buildActivityHeatmap(allAscents);
+      buildGymStats(allAscents);
+      updateActivityRecords(allAscents);
+      // Legacy chart updates (hidden containers)
       updateCombinedHistogram(allAscents);
-      // Refresh progress chart with the active tab period
       const activeChartTab = document.querySelector('.chart-tab.active');
       updateActivityChart(activeChartTab ? activeChartTab.dataset.chart : 'week');
     });
 
-    // Activity list shows all ascents (not period-filtered) so recent activity is always visible
-    renderActivityList(allAscents.slice(0, 50));
+    // Activity list grouped by session
+    renderActivityList(allAscents.slice(0, 100));
 
     // Show/hide empty state
     const emptyState = document.getElementById('activity-empty');
@@ -10937,6 +10880,354 @@ async function loadActivityData() {
     console.error('Error loading activity data:', error);
   }
 }
+
+// ========================================
+// ACTIVITY REDESIGN — New builder functions
+// ========================================
+
+const GRADE_ORDER = ['4', '4+', '5', '5+', '6a', '6a+', '6b', '6b+', '6c', '6c+',
+  '7a', '7a+', '7b', '7b+', '7c', '7c+', '8a', '8a+', '8b', '8b+', '8c', '8c+', '9a'];
+
+function isGymAscent(ascent) {
+  const type = (ascent.climbType || ascent.type || '').toLowerCase();
+  const school = (ascent.schoolName || ascent.school || '').toLowerCase();
+  return type === 'indoor' || school.includes('rocódromo') || school.includes('rocodromo') || school.includes('gym') || school.includes('indoor');
+}
+
+function buildActivityHeroCard(allAscents, yearAscents) {
+  const rockAscents = allAscents.filter(a => !isGymAscent(a));
+  const rockYear = yearAscents.filter(a => !isGymAscent(a));
+
+  // Max grade as "proyecto activo" (highest grade attempted this year)
+  const grades = rockYear.map(a => a.grade).filter(Boolean);
+  const maxGrade = findMaxGrade(grades) || '-';
+  const gradeEl = document.getElementById('hero-project-grade');
+  if (gradeEl) gradeEl.textContent = maxGrade;
+
+  // Route name of that grade
+  const topAscent = rockYear.find(a => a.grade && a.grade.toLowerCase() === (maxGrade || '').toLowerCase());
+  const nameEl = document.getElementById('hero-project-name');
+  if (nameEl) {
+    const loc = [topAscent?.routeName, topAscent?.sectorName || topAscent?.sector, topAscent?.schoolName || topAscent?.school].filter(Boolean).join(' · ');
+    nameEl.textContent = loc || (maxGrade !== '-' ? 'Mejor encadenamiento del año' : 'Sin ascensiones este año');
+  }
+
+  // Streak
+  const streak = calculateStreak(rockAscents);
+  const flashCount = rockYear.filter(a => a.style === 'flash' || a.style === 'onsight').length;
+  const flashRate = rockYear.length > 0 ? Math.round((flashCount / rockYear.length) * 100) : 0;
+
+  const badgesEl = document.getElementById('hero-badges-roca');
+  if (badgesEl) {
+    badgesEl.innerHTML = [
+      streak > 2 ? `<span class="act-badge act-badge-orange">🔥 Racha ${streak} días</span>` : '',
+      rockYear.length > 0 ? `<span class="act-badge act-badge-blue">${rockYear.length} vías este año</span>` : '',
+      flashRate > 0 ? `<span class="act-badge act-badge-green">Flash ${flashRate}%</span>` : '',
+    ].join('');
+  }
+
+  // Comparison vs previous year
+  const now = new Date();
+  const prevYear = now.getFullYear() - 1;
+  const prevYearAscents = allAscents.filter(a => {
+    const d = parseAscentDate(a.date);
+    return d && d.getFullYear() === prevYear && !isGymAscent(a);
+  });
+  const compareEl = document.getElementById('hero-compare-roca');
+  if (compareEl) {
+    if (prevYearAscents.length > 0 && rockYear.length > 0) {
+      const pct = Math.round(((rockYear.length - prevYearAscents.length) / prevYearAscents.length) * 100);
+      const sign = pct >= 0 ? '+' : '';
+      const prevMax = findMaxGrade(prevYearAscents.map(a => a.grade).filter(Boolean));
+      compareEl.innerHTML = `Vs. ${prevYear}:<br><strong>${sign}${pct}% vías</strong><br>Grado máximo: <strong>${prevMax || '-'} → ${maxGrade}</strong>`;
+    } else if (rockYear.length > 0) {
+      compareEl.innerHTML = `<strong>${rockYear.length} vías</strong> este año<br>Flash rate: <strong>${flashRate}%</strong>`;
+    } else {
+      compareEl.innerHTML = 'Registra ascensiones<br>para ver tu progreso.';
+    }
+  }
+
+  // Sparkline — últimas 30 sesiones agrupadas por día
+  buildSparkline(rockAscents, 'hero-sparkline-roca', '#6366f1', '#e0e7ff');
+}
+
+function buildSparkline(ascents, svgId, strokeColor, fillColor) {
+  const svgEl = document.getElementById(svgId);
+  if (!svgEl) return;
+
+  const byDay = {};
+  ascents.slice(0, 210).forEach(a => {
+    const d = parseAscentDate(a.date);
+    if (!d) return;
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    byDay[key] = (byDay[key] || 0) + 1;
+  });
+
+  const days = Object.values(byDay).slice(0, 30).reverse();
+  if (days.length < 2) { svgEl.innerHTML = ''; return; }
+
+  const maxV = Math.max(...days);
+  const w = 200, h = 48, pad = 4;
+  const pts = days.map((v, i) => {
+    const x = (i / (days.length - 1)) * w;
+    const y = h - pad - ((v / maxV) * (h - pad * 2));
+    return `${x},${y}`;
+  }).join(' ');
+
+  svgEl.innerHTML = `
+    <polyline points="${pts}" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="${pts} ${w},${h} 0,${h}" fill="${fillColor}" stroke="none" opacity="0.5"/>
+  `;
+}
+
+function buildActivityPyramid(allAscents) {
+  const el = document.getElementById('act-pyramid-roca');
+  if (!el) return;
+
+  const rockAscents = allAscents.filter(a => !isGymAscent(a) && a.style !== 'project' && a.grade);
+
+  const gradeCounts = {};
+  rockAscents.forEach(a => {
+    const g = a.grade.toLowerCase();
+    if (GRADE_ORDER.includes(g)) gradeCounts[g] = (gradeCounts[g] || 0) + 1;
+  });
+
+  // Sort by grade descending and take top 6 grades with data
+  const sorted = GRADE_ORDER
+    .filter(g => gradeCounts[g] > 0)
+    .slice(-6)
+    .reverse();
+
+  if (sorted.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:1rem;font-size:12px;color:var(--text-muted)">Sin ascensiones encadenadas</div>';
+    const consolidatedEl = document.getElementById('act-consolidated-grade');
+    if (consolidatedEl) consolidatedEl.textContent = '-';
+    return;
+  }
+
+  const maxCount = Math.max(...sorted.map(g => gradeCounts[g]));
+  const colors = ['#3730a3', '#4f46e5', '#6366f1', '#818cf8', '#a5b4fc', '#c7d2fe'];
+
+  el.innerHTML = sorted.map((grade, i) => {
+    const count = gradeCounts[grade];
+    const pct = Math.max(8, Math.round((count / maxCount) * 100));
+    return `<div class="act-pyramid-row">
+      <div class="act-pyramid-label">${grade}</div>
+      <div class="act-pyramid-bar-wrap">
+        <div class="act-pyramid-bar" style="width:${pct}%;background:${colors[i] || colors[colors.length-1]};"></div>
+        <div class="act-pyramid-count">${count}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Consolidated grade: highest grade with ≥5 ascents
+  const consolidated = sorted.find(g => gradeCounts[g] >= 5);
+  const consolidatedEl = document.getElementById('act-consolidated-grade');
+  if (consolidatedEl) consolidatedEl.textContent = consolidated || '-';
+}
+
+function buildActivityHeatmap(allAscents) {
+  buildHeatmapFor(allAscents.filter(a => !isGymAscent(a)), 'act-heatmap-weeks-roca', 'act-heatmap-months-roca', 'hm-r');
+  buildHeatmapFor(allAscents.filter(a => isGymAscent(a)), 'act-heatmap-weeks-gym', 'act-heatmap-months-gym', 'hm-g');
+}
+
+function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
+  const weeksEl = document.getElementById(weeksId);
+  const monthsEl = document.getElementById(monthsId);
+  if (!weeksEl || !monthsEl) return;
+  weeksEl.innerHTML = '';
+  monthsEl.innerHTML = '';
+
+  // Build date → count map for last 52 weeks
+  const dayCount = {};
+  ascents.forEach(a => {
+    const d = parseAscentDate(a.date);
+    if (!d) return;
+    const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    dayCount[key] = (dayCount[key] || 0) + 1;
+  });
+
+  // Start from 52 weeks ago, aligned to Sunday
+  const today = new Date();
+  const start = new Date(today);
+  start.setDate(start.getDate() - 363); // ~52 weeks
+  // Align to previous Sunday
+  start.setDate(start.getDate() - start.getDay());
+
+  // Month labels
+  const months = ['E','F','M','A','M','J','J','A','S','O','N','D'];
+  let lastMonth = -1;
+  const monthLabels = [];
+
+  for (let w = 0; w < 52; w++) {
+    const weekDiv = document.createElement('div');
+    weekDiv.className = 'act-heatmap-week';
+
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(start);
+      date.setDate(start.getDate() + w * 7 + d);
+      const key = `${date.getFullYear()}-${String(date.getMonth()).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+      const count = dayCount[key] || 0;
+      const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 4 ? 2 : count <= 7 ? 3 : 4;
+
+      const cell = document.createElement('div');
+      cell.className = `act-heatmap-cell ${level === 0 ? 'hm-0' : colorPrefix + level}`;
+      if (count > 0) cell.title = `${date.toLocaleDateString('es-ES', { day:'numeric', month:'short' })}: ${count} vías`;
+      weekDiv.appendChild(cell);
+
+      if (d === 0 && date.getMonth() !== lastMonth) {
+        lastMonth = date.getMonth();
+        monthLabels[w] = months[lastMonth];
+      }
+    }
+    weeksEl.appendChild(weekDiv);
+  }
+
+  // Render month labels
+  for (let w = 0; w < 52; w++) {
+    const span = document.createElement('div');
+    span.className = 'act-heatmap-month';
+    span.textContent = monthLabels[w] || '';
+    monthsEl.appendChild(span);
+  }
+}
+
+function calculateStreak(ascents) {
+  if (!ascents || ascents.length === 0) return 0;
+  const days = new Set();
+  ascents.forEach(a => {
+    const d = parseAscentDate(a.date);
+    if (d) days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+  });
+
+  const sorted = Array.from(days).sort().reverse();
+  let streak = 0;
+  const today = new Date();
+  let cursor = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  for (const dayKey of sorted) {
+    const [y, m, d] = dayKey.split('-').map(Number);
+    const dayDate = new Date(y, m, d);
+    const diff = Math.round((cursor - dayDate) / 86400000);
+    if (diff <= 1) {
+      streak++;
+      cursor = dayDate;
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+function buildGymStats(allAscents) {
+  const gymAscents = allAscents.filter(a => isGymAscent(a));
+
+  // This week gym routes
+  const now = new Date();
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay());
+  startOfWeek.setHours(0,0,0,0);
+  const weekGym = gymAscents.filter(a => {
+    const d = parseAscentDate(a.date);
+    return d && d >= startOfWeek;
+  });
+
+  const weekRoutesEl = document.getElementById('hero-gym-week-routes');
+  if (weekRoutesEl) weekRoutesEl.textContent = weekGym.length > 0 ? `${weekGym.length} vías` : '- vías';
+
+  const goalEl = document.getElementById('hero-gym-goal');
+  if (goalEl) goalEl.textContent = gymAscents.length === 0 ? 'Registra sesiones para ver tu progreso' : `${gymAscents.length} vías totales en rocódromo`;
+
+  // Flash rate
+  const flashGym = gymAscents.filter(a => a.style === 'flash' || a.style === 'onsight').length;
+  const flashRateGym = gymAscents.length > 0 ? Math.round((flashGym / gymAscents.length) * 100) + '%' : '-';
+
+  // Sessions per week (last 8 weeks)
+  const eightWeeksAgo = new Date(now);
+  eightWeeksAgo.setDate(now.getDate() - 56);
+  const recentGym = gymAscents.filter(a => {
+    const d = parseAscentDate(a.date);
+    return d && d >= eightWeeksAgo;
+  });
+  const gymDays = new Set(recentGym.map(a => {
+    const d = parseAscentDate(a.date);
+    return d ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : null;
+  }).filter(Boolean));
+  const sessionsPerWeek = gymDays.size > 0 ? (gymDays.size / 8).toFixed(1) : '-';
+
+  // Max grade in gym
+  const gymGrades = gymAscents.map(a => a.grade).filter(Boolean);
+  const gymMaxGrade = findMaxGrade(gymGrades) || '-';
+
+  // Unique gym session days total
+  const allGymDays = new Set(gymAscents.map(a => {
+    const d = parseAscentDate(a.date);
+    return d ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : null;
+  }).filter(Boolean));
+
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setVal('gym-sessions-week', sessionsPerWeek);
+  setVal('gym-flash-rate', flashRateGym);
+  setVal('gym-max-grade', gymMaxGrade);
+  setVal('gym-total-sessions', allGymDays.size > 0 ? allGymDays.size : '-');
+
+  // Sparkline gym
+  buildSparkline(gymAscents, 'hero-sparkline-gym', '#7c3aed', '#ede9fe');
+
+  // Gym timeline
+  renderGymTimeline(gymAscents.slice(0, 50));
+}
+
+function renderGymTimeline(ascents) {
+  const listEl = document.getElementById('activity-list-gym');
+  if (!listEl) return;
+  if (ascents.length === 0) return;
+  listEl.innerHTML = '';
+  renderSessionCards(ascents, listEl, true);
+}
+
+function updateActivityRecords(allAscents) {
+  const rockAscents = allAscents.filter(a => !isGymAscent(a));
+  if (rockAscents.length === 0) return;
+
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+  // Highest grade
+  const grades = rockAscents.map(a => a.grade).filter(Boolean);
+  const maxGrade = findMaxGrade(grades) || '-';
+  setEl('record-highest-grade', maxGrade);
+  const topAscent = rockAscents.find(a => a.grade && a.grade.toLowerCase() === maxGrade.toLowerCase());
+  setEl('record-highest-route', [topAscent?.routeName, topAscent?.schoolName || topAscent?.school].filter(Boolean).join(' · ') || '-');
+
+  // Highest flash
+  const flashAscents = rockAscents.filter(a => a.style === 'flash' || a.style === 'onsight');
+  const flashGrades = flashAscents.map(a => a.grade).filter(Boolean);
+  const maxFlash = findMaxGrade(flashGrades) || '-';
+  setEl('record-highest-flash', maxFlash);
+  const topFlash = flashAscents.find(a => a.grade && a.grade.toLowerCase() === maxFlash.toLowerCase());
+  setEl('record-flash-route', [topFlash?.routeName, topFlash?.schoolName || topFlash?.school].filter(Boolean).join(' · ') || '-');
+
+  // Streak
+  const streak = calculateStreak(rockAscents);
+  setEl('record-streak', streak > 0 ? streak + ' días' : '-');
+
+  // Most routes in a day
+  const dayMap = {};
+  rockAscents.forEach(a => {
+    const d = parseAscentDate(a.date);
+    if (!d) return;
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    if (!dayMap[key]) dayMap[key] = { count: 0, date: d };
+    dayMap[key].count++;
+  });
+  const bestDay = Object.values(dayMap).sort((a, b) => b.count - a.count)[0];
+  if (bestDay) {
+    setEl('record-most-day', bestDay.count);
+    setEl('record-most-date', bestDay.date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }));
+  }
+}
+
+// ========================================
 
 function resetAllStats() {
   // Reset to empty state when user has no ascents
@@ -11144,59 +11435,90 @@ function findMaxGrade(grades) {
   return maxGrade;
 }
 
+let _allActivityAscents = [];
+
+function filterActivitySessions(filter) {
+  if (!_allActivityAscents.length) return;
+  const filtered = filter === 'all'
+    ? _allActivityAscents
+    : _allActivityAscents.filter(a => a.style === filter);
+  const listEl = document.getElementById('activity-list');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+  if (filtered.length === 0) {
+    listEl.innerHTML = '<div class="activity-empty-state"><h3>Sin ascensiones para este filtro</h3></div>';
+    return;
+  }
+  renderSessionCards(filtered, listEl, false);
+}
+
+function renderSessionCards(ascents, container, isGym) {
+  const styleMap = { flash: 'F', redpoint: 'R', onsight: 'O', project: 'P', toprope: 'T' };
+  const styleDot = { flash: 'act-sd-yellow', redpoint: 'act-sd-red', onsight: 'act-sd-blue', project: 'act-sd-gray', toprope: 'act-sd-gray' };
+
+  const sessions = {};
+  ascents.forEach(a => {
+    const d = parseAscentDate(a.date);
+    const dateKey = d
+      ? d.getFullYear() + '-' + String(d.getMonth()).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+      : 'unknown';
+    const sector = a.sectorName || a.sector || 'Sector desconocido';
+    const key = dateKey + '__' + sector;
+    if (!sessions[key]) sessions[key] = { date: d, sector, school: a.schoolName || a.school || '', ascents: [] };
+    sessions[key].ascents.push(a);
+  });
+
+  Object.values(sessions).forEach(function(session) {
+    const grades = session.ascents.map(a => a.grade).filter(Boolean);
+    const topGrade = findMaxGrade(grades) || '-';
+    const styles = [...new Set(session.ascents.map(a => a.style).filter(Boolean))];
+    const dateStr = session.date
+      ? session.date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+      : '';
+    const locationStr = [dateStr, session.school, session.sector].filter(Boolean).join(' · ');
+
+    let avgGrade = '-';
+    if (grades.length > 0) {
+      const avgIdx = Math.round(grades.reduce(function(acc, g) { return acc + (GRADE_ORDER.indexOf(g.toLowerCase()) || 0); }, 0) / grades.length);
+      avgGrade = GRADE_ORDER[avgIdx] || '-';
+    }
+
+    const dotsHtml = styles.map(s =>
+      '<div class="act-style-dot ' + (styleDot[s] || 'act-sd-gray') + '" title="' + s + '">' + (styleMap[s] || '?') + '</div>'
+    ).join('');
+
+    const card = document.createElement('div');
+    card.className = 'act-session-card';
+    card.innerHTML =
+      '<div class="act-session-left">' +
+        '<div class="act-session-date">' + locationStr + '</div>' +
+        '<div class="act-session-sector">' + session.sector + '</div>' +
+        '<div class="act-session-meta">' + session.ascents.length + ' vía' + (session.ascents.length !== 1 ? 's' : '') + ' · Grado medio ' + avgGrade + '</div>' +
+      '</div>' +
+      '<div class="act-session-right">' +
+        '<div class="act-session-grade">' + topGrade + '</div>' +
+        '<div class="act-session-styles">' + dotsHtml + '</div>' +
+      '</div>';
+    container.appendChild(card);
+  });
+}
+
 function renderActivityList(ascents) {
+  _allActivityAscents = ascents.filter(a => !isGymAscent(a));
   const activityList = document.getElementById('activity-list');
   if (!activityList) return;
 
-  // Clear existing items except empty state
   const emptyState = activityList.querySelector('.activity-empty-state');
   activityList.innerHTML = '';
 
-  if (ascents.length === 0) {
+  if (_allActivityAscents.length === 0) {
     if (emptyState) activityList.appendChild(emptyState);
     return;
   }
 
-    const styleIcon = {
-    flash: '⚡',
-    redpoint: '🔴',
-    onsight: '👁️',
-    toprope: '🔁',
-    lead: '🧗',
-    project: '🎯'
-  };
-
-  ascents.forEach(ascent => {
-    const icon = styleIcon[ascent.style] || '🧗';
-    const rawDate = parseAscentDate(ascent.date);
-    const formattedDate = rawDate ? rawDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : '';
-    const location = [ascent.schoolName, ascent.sector].filter(Boolean).join(' · ') || 'Ubicación desconocida';
-
-    const itemHtml = `
-      <div class="activity-item" data-id="${ascent.id}">
-        <div class="activity-item-icon ${ascent.style || ''}">${icon}</div>
-        <div class="activity-item-content">
-          <div class="activity-item-header">
-            <h4 class="activity-item-name">${ascent.routeName || 'Vía sin nombre'}</h4>
-            <span class="activity-item-grade">${ascent.grade || '-'}</span>
-          </div>
-          <div class="activity-item-meta">
-            <span class="activity-item-location">📍 ${location}</span>
-            <span class="activity-item-date">📅 ${formattedDate}</span>
-          </div>
-          ${ascent.tries > 1 || ascent.rating > 0 ? `
-            <div class="activity-item-stats">
-              ${ascent.tries > 1 ? `<span class="activity-stat-mini">${ascent.tries} intentos</span>` : ''}
-              ${ascent.rating > 0 ? `<span class="activity-stat-mini">${'\u2605'.repeat(ascent.rating)}</span>` : ''}
-            </div>
-          ` : ''}
-        </div>
-      </div>
-    `;
-
-    activityList.insertAdjacentHTML('beforeend', itemHtml);
-  });
+  renderSessionCards(_allActivityAscents, activityList, false);
 }
+
 
 // ========================================
 // ASCENT LOGBOOK

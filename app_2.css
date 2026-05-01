@@ -18634,3 +18634,500 @@ body.pwa-standalone .feed-header {
   padding: 0;
   margin: 10px 16px 10px;
 }
+/* ========================================
+   ACTIVIDAD REDISEÑO — Nueva arquitectura
+   ======================================== */
+
+/* Toggle Roca / Rocódromo */
+.act-mode-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-full);
+  padding: 3px;
+  border: 1px solid var(--border-color);
+}
+
+.act-mode-btn {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 16px;
+  border-radius: var(--radius-full);
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.act-mode-btn.active {
+  background: var(--accent-primary);
+  color: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Hero Card */
+.act-hero {
+  background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.375rem;
+  margin-bottom: 1.25rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  border: 1px solid rgba(99, 102, 241, 0.12);
+}
+
+.act-hero-gym {
+  background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+  border-color: rgba(124, 58, 237, 0.15);
+}
+
+.act-hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.act-hero-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.act-hero-grade {
+  font-size: 48px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  line-height: 1;
+}
+
+.act-hero-grade-gym {
+  font-size: 32px;
+  color: #7c3aed;
+}
+
+.act-hero-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.act-hero-badges {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.act-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+}
+
+.act-badge-orange { background: #fef3c7; color: #92400e; }
+.act-badge-green  { background: #dcfce7; color: #166534; }
+.act-badge-blue   { background: #dbeafe; color: #1e40af; }
+.act-badge-purple { background: #ede9fe; color: #5b21b6; }
+
+.act-hero-right {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.act-hero-compare {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.act-hero-compare strong {
+  color: #166534;
+  font-weight: 600;
+}
+
+.act-hero-compare strong.gym {
+  color: #5b21b6;
+}
+
+.act-sparkline {
+  height: 44px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+/* Títulos de sección */
+.act-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 1.5rem 0 0.625rem;
+}
+
+/* Pirámide de grados */
+.act-pyramid-wrap {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.875rem 1rem;
+  background: var(--bg-primary);
+}
+
+.act-pyramid-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.act-pyramid-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.act-pyramid-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.act-pyramid-bar-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 20px;
+}
+
+.act-pyramid-bar {
+  height: 100%;
+  border-radius: 3px;
+  min-width: 4px;
+  transition: width 0.4s ease;
+}
+
+.act-pyramid-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.act-pyramid-footer {
+  border-top: 1px dashed var(--border-color);
+  padding-top: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.act-pyramid-footer span {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+/* Heatmap */
+.act-heatmap-wrap {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.875rem 1rem;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.act-heatmap-months {
+  display: flex;
+  margin-bottom: 4px;
+  padding-left: 22px;
+}
+
+.act-heatmap-month {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex: 1;
+  text-align: center;
+}
+
+.act-heatmap-grid {
+  display: flex;
+  gap: 3px;
+  align-items: flex-start;
+}
+
+.act-heatmap-days {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.act-heatmap-day-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  height: 11px;
+  line-height: 11px;
+  text-align: right;
+  width: 14px;
+}
+
+.act-heatmap-weeks {
+  display: flex;
+  gap: 3px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.act-heatmap-week {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.act-heatmap-cell {
+  height: 11px;
+  border-radius: 2px;
+  min-width: 0;
+}
+
+/* Colores roca (azul-índigo) */
+.hm-0  { background: #f1f5f9; }
+.hm-r1 { background: #c7d2fe; }
+.hm-r2 { background: #818cf8; }
+.hm-r3 { background: #4f46e5; }
+.hm-r4 { background: #3730a3; }
+
+/* Colores rocódromo (violeta) */
+.hm-g1 { background: #ddd6fe; }
+.hm-g2 { background: #a78bfa; }
+.hm-g3 { background: #7c3aed; }
+.hm-g4 { background: #5b21b6; }
+
+.act-heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+
+.act-heatmap-legend span {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.act-hl-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+}
+
+/* Récords grid */
+.act-records-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 0.5rem;
+}
+
+.act-rec-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.875rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.act-rec-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.act-rec-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.act-rec-gym {
+  color: #7c3aed;
+}
+
+.act-rec-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Timeline filters */
+.act-timeline-filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.act-tf {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.act-tf.active {
+  background: var(--text-primary);
+  color: #fff;
+  border-color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Session cards (timeline) */
+.act-session-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.875rem 1rem;
+  margin-bottom: 8px;
+  background: var(--bg-primary);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-fast);
+}
+
+.act-session-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.act-session-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.act-session-date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.act-session-sector {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.act-session-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.act-session-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.act-session-grade {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.act-session-styles {
+  display: flex;
+  gap: 4px;
+}
+
+.act-style-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.act-sd-red    { background: #fee2e2; color: #991b1b; }
+.act-sd-yellow { background: #fef9c3; color: #92400e; }
+.act-sd-blue   { background: #dbeafe; color: #1e40af; }
+.act-sd-gray   { background: #f1f5f9; color: #475569; }
+
+/* FAB */
+.act-fab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--accent-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 14px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin: 2rem auto 0;
+  width: 100%;
+  max-width: 300px;
+  box-shadow: var(--shadow-md);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.act-fab:hover {
+  background: #4f46e5;
+  box-shadow: var(--shadow-lg);
+}
+
+/* Empty state del activity-list dentro del nuevo diseño */
+.activity-list .activity-empty-state {
+  padding: 2.5rem 1rem;
+}
+
+/* Responsive: en móviles reducir hero a columna */
+@media (max-width: 400px) {
+  .act-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .act-hero-right {
+    display: none;
+  }
+
+  .act-records-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .act-rec-value {
+    font-size: 18px;
+  }
+}

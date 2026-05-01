@@ -416,24 +416,231 @@
       <!-- VISTA 4: ACTIVIDAD -->
       <div id="activity-view" class="view hidden">
         <div class="activity-scroll-container">
-          <!-- Activity Header -->
+
+          <!-- Header con toggle -->
           <header class="activity-header">
-            <h1 class="activity-title">Estadísticas</h1>
-            <div class="activity-header-actions">
-              <button class="activity-period-btn" id="activity-period-btn">
-                <span id="activity-period-text">Este mes</span>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </button>
+            <h1 class="activity-title">Actividad</h1>
+            <div class="act-mode-toggle" id="activity-mode-toggle">
+              <button class="act-mode-btn active" id="btn-roca" data-mode="roca">Roca</button>
+              <button class="act-mode-btn" id="btn-rocodromo" data-mode="rocodromo">Rocódromo</button>
             </div>
           </header>
 
-          <!-- Stats Carousel -->
-          <div class="stats-carousel-container">
-            <div class="stats-carousel" id="stats-carousel">
-              <!-- Slide 1: Rendimiento -->
-              <div class="stats-carousel-slide" data-slide="0">
+          <!-- MODO ROCA -->
+          <div id="content-roca">
+
+            <!-- Hero Card -->
+            <div class="act-hero">
+              <div class="act-hero-left">
+                <div class="act-hero-label">Proyecto activo</div>
+                <div class="act-hero-grade" id="hero-project-grade">-</div>
+                <div class="act-hero-sub" id="hero-project-name">Sin proyecto activo</div>
+                <div class="act-hero-badges" id="hero-badges-roca"></div>
+              </div>
+              <div class="act-hero-right">
+                <div class="act-hero-compare" id="hero-compare-roca">Cargando datos...</div>
+                <svg class="act-sparkline" id="hero-sparkline-roca" viewBox="0 0 200 48" preserveAspectRatio="none"></svg>
+              </div>
+            </div>
+
+            <!-- Pirámide de grados -->
+            <div class="act-section-title">Pirámide de grados</div>
+            <div class="act-pyramid-wrap">
+              <div class="act-pyramid-subtitle">Grado encadenado (nº vías)</div>
+              <div id="act-pyramid-roca"></div>
+              <div class="act-pyramid-footer">Grado consolidado: <span id="act-consolidated-grade">-</span> · ≥5 vías encadenadas</div>
+            </div>
+
+            <!-- Heatmap -->
+            <div class="act-section-title">Consistencia anual</div>
+            <div class="act-heatmap-wrap">
+              <div class="act-heatmap-months" id="act-heatmap-months-roca"></div>
+              <div class="act-heatmap-grid">
+                <div class="act-heatmap-days">
+                  <div class="act-heatmap-day-label"></div>
+                  <div class="act-heatmap-day-label">L</div>
+                  <div class="act-heatmap-day-label"></div>
+                  <div class="act-heatmap-day-label">X</div>
+                  <div class="act-heatmap-day-label"></div>
+                  <div class="act-heatmap-day-label">V</div>
+                  <div class="act-heatmap-day-label"></div>
+                </div>
+                <div class="act-heatmap-weeks" id="act-heatmap-weeks-roca"></div>
+              </div>
+              <div class="act-heatmap-legend">
+                <span>Menos</span>
+                <div class="act-hl-cell hm-0"></div>
+                <div class="act-hl-cell hm-r1"></div>
+                <div class="act-hl-cell hm-r2"></div>
+                <div class="act-hl-cell hm-r3"></div>
+                <div class="act-hl-cell hm-r4"></div>
+                <span>Más</span>
+              </div>
+            </div>
+
+            <!-- Récords -->
+            <div class="act-section-title">Récords personales</div>
+            <div class="act-records-grid">
+              <div class="act-rec-card">
+                <div class="act-rec-label">Grado máximo</div>
+                <div class="act-rec-value" id="record-highest-grade">-</div>
+                <div class="act-rec-sub" id="record-highest-route">-</div>
+              </div>
+              <div class="act-rec-card">
+                <div class="act-rec-label">Flash más alto</div>
+                <div class="act-rec-value" id="record-highest-flash">-</div>
+                <div class="act-rec-sub" id="record-flash-route">-</div>
+              </div>
+              <div class="act-rec-card">
+                <div class="act-rec-label">Mejor racha</div>
+                <div class="act-rec-value" id="record-streak">-</div>
+                <div class="act-rec-sub">Días escalando</div>
+              </div>
+              <div class="act-rec-card">
+                <div class="act-rec-label">Más vías en un día</div>
+                <div class="act-rec-value" id="record-most-day">-</div>
+                <div class="act-rec-sub" id="record-most-date">-</div>
+              </div>
+            </div>
+
+            <!-- Timeline de ascensiones -->
+            <div class="act-section-title">Últimas sesiones</div>
+            <div class="act-timeline-filters" id="act-timeline-filters">
+              <button class="act-tf active" data-filter="all">Todo</button>
+              <button class="act-tf" data-filter="flash">Flash ⚡</button>
+              <button class="act-tf" data-filter="redpoint">Encadenadas 🔴</button>
+              <button class="act-tf" data-filter="project">Proyectos 🎯</button>
+            </div>
+            <div class="activity-list" id="activity-list">
+              <div class="activity-empty-state" id="activity-empty">
+                <div class="empty-icon">
+                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="8" r="4"></circle>
+                    <path d="M12 14l-4 8h8l-4-8z"></path>
+                    <path d="M8 22l2-4"></path>
+                    <path d="M16 22l-2-4"></path>
+                  </svg>
+                </div>
+                <h3>Sin ascensiones registradas</h3>
+                <p>¡Comienza a registrar tus ascensiones!</p>
+              </div>
+            </div>
+
+          </div><!-- /content-roca -->
+
+          <!-- MODO ROCÓDROMO -->
+          <div id="content-rocodromo" style="display:none;">
+
+            <!-- Hero Card Rocódromo -->
+            <div class="act-hero act-hero-gym">
+              <div class="act-hero-left">
+                <div class="act-hero-label">Esta semana</div>
+                <div class="act-hero-grade act-hero-grade-gym" id="hero-gym-week-routes">- vías</div>
+                <div class="act-hero-sub" id="hero-gym-goal">Registra sesiones para ver tu progreso</div>
+                <div class="act-hero-badges" id="hero-badges-gym"></div>
+              </div>
+              <div class="act-hero-right">
+                <div class="act-hero-compare" id="hero-compare-gym">Registra sesiones de rocódromo para ver estadísticas.</div>
+                <svg class="act-sparkline act-sparkline-gym" id="hero-sparkline-gym" viewBox="0 0 200 48" preserveAspectRatio="none"></svg>
+              </div>
+            </div>
+
+            <!-- Heatmap Rocódromo -->
+            <div class="act-section-title">Consistencia anual</div>
+            <div class="act-heatmap-wrap">
+              <div class="act-heatmap-months" id="act-heatmap-months-gym"></div>
+              <div class="act-heatmap-grid">
+                <div class="act-heatmap-days">
+                  <div class="act-heatmap-day-label"></div>
+                  <div class="act-heatmap-day-label">L</div>
+                  <div class="act-heatmap-day-label"></div>
+                  <div class="act-heatmap-day-label">X</div>
+                  <div class="act-heatmap-day-label"></div>
+                  <div class="act-heatmap-day-label">V</div>
+                  <div class="act-heatmap-day-label"></div>
+                </div>
+                <div class="act-heatmap-weeks" id="act-heatmap-weeks-gym"></div>
+              </div>
+              <div class="act-heatmap-legend">
+                <span>Menos</span>
+                <div class="act-hl-cell hm-0"></div>
+                <div class="act-hl-cell hm-g1"></div>
+                <div class="act-hl-cell hm-g2"></div>
+                <div class="act-hl-cell hm-g3"></div>
+                <div class="act-hl-cell hm-g4"></div>
+                <span>Más</span>
+              </div>
+            </div>
+
+            <!-- Stats Rocódromo -->
+            <div class="act-section-title">Estadísticas de entrenamiento</div>
+            <div class="act-records-grid">
+              <div class="act-rec-card">
+                <div class="act-rec-label">Sesiones / semana</div>
+                <div class="act-rec-value act-rec-gym" id="gym-sessions-week">-</div>
+                <div class="act-rec-sub">Media últimas 8 semanas</div>
+              </div>
+              <div class="act-rec-card">
+                <div class="act-rec-label">Flash rate</div>
+                <div class="act-rec-value act-rec-gym" id="gym-flash-rate">-</div>
+                <div class="act-rec-sub">En rocódromo</div>
+              </div>
+              <div class="act-rec-card">
+                <div class="act-rec-label">Grado máximo</div>
+                <div class="act-rec-value act-rec-gym" id="gym-max-grade">-</div>
+                <div class="act-rec-sub">En rocódromo</div>
+              </div>
+              <div class="act-rec-card">
+                <div class="act-rec-label">Total sesiones</div>
+                <div class="act-rec-value act-rec-gym" id="gym-total-sessions">-</div>
+                <div class="act-rec-sub">Registradas</div>
+              </div>
+            </div>
+
+            <!-- Timeline Rocódromo -->
+            <div class="act-section-title">Últimas sesiones</div>
+            <div class="activity-list" id="activity-list-gym">
+              <div class="activity-empty-state">
+                <div class="empty-icon">
+                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="8" r="4"></circle>
+                    <path d="M12 14l-4 8h8l-4-8z"></path>
+                  </svg>
+                </div>
+                <h3>Sin sesiones en rocódromo</h3>
+                <p>Añade "Rocódromo" al registrar una ascensión</p>
+              </div>
+            </div>
+
+          </div><!-- /content-rocodromo -->
+
+          <!-- FAB Nueva Ascensión -->
+          <button class="act-fab" id="new-ascent-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Nueva ascensión
+          </button>
+
+          <!-- Nodos legacy que el JS aún puede referenciar (ocultos) -->
+          <div style="display:none;">
+            <div id="stats-carousel">
+              <!-- Legacy stat IDs - ocultos, usados por JS para calcular stats -->
+              <span id="stat-total-routes"></span><span id="stat-placeholder-1"></span>
+              <span id="stat-max-grade"></span><span id="stat-avg-grade"></span>
+              <span id="stat-flash-rate"></span><span id="stat-main-style"></span>
+              <span id="stat-total-tries"></span><span id="stat-avg-tries"></span>
+              <span id="stat-rated-routes"></span><span id="stat-avg-rating"></span>
+              <span id="stat-top-school"></span><span id="stat-schools-count"></span>
+              <span id="stat-top-sector"></span><span id="stat-sectors-count"></span>
+              <!-- Legacy histogram/chart containers - ocultos -->
+              <div id="histogram-carousel"><div id="histogram-bars"></div><svg id="histogram-lines"></svg><div id="histogram-x-axis"></div><div id="histogram-grade-axis"></div><div id="histogram-ascent-axis"></div></div>
+              <div id="grade-distribution-bars"></div><div id="grade-distribution-y-axis"></div><div id="grade-distribution-x-axis"></div>
+              <div id="activity-chart"><span id="chart-total"></span><span id="chart-avg"></span></div>
+              <!-- Legacy period selector -->
+              <button id="activity-period-btn"><span id="activity-period-text"></span></button>
+              <div class="stats-carousel-slide" data-slide="0" style="display:none;">
                 <div class="activity-stats-grid">
                   <div class="activity-stat-card">
                     <div class="stat-icon stat-icon-routes">
@@ -444,7 +651,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Total vías</span>
-                      <span class="stat-value" id="stat-total-routes">47</span>
+                      <span class="stat-value" data-legacy-removed="stat-total-routes">47</span>
                     </div>
                   </div>
 
@@ -460,7 +667,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Días de escalada</span>
-                      <span class="stat-value" id="stat-placeholder-1">12</span>
+                      <span class="stat-value" data-legacy-removed="stat-placeholder-1">12</span>
                     </div>
                   </div>
 
@@ -473,7 +680,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Grado máximo</span>
-                      <span class="stat-value" id="stat-max-grade">7b+</span>
+                      <span class="stat-value" data-legacy-removed="stat-max-grade">7b+</span>
                     </div>
                   </div>
 
@@ -486,7 +693,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Grado medio</span>
-                      <span class="stat-value" id="stat-avg-grade">6c</span>
+                      <span class="stat-value" data-legacy-removed="stat-avg-grade">6c</span>
                     </div>
                   </div>
 
@@ -499,7 +706,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Flash rate</span>
-                      <span class="stat-value" id="stat-flash-rate">68%</span>
+                      <span class="stat-value" data-legacy-removed="stat-flash-rate">68%</span>
                     </div>
                   </div>
 
@@ -513,7 +720,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Estilo predominante</span>
-                      <span class="stat-value" id="stat-main-style">Redpoint</span>
+                      <span class="stat-value" data-legacy-removed="stat-main-style">Redpoint</span>
                     </div>
                   </div>
                 </div>
@@ -536,7 +743,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Intentos totales</span>
-                      <span class="stat-value" id="stat-total-tries">0</span>
+                      <span class="stat-value" data-legacy-removed="stat-total-tries">0</span>
                     </div>
                   </div>
 
@@ -551,7 +758,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Media intentos/vía</span>
-                      <span class="stat-value" id="stat-avg-tries">0</span>
+                      <span class="stat-value" data-legacy-removed="stat-avg-tries">0</span>
                     </div>
                   </div>
 
@@ -564,7 +771,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Vías valoradas</span>
-                      <span class="stat-value" id="stat-rated-routes">0</span>
+                      <span class="stat-value" data-legacy-removed="stat-rated-routes">0</span>
                     </div>
                   </div>
 
@@ -577,7 +784,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Valoración media</span>
-                      <span class="stat-value" id="stat-avg-rating">-</span>
+                      <span class="stat-value" data-legacy-removed="stat-avg-rating">-</span>
                     </div>
                   </div>
                 </div>
@@ -596,7 +803,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Escuela más visitada</span>
-                      <span class="stat-value stat-value-text" id="stat-top-school">Siurana</span>
+                      <span class="stat-value stat-value-text" data-legacy-removed="stat-top-school">Siurana</span>
                     </div>
                   </div>
 
@@ -613,7 +820,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Escuelas visitadas</span>
-                      <span class="stat-value" id="stat-schools-count">8</span>
+                      <span class="stat-value" data-legacy-removed="stat-schools-count">8</span>
                     </div>
                   </div>
 
@@ -626,7 +833,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Sector más visitado</span>
-                      <span class="stat-value stat-value-text" id="stat-top-sector">El Pati</span>
+                      <span class="stat-value stat-value-text" data-legacy-removed="stat-top-sector">El Pati</span>
                     </div>
                   </div>
 
@@ -642,7 +849,7 @@
                     </div>
                     <div class="stat-content">
                       <span class="stat-label">Sectores visitados</span>
-                      <span class="stat-value" id="stat-sectors-count">23</span>
+                      <span class="stat-value" data-legacy-removed="stat-sectors-count">23</span>
                     </div>
                   </div>
                 </div>
@@ -657,8 +864,8 @@
             </div>
           </div>
 
-          <!-- Combined Histogram Section (Bars + Lines) -->
-          <div class="activity-section">
+          <!-- [legacy sections removed - see new design above] -->
+          <div class="activity-section" style="display:none;">
             <div class="section-header">
               <h2 class="section-title" id="histogram-title">Progreso mensual</h2>
               <div class="chart-tabs">
@@ -670,19 +877,19 @@
 
             <!-- Histogram Carousel -->
             <div class="histogram-carousel-container">
-              <div class="histogram-carousel" id="histogram-carousel">
+              <div class="histogram-carousel" data-legacy-removed="histogram-carousel">
                 <!-- Slide 1: Progreso temporal (histograma original) -->
                 <div class="histogram-carousel-slide" data-histogram-slide="0">
                   <div class="combined-histogram-container" id="combined-histogram-container">
                     <div class="histogram-wrapper">
-                      <div class="histogram-y-axis histogram-y-axis-left" id="histogram-grade-axis"></div>
+                      <div class="histogram-y-axis histogram-y-axis-left" data-legacy-removed="histogram-grade-axis"></div>
                       <div class="histogram-chart-area" id="histogram-chart-area">
-                        <div class="histogram-bars" id="histogram-bars"></div>
-                        <svg class="histogram-lines" id="histogram-lines" preserveAspectRatio="none"></svg>
+                        <div class="histogram-bars" data-legacy-removed="histogram-bars"></div>
+                        <svg class="histogram-lines" data-legacy-removed="histogram-lines" preserveAspectRatio="none"></svg>
                       </div>
-                      <div class="histogram-y-axis histogram-y-axis-right" id="histogram-ascent-axis"></div>
+                      <div class="histogram-y-axis histogram-y-axis-right" data-legacy-removed="histogram-ascent-axis"></div>
                     </div>
-                    <div class="histogram-x-axis" id="histogram-x-axis"></div>
+                    <div class="histogram-x-axis" data-legacy-removed="histogram-x-axis"></div>
                     <div class="histogram-legend">
                       <div class="legend-item">
                         <span class="legend-bar"></span>
@@ -708,12 +915,12 @@
                 <div class="histogram-carousel-slide" data-histogram-slide="1">
                   <div class="grade-distribution-container" id="grade-distribution-container">
                     <div class="grade-distribution-wrapper">
-                      <div class="grade-distribution-y-axis" id="grade-distribution-y-axis"></div>
+                      <div class="grade-distribution-y-axis" data-legacy-removed="grade-distribution-y-axis"></div>
                       <div class="grade-distribution-chart-area" id="grade-distribution-chart-area">
-                        <div class="grade-distribution-bars" id="grade-distribution-bars"></div>
+                        <div class="grade-distribution-bars" data-legacy-removed="grade-distribution-bars"></div>
                       </div>
                     </div>
-                    <div class="grade-distribution-x-axis" id="grade-distribution-x-axis"></div>
+                    <div class="grade-distribution-x-axis" data-legacy-removed="grade-distribution-x-axis"></div>
                     <div class="grade-distribution-axis-labels">
                       <span class="axis-label-y">Ascensiones</span>
                       <span class="axis-label-x">Grado</span>
@@ -730,8 +937,7 @@
             </div>
           </div>
 
-          <!-- Progress Chart Section -->
-          <div class="activity-section">
+          <div class="activity-section" style="display:none;"><!-- Progress Chart Section (legacy) -->
             <div class="section-header">
               <h2 class="section-title">Progreso semanal</h2>
               <div class="chart-tabs">
@@ -741,7 +947,7 @@
               </div>
             </div>
             <div class="activity-chart-container">
-              <div class="chart-bars" id="activity-chart">
+              <div class="chart-bars" data-legacy-removed="activity-chart">
                 <div class="chart-bar-wrapper">
                   <div class="chart-bar" style="height: 20%;" data-value="2"></div>
                   <span class="chart-label">L</span>
@@ -773,19 +979,18 @@
               </div>
               <div class="chart-summary">
                 <div class="chart-summary-item">
-                  <span class="summary-value" id="chart-total">44</span>
+                  <span class="summary-value" data-legacy-removed="chart-total">44</span>
                   <span class="summary-label">ví­as esta semana</span>
                 </div>
                 <div class="chart-summary-item">
-                  <span class="summary-value" id="chart-avg">6.3</span>
+                  <span class="summary-value" data-legacy-removed="chart-avg">6.3</span>
                   <span class="summary-label">media diaria</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Calorie Calculator Section -->
-          <div class="activity-section calorie-section">
+          <div class="activity-section calorie-section" style="display:none;"><!-- Calorie Calculator (legacy, removed) -->
             <div class="section-header">
               <h2 class="section-title">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -848,8 +1053,8 @@
             </div>
           </div>
 
-          <!-- New Ascent Button -->
-          <button class="new-ascent-btn" id="new-ascent-btn">
+          <!-- new-ascent-btn legacy (hidden - real FAB is above) -->
+          <button class="new-ascent-btn" id="new-ascent-btn-legacy" style="display:none;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -857,8 +1062,7 @@
             Nueva ascensión
           </button>
 
-          <!-- Filter Bar -->
-          <div class="activity-filter-bar">
+          <div class="activity-filter-bar" style="display:none;"><!-- Filter Bar legacy -->
             <div class="filter-chips">
               <button class="filter-chip active" data-filter="all">Todas</button>
               <button class="filter-chip" data-filter="flash">Flash ⚡</button>
@@ -872,25 +1076,11 @@
             </button>
           </div>
 
-          <!-- Ascents List -->
-          <div class="activity-list" id="activity-list">
+          <div class="activity-list" id="activity-list-legacy" style="display:none;"><!-- Ascents List legacy -->
             <!-- Activity items will be injected by JS -->
-            <div class="activity-empty-state" id="activity-empty">
-              <div class="empty-icon">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <circle cx="12" cy="8" r="4"></circle>
-                  <path d="M12 14l-4 8h8l-4-8z"></path>
-                  <path d="M8 22l2-4"></path>
-                  <path d="M16 22l-2-4"></path>
-                </svg>
-              </div>
-              <h3>No hay actividades registradas</h3>
-              <p>Â¡Comienza a registrar tus ascensiones!</p>
-            </div>
           </div>
 
-          <!-- Grade Distribution -->
-          <div class="activity-section">
+          <div class="activity-section" style="display:none;"><!-- Grade Distribution legacy -->
             <div class="section-header">
               <h2 class="section-title">Distribución por grado</h2>
             </div>
@@ -933,46 +1123,7 @@
             </div>
           </div>
 
-          <!-- Personal Records -->
-          <div class="activity-section">
-            <div class="section-header">
-              <h2 class="section-title">🏅 Récords personales</h2>
-            </div>
-            <div class="records-grid">
-              <div class="record-card">
-                <div class="record-icon">🥇</div>
-                <div class="record-info">
-                  <span class="record-title">Grado más alto</span>
-                  <span class="record-value" id="record-highest-grade">7b+</span>
-                  <span class="record-detail" id="record-highest-route">Nombre de la vía</span>
-                </div>
-              </div>
-              <div class="record-card">
-                <div class="record-icon">⚡</div>
-                <div class="record-info">
-                  <span class="record-title">Flash más alto</span>
-                  <span class="record-value" id="record-highest-flash">7a</span>
-                  <span class="record-detail" id="record-flash-route">Nombre de la vía</span>
-                </div>
-              </div>
-              <div class="record-card">
-                <div class="record-icon">🔥</div>
-                <div class="record-info">
-                  <span class="record-title">Mejor racha</span>
-                  <span class="record-value" id="record-streak">15 dí­as</span>
-                  <span class="record-detail">Escalando consecutivos</span>
-                </div>
-              </div>
-              <div class="record-card">
-                <div class="record-icon">📈</div>
-                <div class="record-info">
-                  <span class="record-title">Más vías en un dí­a</span>
-                  <span class="record-value" id="record-most-day">23</span>
-                  <span class="record-detail" id="record-most-date">15 Nov 2024</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <!-- Personal Records legacy - IDs moved to new act-rec-cards above -->
 
         </div>
       </div>
