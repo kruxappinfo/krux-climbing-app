@@ -223,7 +223,7 @@ const MAPLIBRE_SCHOOLS = {
     },
     // GeoJSON fallback
     geojson: {
-      vias: 'Cartografia/Toledo/Toledo_vias.geojson',
+      vias: 'Cartografia/Toledo/Toledo_Vias.geojson',
       sectores: 'Cartografia/Toledo/Toledo_Sectores.geojson',
       parkings: 'Cartografia/Toledo/Toledo_Parkings.geojson',
       puntosInteres: 'Cartografia/Toledo/Toledo_Puntos_interes.geojson',
