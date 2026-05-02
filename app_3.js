@@ -10885,8 +10885,7 @@ async function loadActivityData() {
 // ACTIVITY REDESIGN — New builder functions
 // ========================================
 
-const GRADE_ORDER = ['4', '4+', '5', '5+', '6a', '6a+', '6b', '6b+', '6c', '6c+',
-  '7a', '7a+', '7b', '7b+', '7c', '7c+', '8a', '8a+', '8b', '8b+', '8c', '8c+', '9a'];
+// GRADE_ORDER already declared at top of file — reuse it
 
 function isGymAscent(ascent) {
   const type = (ascent.climbType || ascent.type || '').toLowerCase();
