@@ -10628,8 +10628,7 @@ function openGradeLegendModal() {
     group.grades.forEach(grade => {
       const color = MAPLIBRE_GRADE_COLORS[grade] || '#888';
       legendHTML += `
-        <div class="grade-legend-item">
-          <span class="grade-legend-dot" style="background:${color}"></span>
+        <div class="grade-legend-item" style="background:${color}">
           <span class="grade-legend-label">${grade}</span>
         </div>
       `;

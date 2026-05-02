@@ -17830,24 +17830,18 @@ body.map-active #btn-dev-editor {
 .grade-legend-item {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 8px 3px 5px;
-  background: #f9fafb;
-  border-radius: 6px;
-}
-
-.grade-legend-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  min-width: 44px;
 }
 
 .grade-legend-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #374151;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  white-space: nowrap;
 }
 
 /* ================ SYMBOLS LEGEND MODAL ================ */
