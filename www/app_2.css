@@ -15106,6 +15106,14 @@ body.pwa-standalone .feed-header {
   }
 }
 
+/* Botón Spotter solo visible en el mapa */
+#btn-dev-editor {
+  display: none !important;
+}
+body.map-active #btn-dev-editor {
+  display: flex !important;
+}
+
 /* Dev Editor Button Active State */
 #btn-dev-editor.active {
   background: #10b981 !important;
