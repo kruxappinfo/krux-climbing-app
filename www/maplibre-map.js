@@ -10749,19 +10749,9 @@ function addInfoLegendButton() {
     const otherVisible = mlMap.getZoom() > ccaa.zoom + 1;
     const top = otherVisible ? '106px' : '10px';
     btn.style.top = top;
-    panel.style.top = top;
   };
   mlMap.on('zoom', updateInfoBtnPosition);
   updateInfoBtnPosition();
-
-  // Cerrar panel al pulsar fuera
-  document.addEventListener('click', (e) => {
-    const panelEl = document.getElementById('info-legend-panel');
-    const btnEl = document.getElementById('btn-info-legend');
-    if (panelEl && btnEl && !panelEl.contains(e.target) && !btnEl.contains(e.target)) {
-      closeInfoLegendPanel();
-    }
-  });
 }
 
 // Devuelve color de texto (#000 o #fff) con contraste adecuado sobre un color hex
