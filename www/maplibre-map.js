@@ -10227,16 +10227,6 @@ function buildGradeFilterPanelHTML() {
       <span class="gfp-myvias-text">Proyectos</span>
     </label>
 
-    <div class="gfp-divider"></div>
-    <button class="gfp-legend-btn" onclick="openGradeLegendModal()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-      Leyenda de colores
-    </button>
-
-    <button class="gfp-legend-btn" onclick="openSymbolsLegendModal()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="11"/></svg>
-      Símbolos del mapa
-    </button>
   `;
 }
 
@@ -10737,21 +10727,121 @@ function addInfoLegendButton() {
 
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    openLegendModal('sym');
+    toggleLegendPanel();
   });
 
   container.appendChild(btn);
 
-  // Ajustar posición vertical según si los otros botones están visibles
+  // Panel de leyenda anclado al botón "i"
+  const panel = document.createElement('div');
+  panel.id = 'legend-panel';
+  panel.className = 'legend-panel';
+  panel.innerHTML = buildLegendPanelHTML();
+  container.appendChild(panel);
+
+  // Cerrar al pulsar fuera
+  document.addEventListener('click', (e) => {
+    const p = document.getElementById('legend-panel');
+    const b = document.getElementById('btn-info-legend');
+    if (p && b && !p.contains(e.target) && !b.contains(e.target)) {
+      closeLegendPanel();
+    }
+  });
+
+  // Ajustar posición vertical según zoom
   const updateInfoBtnPosition = () => {
     if (!mlMap) return;
     const ccaa = getCurrentCCAA();
     const otherVisible = mlMap.getZoom() > ccaa.zoom + 1;
     const top = otherVisible ? '106px' : '10px';
     btn.style.top = top;
+    panel.style.top = (parseInt(top) + 50) + 'px';
   };
   mlMap.on('zoom', updateInfoBtnPosition);
   updateInfoBtnPosition();
+}
+
+function buildLegendPanelHTML() {
+  const legendGroups = [
+    { title: 'Principiante · 3–4', grades: ['3a','3b','3c','4a','4b','4c'] },
+    { title: 'Fácil · 5',          grades: ['5a','5a+','5b','5b+','5c','5c+'] },
+    { title: 'Medio · 6A–6B',      grades: ['6a','6a+','6b','6b+'] },
+    { title: 'Medio-alto · 6C–7A', grades: ['6c','6c+','7a','7a+'] },
+    { title: 'Difícil · 7B–7C',    grades: ['7b','7b+','7c','7c+'] },
+    { title: 'Muy difícil · 8',    grades: ['8a','8a+','8b','8b+','8c','8c+'] },
+    { title: 'Élite · 9',          grades: ['9a','9a+','9b','9b+','9c','9c+'] }
+  ];
+
+  let colorsPane = '';
+  legendGroups.forEach(group => {
+    colorsPane += `<div class="gl2-group"><p class="gl2-group-title">${group.title}</p><div class="gl2-pills">`;
+    group.grades.forEach(grade => {
+      const bg  = MAPLIBRE_GRADE_COLORS[grade] || '#888';
+      const col = isLightColor(bg) ? '#1f2937' : '#fff';
+      colorsPane += `<span class="gl2-pill" style="background:${bg};color:${col}">${grade}</span>`;
+    });
+    colorsPane += `</div></div>`;
+  });
+
+  const symbols = [
+    { title: 'Vía deportiva',         desc: 'Cada círculo es una vía. El color indica el grado.', svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="9" fill="#22c55e" stroke="#fff" stroke-width="2"/></svg>` },
+    { title: 'Vía hecha (tick)',       desc: 'Vía encadenada registrada en tu logbook.', svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="#22c55e" stroke="#fff" stroke-width="2"/><polyline points="10,17 14,21 22,12" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>` },
+    { title: 'Vías con variantes',     desc: 'Grupo con salida común. Cada anillo es una variante.', svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="#3b82f6" stroke-width="2.5"/><circle cx="16" cy="16" r="8.5" fill="none" stroke="#f59e0b" stroke-width="2.5"/><circle cx="16" cy="16" r="5" fill="#ef4444"/></svg>` },
+    { title: 'Sector',                 desc: 'Línea coloreada que delimita un sector.', svg: `<svg viewBox="0 0 32 32"><path d="M3 22 C 9 8, 22 26, 29 10" fill="none" stroke="#a855f7" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+    { title: 'Ruta de acceso',         desc: 'Sendero de aproximación (línea naranja discontinua).', svg: `<svg viewBox="0 0 32 32"><path d="M3 26 C 10 22, 14 10, 22 8 L 29 6" fill="none" stroke="#FF6B00" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 3"/></svg>` },
+    { title: 'Parking',                desc: 'Aparcamiento recomendado. Pulsa para navegación.', svg: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#4285f4" stroke="#fff" stroke-width="2"/><text x="12" y="17" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold" font-family="sans-serif">P</text></svg>` },
+    { title: 'Punto de interés (POI)', desc: 'Fuente, refugio, bar, peligro… El emoji indica el tipo.', svg: `<svg viewBox="0 0 32 32"><text x="16" y="22" text-anchor="middle" font-size="20">🚰</text></svg>` },
+    { title: 'Escuela abierta',        desc: 'Cartografía publicada. Pulsa para explorar.', svg: `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#22c55e"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g></svg>` },
+    { title: 'Escuela en desarrollo',  desc: 'Datos parciales o en construcción.', svg: `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#f59e0b"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g></svg>` }
+  ];
+
+  let symPane = '';
+  symbols.forEach(s => {
+    symPane += `<div class="gl2-sym-row"><div class="gl2-sym-icon">${s.svg}</div><div><p class="gl2-sym-title">${s.title}</p><p class="gl2-sym-desc">${s.desc}</p></div></div>`;
+  });
+
+  return `
+    <div class="lp-header">
+      <span class="lp-title">Leyenda del mapa</span>
+    </div>
+    <div class="lp-tabs">
+      <button class="lp-tab lp-tab--active" id="lp-tab-sym" onclick="lpSwitchTab('sym')">Símbolos</button>
+      <button class="lp-tab" id="lp-tab-col" onclick="lpSwitchTab('col')">Colores</button>
+    </div>
+    <div id="lp-pane-sym" class="lp-pane" style="display:flex;flex-direction:column;gap:2px;">${symPane}</div>
+    <div id="lp-pane-col" class="lp-pane" style="display:none;">${colorsPane}</div>
+  `;
+}
+
+function toggleLegendPanel() {
+  const panel = document.getElementById('legend-panel');
+  if (!panel) return;
+  if (panel.classList.contains('open')) {
+    closeLegendPanel();
+  } else {
+    closeGradeFilterPanel();
+    panel.classList.add('open');
+  }
+}
+
+function closeLegendPanel() {
+  const panel = document.getElementById('legend-panel');
+  if (panel) panel.classList.remove('open');
+}
+
+function lpSwitchTab(tab) {
+  const sym = document.getElementById('lp-pane-sym');
+  const col = document.getElementById('lp-pane-col');
+  const tSym = document.getElementById('lp-tab-sym');
+  const tCol = document.getElementById('lp-tab-col');
+  if (!sym) return;
+  if (tab === 'sym') {
+    sym.style.display = 'flex'; col.style.display = 'none';
+    tSym.classList.add('lp-tab--active'); tCol.classList.remove('lp-tab--active');
+  } else {
+    sym.style.display = 'none'; col.style.display = 'block';
+    tCol.classList.add('lp-tab--active'); tSym.classList.remove('lp-tab--active');
+  }
 }
 
 // Devuelve color de texto (#000 o #fff) con contraste adecuado sobre un color hex

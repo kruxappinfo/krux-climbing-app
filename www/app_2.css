@@ -17647,32 +17647,74 @@ body.map-active #btn-dev-editor {
   white-space: nowrap;
 }
 
-.gfp-divider {
-  height: 1px;
-  background: #e5e7eb;
-  margin: 10px 0;
+/* ---- Panel de leyenda (anclado al botón "i") ---- */
+.legend-panel {
+  position: absolute;
+  top: 60px;
+  right: 10px;
+  width: 300px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  z-index: 1001;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.95);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  overflow: hidden;
 }
 
-.gfp-legend-btn {
+.legend-panel.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.lp-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.lp-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.lp-tabs {
   display: flex;
-  align-items: center;
   gap: 6px;
-  width: 100%;
-  padding: 8px 10px;
-  border: none;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.lp-tab {
+  flex: 1;
+  padding: 7px 0;
   border-radius: 8px;
-  background: #f9fafb;
-  color: #374151;
-  font-size: 12px;
+  border: none;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s;
-  -webkit-tap-highlight-color: transparent;
+  background: transparent;
+  color: #6b7280;
+  transition: background 0.15s, color 0.15s;
 }
 
-.gfp-legend-btn:hover {
-  background: #f3f4f6;
+.lp-tab--active {
+  background: #111827;
+  color: #fff;
 }
+
+.lp-pane {
+  padding: 8px 12px 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.lp-pane::-webkit-scrollbar { display: none; }
 
 /* Fila "Solo mis vías" */
 .gfp-myvias-row {
