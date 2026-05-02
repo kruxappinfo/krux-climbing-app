@@ -183,6 +183,13 @@ async function addDevEditorButton() {
       mlMap.on('moveend', updateDevButtonVisibility);
     }
 
+    // Si el usuario es spotter, intercambiar posiciones de los botones 3D y Spotter
+    const btn3d = document.getElementById('btn-3d-toggle');
+    if (btn3d) {
+      btn3d.style.bottom = '306px';
+      btn.style.bottom = '250px';
+    }
+
     console.log('[DevEditor] Botón Spotter añadido');
   } catch (err) {
     console.error('[DevEditor] Error añadiendo botón:', err);
