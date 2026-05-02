@@ -139,6 +139,8 @@ function setupLoginEventListeners() {
     // Google Sign-In inside Modal
     if (btnLoginGoogle) {
         btnLoginGoogle.addEventListener('click', async () => {
+            if (btnLoginGoogle.disabled) return;
+            btnLoginGoogle.disabled = true;
             try {
                 if (isCapacitor && GoogleAuth) {
                     // En Capacitor usamos el plugin nativo
@@ -161,7 +163,13 @@ function setupLoginEventListeners() {
                 }
             } catch (error) {
                 console.error('Sign-in error:', error);
-                showToast('Error: ' + error.message, 'error');
+                if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
+                    // El usuario cerró el popup o se abrió otro — no mostrar error
+                } else {
+                    showToast('Error: ' + error.message, 'error');
+                }
+            } finally {
+                btnLoginGoogle.disabled = false;
             }
         });
     }
