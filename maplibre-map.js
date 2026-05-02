@@ -10735,17 +10735,10 @@ function addInfoLegendButton() {
 
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    toggleInfoLegendPanel();
+    openLegendModal('sym');
   });
 
   container.appendChild(btn);
-
-  // Panel desplegable (mismo patrón que grade-filter-panel)
-  const panel = document.createElement('div');
-  panel.id = 'info-legend-panel';
-  panel.className = 'info-legend-panel';
-  panel.innerHTML = buildInfoLegendModalHTML();
-  container.appendChild(panel);
 
   // Ajustar posición vertical según si los otros botones están visibles
   const updateInfoBtnPosition = () => {
