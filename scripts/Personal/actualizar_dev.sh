@@ -22,8 +22,15 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
     read message
     [ -z "$message" ] && message="Dev: actualización $(date +'%d/%m/%Y %H:%M')"
 
-    git add .
-    git commit -m "$message" || { echo "❌ Error al hacer commit"; exit 1; }
+    echo "📝 Staging all changes..."
+    git add -A  # Use -A instead of . for better coverage
+    
+    # Better error handling for commit
+    if ! git commit -m "$message"; then
+        echo "❌ Error al hacer commit. Detalles:"
+        git status
+        exit 1
+    fi
     echo "✅ Cambios guardados localmente."
 else
     echo "ℹ️  No hay cambios nuevos para commitear."
