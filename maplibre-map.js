@@ -10583,12 +10583,14 @@ function updateFilterButtonBadge() {
 }
 
 /**
- * Abre la modal de leyenda completa de colores y grados
+ * Abre la leyenda unificada (Símbolos + Colores) con tabs
  */
-function openGradeLegendModal() {
+function openGradeLegendModal() { openLegendModal('col'); }
+function openSymbolsLegendModal() { openLegendModal('sym'); }
+
+function openLegendModal(initialTab = 'sym') {
   closeGradeFilterPanel();
 
-  // Si ya existe, eliminar
   const existing = document.getElementById('grade-legend-modal');
   if (existing) existing.remove();
 
@@ -10599,149 +10601,98 @@ function openGradeLegendModal() {
     if (e.target === overlay) overlay.remove();
   });
 
-  let legendHTML = `
-    <div class="grade-legend-content">
-      <div class="grade-legend-header">
-        <h3>Leyenda de grados</h3>
-        <button class="grade-legend-close" onclick="document.getElementById('grade-legend-modal').remove()">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="grade-legend-body">
-  `;
-
   const legendGroups = [
-    { title: 'Principiante', icon: '3-4', grades: ['3a','3b','3c','4a','4b','4c'] },
-    { title: 'Fácil', icon: '5', grades: ['5a','5a+','5b','5b+','5c','5c+'] },
-    { title: 'Medio', icon: '6a-6b', grades: ['6a','6a+','6b','6b+'] },
-    { title: 'Medio-Alto', icon: '6c-7a', grades: ['6c','6c+','7a','7a+'] },
-    { title: 'Difícil', icon: '7b-7c', grades: ['7b','7b+','7c','7c+'] },
-    { title: 'Muy difícil', icon: '8', grades: ['8a','8a+','8b','8b+','8c','8c+'] },
-    { title: 'Élite', icon: '9', grades: ['9a','9a+','9b','9b+','9c','9c+'] }
+    { title: 'Principiante · 3–4', grades: ['3a','3b','3c','4a','4b','4c'] },
+    { title: 'Fácil · 5',          grades: ['5a','5a+','5b','5b+','5c','5c+'] },
+    { title: 'Medio · 6A–6B',      grades: ['6a','6a+','6b','6b+'] },
+    { title: 'Medio-alto · 6C–7A', grades: ['6c','6c+','7a','7a+'] },
+    { title: 'Difícil · 7B–7C',    grades: ['7b','7b+','7c','7c+'] },
+    { title: 'Muy difícil · 8',    grades: ['8a','8a+','8b','8b+','8c','8c+'] },
+    { title: 'Élite · 9',          grades: ['9a','9a+','9b','9b+','9c','9c+'] }
   ];
 
+  let colorsPane = '';
   legendGroups.forEach(group => {
-    legendHTML += `<div class="grade-legend-group">
-      <div class="grade-legend-group-title">${group.title} (${group.icon})</div>
-      <div class="grade-legend-items">`;
-
+    colorsPane += `<div class="gl2-group">
+      <p class="gl2-group-title">${group.title}</p>
+      <div class="gl2-pills">`;
     group.grades.forEach(grade => {
-      const color = MAPLIBRE_GRADE_COLORS[grade] || '#888';
-      legendHTML += `
-        <div class="grade-legend-item" style="background:${color}">
-          <span class="grade-legend-label">${grade}</span>
-        </div>
-      `;
+      const bg  = MAPLIBRE_GRADE_COLORS[grade] || '#888';
+      const col = isLightColor(bg) ? '#1f2937' : '#fff';
+      colorsPane += `<span class="gl2-pill" style="background:${bg};color:${col}">${grade}</span>`;
     });
-
-    legendHTML += `</div></div>`;
+    colorsPane += `</div></div>`;
   });
 
-  legendHTML += `
+  const symbols = [
+    { title: 'Vía deportiva',        desc: 'Cada círculo es una vía. El color indica el grado de dificultad. Pulsa para ver detalles, fotos y croquis.', svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="9" fill="#22c55e" stroke="#fff" stroke-width="2"/></svg>` },
+    { title: 'Vía hecha (tick)',      desc: 'Vía registrada en tu logbook. El check blanco sobre el círculo de grado indica que ya la has encadenado.', svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="#22c55e" stroke="#fff" stroke-width="2"/><polyline points="10,17 14,21 22,12" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>` },
+    { title: 'Vías con variantes',    desc: 'Grupo de vías que comparten salida. El círculo central es la vía principal y cada anillo es una variante con su grado.', svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="16" cy="16" r="13" fill="none" stroke="#3b82f6" stroke-width="2.5"/><circle cx="16" cy="16" r="9.5" fill="none" stroke="#fff" stroke-width="1"/><circle cx="16" cy="16" r="8.5" fill="none" stroke="#f59e0b" stroke-width="2.5"/><circle cx="16" cy="16" r="5" fill="#ef4444"/></svg>` },
+    { title: 'Sector',                desc: 'Línea coloreada que delimita un sector de escalada. Pulsa para ver su nombre y la lista de vías.', svg: `<svg viewBox="0 0 32 32"><path d="M3 22 C 9 8, 22 26, 29 10" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" opacity="0.7"/><path d="M3 22 C 9 8, 22 26, 29 10" fill="none" stroke="#a855f7" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+    { title: 'Ruta de acceso',        desc: 'Sendero de aproximación al sector representado con línea naranja discontinua.', svg: `<svg viewBox="0 0 32 32"><path d="M3 26 C 10 22, 14 10, 22 8 L 29 6" fill="none" stroke="#FF6B00" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 3"/></svg>` },
+    { title: 'Parking',               desc: 'Aparcamiento recomendado para acceder al sector. Pulsa para abrir la navegación.', svg: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#4285f4" stroke="#fff" stroke-width="2"/><text x="12" y="17" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold" font-family="sans-serif">P</text></svg>` },
+    { title: 'Punto de interés (POI)', desc: 'Fuente, refugio, mirador, baño, bar, peligro… El emoji identifica el tipo.', svg: `<svg viewBox="0 0 32 32"><text x="16" y="22" text-anchor="middle" font-size="20">🚰</text></svg>` },
+    { title: 'Escuela abierta',        desc: 'Escuela con cartografía publicada. Pulsa el icono verde para entrar y explorar sus sectores y vías.', svg: `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#22c55e"/><circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g></svg>` },
+    { title: 'Escuela en desarrollo',  desc: 'Escuela con datos parciales o en construcción. El martillo indica que falta cartografía.', svg: `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#f59e0b"/><circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g><g transform="translate(36,10)"><circle cx="0" cy="0" r="8" fill="#fff" stroke="#f59e0b" stroke-width="1.5"/><text x="0" y="3.5" text-anchor="middle" font-size="10">🔨</text></g></svg>` }
+  ];
+
+  let symPane = '';
+  symbols.forEach(s => {
+    symPane += `
+      <div class="gl2-sym-row">
+        <div class="gl2-sym-icon">${s.svg}</div>
+        <div>
+          <p class="gl2-sym-title">${s.title}</p>
+          <p class="gl2-sym-desc">${s.desc}</p>
+        </div>
+      </div>`;
+  });
+
+  const isSym = initialTab === 'sym';
+  overlay.innerHTML = `
+    <div class="gl2-content">
+      <div class="gl2-header">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="gl2-header-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l9-3 9 3v13l-9 3-9-3z"/><path d="M12 3v17"/><path d="M3 6l9 3 9-3"/></svg>
+          </div>
+          <span class="gl2-header-title">Leyenda del mapa</span>
+        </div>
+        <button class="gl2-close" onclick="document.getElementById('grade-legend-modal').remove()">✕</button>
+      </div>
+      <div class="gl2-tabs">
+        <button class="gl2-tab ${isSym ? 'gl2-tab--active' : ''}" id="gl2-tab-sym" onclick="legendSwitchTab('sym')">Símbolos</button>
+        <button class="gl2-tab ${!isSym ? 'gl2-tab--active' : ''}" id="gl2-tab-col" onclick="legendSwitchTab('col')">Colores</button>
+      </div>
+      <div id="gl2-pane-sym" class="gl2-pane" style="display:${isSym ? 'flex' : 'none'};flex-direction:column;gap:2px;">
+        ${symPane}
+      </div>
+      <div id="gl2-pane-col" class="gl2-pane" style="display:${!isSym ? 'block' : 'none'};">
+        ${colorsPane}
       </div>
     </div>
   `;
 
-  overlay.innerHTML = legendHTML;
   document.body.appendChild(overlay);
 }
 
-/**
- * Abre la modal con los símbolos del mapa y su explicación
- * (parkings, vías, ticks, variantes, sectores, POI, escuelas, etc.)
- */
-function openSymbolsLegendModal() {
-  closeGradeFilterPanel();
-
-  const existing = document.getElementById('symbols-legend-modal');
-  if (existing) existing.remove();
-
-  const overlay = document.createElement('div');
-  overlay.id = 'symbols-legend-modal';
-  overlay.className = 'grade-legend-overlay';
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.remove();
-  });
-
-  // SVG inline reutilizando los mismos estilos que renderiza el mapa
-  const symbols = [
-    {
-      title: 'Vía deportiva',
-      desc: 'Cada círculo es una vía. El color indica el grado de dificultad. Pulsa para ver detalles, fotos y croquis.',
-      svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="9" fill="#22c55e" stroke="#fff" stroke-width="2"/></svg>`
-    },
-    {
-      title: 'Vía hecha (tick)',
-      desc: 'Vía registrada en tu logbook. El check blanco sobre el círculo de grado indica que ya la has encadenado.',
-      svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="#22c55e" stroke="#fff" stroke-width="2"/><polyline points="10,17 14,21 22,12" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`
-    },
-    {
-      title: 'Vías con variantes',
-      desc: 'Grupo de vías que comparten salida o pertenecen al mismo enlace. El círculo central es la vía principal y cada anillo es una variante con su grado. Pulsa para abrir el carrusel.',
-      svg: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="16" cy="16" r="13" fill="none" stroke="#3b82f6" stroke-width="2.5"/><circle cx="16" cy="16" r="9.5" fill="none" stroke="#fff" stroke-width="1"/><circle cx="16" cy="16" r="8.5" fill="none" stroke="#f59e0b" stroke-width="2.5"/><circle cx="16" cy="16" r="5" fill="#ef4444"/></svg>`
-    },
-    {
-      title: 'Sector',
-      desc: 'Línea coloreada que delimita un sector de escalada. Cada sector usa un color distinto. Pulsa para ver su nombre y la lista de vías.',
-      svg: `<svg viewBox="0 0 32 32"><path d="M3 22 C 9 8, 22 26, 29 10" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" opacity="0.7"/><path d="M3 22 C 9 8, 22 26, 29 10" fill="none" stroke="#a855f7" stroke-width="3.5" stroke-linecap="round"/></svg>`
-    },
-    {
-      title: 'Ruta de acceso',
-      desc: 'Sendero de aproximación al sector representado con línea naranja discontinua.',
-      svg: `<svg viewBox="0 0 32 32"><path d="M3 26 C 10 22, 14 10, 22 8 L 29 6" fill="none" stroke="#FF6B00" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 3"/></svg>`
-    },
-    {
-      title: 'Parking',
-      desc: 'Aparcamiento recomendado para acceder al sector. Pulsa para ver las indicaciones y abrir la navegación.',
-      svg: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#4285f4" stroke="#fff" stroke-width="2"/><text x="12" y="17" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold" font-family="sans-serif">P</text></svg>`
-    },
-    {
-      title: 'Punto de interés (POI)',
-      desc: 'Fuente, refugio, mirador, baño, bar, peligro… El emoji identifica el tipo. Pulsa para ver la descripción.',
-      svg: `<svg viewBox="0 0 32 32"><text x="16" y="22" text-anchor="middle" font-size="20">🚰</text></svg>`
-    },
-    {
-      title: 'Escuela abierta',
-      desc: 'Escuela con cartografía publicada. Pulsa el icono verde para entrar y explorar sus sectores y vías.',
-      svg: `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#22c55e"/><circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g></svg>`
-    },
-    {
-      title: 'Escuela en desarrollo',
-      desc: 'Escuela con datos parciales o aún en construcción. El martillo indica que falta cartografía o información.',
-      svg: `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#f59e0b"/><circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2"/><g fill="#fff"><path d="M24 10 L36 32 L12 32 Z" opacity="0.95"/><path d="M16 20 L24 32 L8 32 Z" opacity="0.7"/></g><g transform="translate(36,10)"><circle cx="0" cy="0" r="8" fill="#fff" stroke="#f59e0b" stroke-width="1.5"/><text x="0" y="3.5" text-anchor="middle" font-size="10">🔨</text></g></svg>`
-    }
-  ];
-
-  let html = `
-    <div class="grade-legend-content symbols-legend-content">
-      <div class="grade-legend-header">
-        <h3>Símbolos del mapa</h3>
-        <button class="grade-legend-close" onclick="document.getElementById('symbols-legend-modal').remove()">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="grade-legend-body symbols-legend-body">
-  `;
-
-  symbols.forEach(s => {
-    html += `
-      <div class="symbol-legend-item">
-        <div class="symbol-legend-icon">${s.svg}</div>
-        <div class="symbol-legend-text">
-          <div class="symbol-legend-title">${s.title}</div>
-          <div class="symbol-legend-desc">${s.desc}</div>
-        </div>
-      </div>
-    `;
-  });
-
-  html += `
-      </div>
-    </div>
-  `;
-
-  overlay.innerHTML = html;
-  document.body.appendChild(overlay);
+function legendSwitchTab(tab) {
+  const sym = document.getElementById('gl2-pane-sym');
+  const col = document.getElementById('gl2-pane-col');
+  const tSym = document.getElementById('gl2-tab-sym');
+  const tCol = document.getElementById('gl2-tab-col');
+  if (!sym) return;
+  if (tab === 'sym') {
+    sym.style.display = 'flex';
+    col.style.display = 'none';
+    tSym.classList.add('gl2-tab--active');
+    tCol.classList.remove('gl2-tab--active');
+  } else {
+    sym.style.display = 'none';
+    col.style.display = 'block';
+    tCol.classList.add('gl2-tab--active');
+    tSym.classList.remove('gl2-tab--active');
+  }
 }
 
 // ============================================================
