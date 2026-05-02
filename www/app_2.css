@@ -17650,15 +17650,15 @@ body.map-active #btn-dev-editor {
 /* ---- Panel de leyenda (anclado al botón "i") ---- */
 .legend-panel {
   position: absolute;
-  top: 60px;
-  right: 10px;
+  top: 10px;
+  right: 58px;
   width: 300px;
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.2);
   z-index: 1001;
   opacity: 0;
-  transform: translateY(-8px) scale(0.95);
+  transform: translateX(8px) scale(0.95);
   pointer-events: none;
   transition: opacity 0.2s ease, transform 0.2s ease;
   overflow: hidden;
@@ -17666,7 +17666,7 @@ body.map-active #btn-dev-editor {
 
 .legend-panel.open {
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translateX(0) scale(1);
   pointer-events: auto;
 }
 

@@ -10753,7 +10753,7 @@ function addInfoLegendButton() {
     const otherVisible = mlMap.getZoom() > ccaa.zoom + 1;
     const top = otherVisible ? '106px' : '10px';
     btn.style.top = top;
-    panel.style.top = (parseInt(top) + 50) + 'px';
+    panel.style.top = top;
   };
   mlMap.on('zoom', updateInfoBtnPosition);
   updateInfoBtnPosition();
