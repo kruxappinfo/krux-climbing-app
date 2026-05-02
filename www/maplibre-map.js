@@ -10122,7 +10122,7 @@ function addGradeFilterButton() {
   btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>`;
   btn.style.cssText = `
     position: absolute;
-    top: 10px;
+    top: 58px;
     right: 10px;
     width: 40px;
     height: 40px;
@@ -10748,17 +10748,8 @@ function addInfoLegendButton() {
     }
   });
 
-  // Ajustar posición vertical según zoom
-  const updateInfoBtnPosition = () => {
-    if (!mlMap) return;
-    const ccaa = getCurrentCCAA();
-    const otherVisible = mlMap.getZoom() > ccaa.zoom + 1;
-    const top = otherVisible ? '106px' : '10px';
-    btn.style.top = top;
-    panel.style.top = top;
-  };
-  mlMap.on('zoom', updateInfoBtnPosition);
-  updateInfoBtnPosition();
+  btn.style.top = '10px';
+  panel.style.top = '10px';
 }
 
 function buildLegendPanelHTML() {
