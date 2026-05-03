@@ -503,6 +503,33 @@
               </div>
             </div>
 
+            <!-- Histograma de progreso -->
+            <div class="section-header" style="margin-bottom:0;">
+              <h2 class="act-section-title" id="histogram-title" style="margin:0;">Progreso mensual</h2>
+              <div class="chart-tabs">
+                <button class="chart-tab" data-histogram="week">Semana</button>
+                <button class="chart-tab active" data-histogram="month">Mes</button>
+                <button class="chart-tab" data-histogram="year">Año</button>
+              </div>
+            </div>
+            <div class="combined-histogram-container" id="combined-histogram-container">
+              <div class="histogram-wrapper">
+                <div class="histogram-y-axis histogram-y-axis-left" id="histogram-grade-axis"></div>
+                <div class="histogram-chart-area" id="histogram-chart-area">
+                  <div class="histogram-bars" id="histogram-bars"></div>
+                  <svg class="histogram-lines" id="histogram-lines" preserveAspectRatio="none"></svg>
+                </div>
+                <div class="histogram-y-axis histogram-y-axis-right" id="histogram-ascent-axis"></div>
+              </div>
+              <div class="histogram-x-axis" id="histogram-x-axis"></div>
+              <div class="histogram-legend">
+                <div class="legend-item"><span class="legend-bar"></span><span class="legend-text">Nº Ascensiones</span></div>
+                <div class="legend-item"><span class="legend-line legend-line-avg"></span><span class="legend-text">Grado medio</span></div>
+                <div class="legend-item"><span class="legend-line legend-line-max"></span><span class="legend-text">Grado máximo</span></div>
+                <div class="legend-item"><span class="legend-line legend-line-min"></span><span class="legend-text">Grado mínimo</span></div>
+              </div>
+            </div>
+
             <!-- Timeline de ascensiones -->
             <div class="act-section-title">Últimas sesiones</div>
             <div class="act-timeline-filters" id="act-timeline-filters">
@@ -635,7 +662,7 @@
               <span id="stat-top-school"></span><span id="stat-schools-count"></span>
               <span id="stat-top-sector"></span><span id="stat-sectors-count"></span>
               <!-- Legacy histogram/chart containers - ocultos -->
-              <div id="histogram-carousel"><div id="histogram-bars"></div><svg id="histogram-lines"></svg><div id="histogram-x-axis"></div><div id="histogram-grade-axis"></div><div id="histogram-ascent-axis"></div></div>
+              <div id="histogram-carousel"></div>
               <div id="grade-distribution-bars"></div><div id="grade-distribution-y-axis"></div><div id="grade-distribution-x-axis"></div>
               <div id="activity-chart"><span id="chart-total"></span><span id="chart-avg"></span></div>
               <!-- Legacy period selector -->

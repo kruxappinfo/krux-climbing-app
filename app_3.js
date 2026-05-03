@@ -10861,7 +10861,6 @@ async function loadActivityData() {
       buildActivityHeatmap(allAscents);
       buildGymStats(allAscents);
       updateActivityRecords(allAscents);
-      // Legacy chart updates (hidden containers)
       updateCombinedHistogram(allAscents);
       const activeChartTab = document.querySelector('.chart-tab.active');
       updateActivityChart(activeChartTab ? activeChartTab.dataset.chart : 'week');
