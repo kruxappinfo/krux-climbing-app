@@ -10384,7 +10384,33 @@ function updateCombinedHistogram(ascents) {
     `<span class="histogram-x-label">${item.label}</span>`
   ).join('');
 
+  renderHistogramGrid(document.getElementById('histogram-grid'), minGradeIdx, maxGradeIdx);
   renderHistogramLines(svgLines, histogramData, minGradeIdx, gradeRange);
+}
+
+function renderHistogramGrid(svg, minGradeIdx, maxGradeIdx) {
+  if (!svg) return;
+  const parent = svg.parentElement;
+  const width = parent?.clientWidth || svg.clientWidth || 0;
+  const height = parent?.clientHeight || svg.clientHeight || 0;
+  if (!width || !height) {
+    requestAnimationFrame(() => renderHistogramGrid(svg, minGradeIdx, maxGradeIdx));
+    return;
+  }
+  const topPadding = 10;
+  const effectiveHeight = height - 20;
+  const range = (maxGradeIdx - minGradeIdx) || 1;
+
+  // Limit grid lines to avoid clutter when range is large
+  const maxLines = 8;
+  const step = Math.max(1, Math.ceil(range / maxLines));
+
+  let lines = '';
+  for (let i = minGradeIdx; i <= maxGradeIdx; i += step) {
+    const y = effectiveHeight - ((i - minGradeIdx) / range) * effectiveHeight + topPadding;
+    lines += `<line class="histogram-grid-line" x1="0" y1="${y.toFixed(2)}" x2="${width}" y2="${y.toFixed(2)}"/>`;
+  }
+  svg.innerHTML = lines;
 }
 
 function processHistogramData(ascents, period) {
@@ -10609,6 +10635,8 @@ function renderEmptyHistogram() {
   }
 
   if (svgLines) svgLines.innerHTML = '';
+
+  renderHistogramGrid(document.getElementById('histogram-grid'), getGradeIndex('5c'), getGradeIndex('7a'));
 }
 
 // ========== HISTOGRAM CAROUSEL ==========

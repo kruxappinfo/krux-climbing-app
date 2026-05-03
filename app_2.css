@@ -5010,18 +5010,117 @@ button.secondary:hover {
 }
 
 /* Combined Histogram (Bars + Lines) */
+/* === Histograma de Actividad === */
+/* Paleta unificada con la sección Actividad */
+.act-histogram-card {
+  --hist-bar: #6366f1;
+  --hist-bar-fill: rgba(99, 102, 241, 0.18);
+  --hist-bar-stroke: rgba(99, 102, 241, 0.55);
+  --hist-line-max: #ef6c4d;
+  --hist-line-avg: #10b981;
+  --hist-line-min: #3b82f6;
+  --hist-grid: rgba(0, 0, 0, 0.06);
+
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  padding: 0.875rem 1rem 1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.act-histogram-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 1.5rem 0 0.625rem;
+}
+
+.act-histogram-header .act-section-title {
+  margin: 0;
+}
+
+.act-histogram-tabs {
+  display: inline-flex;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 3px;
+  border-radius: 999px;
+}
+
+.act-htab {
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.act-htab.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.act-htab:hover:not(.active) {
+  color: var(--text-secondary);
+}
+
 .combined-histogram-container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 0;
+  gap: 6px;
+}
+
+.histogram-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 0 0 14px;
+  margin: 0;
+  border: 0;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-bar {
+  width: 16px;
+  height: 10px;
+  background: var(--hist-bar-fill, rgba(99, 102, 241, 0.18));
+  border: 1px solid var(--hist-bar-stroke, rgba(99, 102, 241, 0.55));
+  border-radius: 2px;
+}
+
+.legend-line {
+  width: 18px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.legend-line-avg { background: var(--hist-line-avg, #10b981); }
+.legend-line-max { background: var(--hist-line-max, #ef6c4d); }
+.legend-line-min { background: var(--hist-line-min, #3b82f6); }
+
+.legend-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .histogram-wrapper {
   display: flex;
   align-items: stretch;
-  gap: 8px;
-  height: 280px;
+  gap: 6px;
+  height: 260px;
   position: relative;
 }
 
@@ -5030,7 +5129,7 @@ button.secondary:hover {
   flex-direction: column;
   justify-content: space-between;
   padding: 0;
-  min-width: 32px;
+  min-width: 28px;
 }
 
 .histogram-y-axis-left {
@@ -5053,9 +5152,22 @@ button.secondary:hover {
 .histogram-chart-area {
   flex: 1;
   position: relative;
-  border-left: 1px solid var(--border-light);
-  border-bottom: 1px solid var(--border-light);
-  border-right: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.histogram-grid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.histogram-grid-line {
+  stroke: var(--hist-grid, rgba(0, 0, 0, 0.06));
+  stroke-width: 1;
+  shape-rendering: crispEdges;
 }
 
 .histogram-bars {
@@ -5067,22 +5179,24 @@ button.secondary:hover {
   display: flex;
   align-items: flex-end;
   justify-content: space-around;
-  padding: 0 8px;
-  gap: 4px;
+  padding: 0 6px;
+  gap: 3px;
 }
 
 .histogram-bar {
   flex: 1;
-  max-width: 50px;
-  background: rgba(0, 212, 255, 0.6);
-  border-radius: 3px 3px 0 0;
-  min-height: 4px;
-  transition: all 0.3s ease;
+  max-width: 38px;
+  background: var(--hist-bar-fill, rgba(99, 102, 241, 0.18));
+  border: 1px solid var(--hist-bar-stroke, rgba(99, 102, 241, 0.55));
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  min-height: 2px;
+  transition: filter 0.2s ease;
   position: relative;
 }
 
 .histogram-bar:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.05);
 }
 
 .histogram-lines {
@@ -5096,115 +5210,63 @@ button.secondary:hover {
 
 .histogram-line {
   fill: none;
-  stroke-width: 2.5;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.histogram-line-max {
-  stroke: #ef4444;
-}
-
-.histogram-line-avg {
-  stroke: #22c55e;
-}
-
-.histogram-line-min {
-  stroke: #3b82f6;
-}
+.histogram-line-max { stroke: var(--hist-line-max, #ef6c4d); }
+.histogram-line-avg { stroke: var(--hist-line-avg, #10b981); }
+.histogram-line-min { stroke: var(--hist-line-min, #3b82f6); }
 
 .histogram-point {
-  stroke-width: 2;
-  stroke: white;
+  stroke-width: 0;
 }
 
-.histogram-point-max {
-  fill: #ef4444;
-}
-
-.histogram-point-avg {
-  fill: #22c55e;
-}
-
-.histogram-point-min {
-  fill: #3b82f6;
-}
+.histogram-point-max { fill: var(--hist-line-max, #ef6c4d); }
+.histogram-point-avg { fill: var(--hist-line-avg, #10b981); }
+.histogram-point-min { fill: var(--hist-line-min, #3b82f6); }
 
 .histogram-x-axis {
   display: flex;
   justify-content: space-around;
-  padding: 8px 40px;
-  gap: 4px;
+  padding: 6px 28px 0;
+  gap: 3px;
 }
 
 .histogram-x-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
   font-weight: 500;
   text-align: center;
   flex: 1;
-  max-width: 50px;
-}
-
-.histogram-legend {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding: 12px 0;
-  border-top: 1px solid var(--border-light);
-  margin-top: 8px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.legend-bar {
-  width: 16px;
-  height: 12px;
-  background: #00d4ff;
-  border-radius: 2px;
-}
-
-.legend-line {
-  width: 20px;
-  height: 3px;
-  border-radius: 2px;
-}
-
-.legend-line-avg {
-  background: #22c55e;
-}
-
-.legend-line-max {
-  background: #ef4444;
-}
-
-.legend-line-min {
-  background: #3b82f6;
-}
-
-.legend-text {
-  font-size: 11px;
-  color: var(--text-secondary);
-  font-weight: 500;
+  max-width: 38px;
 }
 
 @media (max-width: 640px) {
+  .act-histogram-card {
+    padding: 0.75rem 0.625rem 0.875rem;
+  }
+  .act-histogram-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
   .histogram-wrapper {
     height: 220px;
   }
   .histogram-y-axis {
-    min-width: 28px;
+    min-width: 24px;
   }
   .histogram-y-axis .y-label {
     font-size: 9px;
   }
+  .histogram-x-axis {
+    padding: 6px 24px 0;
+  }
   .histogram-legend {
     gap: 10px;
+    padding-bottom: 10px;
   }
   .legend-text {
     font-size: 10px;
