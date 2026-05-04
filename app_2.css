@@ -19503,27 +19503,32 @@ body.map-active #btn-dev-editor {
 .pc-nav-arrow {
   position: absolute;
   top: 50%;
-  transform: translateY(-50%);
+  margin-top: -14px;
   width: 28px;
   height: 28px;
-  border-radius: 50%;
-  border: 0.5px solid var(--border-color);
-  background: var(--bg-primary);
-  box-shadow: 0 1px 6px rgba(0,0,0,0.1);
+  border: none;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 3;
-  color: var(--text-secondary);
+  color: rgba(0,0,0,0.35);
   padding: 0;
-  transition: opacity 0.2s, box-shadow 0.2s;
+  outline: none;
+  transition: color 0.15s ease;
 }
 .pc-nav-arrow:hover {
-  box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  color: rgba(0,0,0,0.75);
 }
-.pc-nav-arrow-prev { left: -14px; }
-.pc-nav-arrow-next { right: -14px; }
+.pc-nav-arrow:focus,
+.pc-nav-arrow:focus-visible,
+.pc-nav-arrow:active {
+  outline: none;
+  box-shadow: none;
+}
+.pc-nav-arrow-prev { left: -32px; }
+.pc-nav-arrow-next { right: -32px; }
 .pc-nav-arrow.pc-arrow-hidden {
   opacity: 0;
   pointer-events: none;
@@ -19535,27 +19540,27 @@ body.map-active #btn-dev-editor {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   margin-top: 12px;
-  height: 14px;
+  height: 12px;
 }
 .pc-carousel-dot {
   display: block;
   width: 7px;
   height: 7px;
+  min-width: 7px;
+  min-height: 7px;
+  flex: 0 0 7px;
   border-radius: 50%;
-  background: rgba(0,0,0,0.12);
+  background: rgba(0,0,0,0.15);
   border: none;
   padding: 0;
   cursor: pointer;
-  flex-shrink: 0;
   box-sizing: border-box;
-  transition: width 0.2s ease, height 0.2s ease, background 0.2s ease;
+  transition: background 0.2s ease;
 }
 .pc-carousel-dot.active {
-  width: 9px;
-  height: 9px;
-  background: #1D9E75;
+  background: #3a3a3a;
 }
 
 /* Custom banner */
