@@ -4299,7 +4299,7 @@ async function handleSettingsItemClick(e) {
       }
 
       case 'settings-logout':
-        const confirmLogout = await showConfirm('¿Estás seguro de que quieres cerrar sesión?', 'Cerrar sesión');
+        const confirmLogout = await showConfirm('¿Estás seguro de que quieres cerrar sesión?', 'Cerrar sesión', 'Cerrar sesión');
         if (confirmLogout) {
           try {
             await firebase.auth().signOut();
