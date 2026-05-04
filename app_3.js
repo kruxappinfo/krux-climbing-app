@@ -10338,6 +10338,7 @@ function initCombinedHistogram() {
   });
 
   renderEmptyHistogram();
+  initHistogramTooltips();
 }
 
 function updateCombinedHistogram(ascents) {
@@ -10386,7 +10387,6 @@ function updateCombinedHistogram(ascents) {
 
   renderHistogramGrid(document.getElementById('histogram-grid'), minGradeIdx, maxGradeIdx);
   renderHistogramLines(svgLines, histogramData, minGradeIdx, gradeRange);
-  initHistogramTooltips();
 }
 
 function renderHistogramGrid(svg, minGradeIdx, maxGradeIdx) {
@@ -10646,51 +10646,52 @@ function initHistogramTooltips() {
   const tooltip = document.getElementById('histogram-tooltip');
   if (!container || !tooltip) return;
 
-  // Remove previous listeners by replacing nodes
-  const barsContainer = document.getElementById('histogram-bars');
-  const svgLines = document.getElementById('histogram-lines');
+  const typeLabels = { max: 'Grado máximo', avg: 'Grado medio', min: 'Grado mínimo' };
 
-  function showTooltip(text, x, y) {
-    tooltip.textContent = text;
-    tooltip.classList.remove('hidden');
-    const rect = container.getBoundingClientRect();
-    let left = x - rect.left;
-    let top = y - rect.top - 36;
-    const tw = tooltip.offsetWidth || 80;
-    if (left + tw > container.offsetWidth - 4) left = container.offsetWidth - tw - 4;
-    if (left < 4) left = 4;
-    if (top < 4) top = y - rect.top + 10;
+  function placeTooltip(e) {
+    const cRect = container.getBoundingClientRect();
+    let left = e.clientX - cRect.left + 12;
+    let top = e.clientY - cRect.top - 36;
+    const tw = tooltip.offsetWidth || 90;
+    if (left + tw > container.offsetWidth - 4) left = e.clientX - cRect.left - tw - 8;
+    if (top < 4) top = e.clientY - cRect.top + 10;
     tooltip.style.left = left + 'px';
     tooltip.style.top = top + 'px';
+  }
+
+  function showTooltip(text, e) {
+    tooltip.textContent = text;
+    tooltip.classList.remove('hidden');
+    placeTooltip(e);
   }
 
   function hideTooltip() {
     tooltip.classList.add('hidden');
   }
 
+  // Bars — delegated on the chart area
+  const barsContainer = document.getElementById('histogram-bars');
   if (barsContainer) {
-    barsContainer.addEventListener('mouseover', e => {
+    container.addEventListener('mousemove', e => {
       const bar = e.target.closest('.histogram-bar');
       if (!bar) return;
       const val = bar.dataset.value;
-      if (val === undefined) return;
-      const rect = bar.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top;
-      showTooltip(val + (val === '1' ? ' vía' : ' vías'), cx, cy);
+      if (val === undefined || val === '0') { hideTooltip(); return; }
+      showTooltip(val + (val === '1' ? ' vía' : ' vías'), e);
     });
-    barsContainer.addEventListener('mouseleave', hideTooltip);
+    container.addEventListener('mouseleave', hideTooltip);
   }
 
+  // SVG points — delegated on the SVG
+  const svgLines = document.getElementById('histogram-lines');
   if (svgLines) {
-    svgLines.addEventListener('mouseover', e => {
+    svgLines.addEventListener('mousemove', e => {
       const pt = e.target.closest('.histogram-point');
-      if (!pt) return;
+      if (!pt) { hideTooltip(); return; }
       const grade = pt.dataset.grade;
       const type = pt.dataset.type;
-      if (!grade) return;
-      const labels = { max: 'Grado máximo', avg: 'Grado medio', min: 'Grado mínimo' };
-      showTooltip((labels[type] || 'Grado') + ': ' + grade, e.clientX, e.clientY);
+      if (!grade) { hideTooltip(); return; }
+      showTooltip((typeLabels[type] || 'Grado') + ': ' + grade, e);
     });
     svgLines.addEventListener('mouseleave', hideTooltip);
   }
