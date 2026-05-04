@@ -1572,6 +1572,14 @@ function configureProfileViewForOtherProfile() {
   // Update tab labels
   const postsLabel = document.getElementById('profile-tab-posts-label');
   if (postsLabel) postsLabel.textContent = 'Publicaciones';
+
+  // Reset spotter elements synchronously to avoid flash of stale state
+  const spotterBadge = document.getElementById('spotter-badge');
+  if (spotterBadge) spotterBadge.classList.add('hidden');
+  const spotterPoints = document.getElementById('spotter-points');
+  if (spotterPoints) spotterPoints.classList.add('hidden');
+  const becomeSpotterBtn = document.getElementById('become-spotter-btn');
+  if (becomeSpotterBtn) becomeSpotterBtn.classList.add('hidden');
 }
 
 /**
