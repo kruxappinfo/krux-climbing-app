@@ -12053,6 +12053,8 @@ firebase.auth().onAuthStateChanged(user => {
 // ========== PROGRESS CARDS ==========
 let _pcAscents = [];
 let _pcCurrentPeriod = 'month';
+let _pcCurrentSlide = 0;
+let _pcPageCount = 1;
 
 function initProgressCards() {
   const tabs = document.querySelectorAll('[data-pc]');
@@ -12088,6 +12090,19 @@ function initProgressCards() {
       document.getElementById('pc-date-to').value = today.toISOString().split('T')[0];
     });
   });
+
+  // Swipe support — listeners attached once, handlers read up-to-date globals
+  const outer = document.getElementById('pc-carousel-outer');
+  if (outer) {
+    let startX = 0;
+    outer.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
+    outer.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].clientX - startX;
+      if (Math.abs(dx) > 40) {
+        goPcSlide(Math.max(0, Math.min(_pcPageCount - 1, _pcCurrentSlide + (dx < 0 ? 1 : -1))));
+      }
+    }, { passive: true });
+  }
 }
 
 function openProgressCardCustom() {
@@ -12136,23 +12151,80 @@ function fmtPcDate(s) {
 
 function renderProgressCards(period, ascents, customFrom, customTo) {
   if (ascents) _pcAscents = ascents;
-  const grid = document.getElementById('pc-cards-grid');
-  if (!grid) return;
+  const carouselEl = document.getElementById('pc-carousel');
+  const dotsEl = document.getElementById('pc-carousel-dots');
+  if (!carouselEl) return;
 
   const cards = buildPcCardData(_pcAscents, period, customFrom, customTo);
 
   if (!cards.length) {
-    grid.innerHTML = `<div class="pc-empty-card" style="grid-column:1/-1">Sin ascensiones en este periodo</div>`;
+    carouselEl.innerHTML = `<div class="pc-carousel-slide"><div class="pc-cards-grid"><div class="pc-empty-card" style="grid-column:1/-1">Sin ascensiones en este periodo</div></div></div>`;
+    if (dotsEl) dotsEl.innerHTML = '';
+    _pcPageCount = 1;
     return;
   }
 
-  // La card "top" es la que tiene el grado máximo más alto
   const maxIdx = Math.max(...cards.map(c => getGradeIndex(c.max)).filter(i => i >= 0));
-  grid.innerHTML = cards.map(c => {
-    const isTop = getGradeIndex(c.max) === maxIdx && c.count > 0;
-    return makePcCard(c, isTop);
-  }).join('');
+
+  // Chunk cards into pages of 4
+  const pages = [];
+  for (let i = 0; i < cards.length; i += 4) pages.push(cards.slice(i, i + 4));
+  _pcPageCount = pages.length;
+
+  carouselEl.innerHTML = pages.map(page =>
+    `<div class="pc-carousel-slide"><div class="pc-cards-grid">${
+      page.map(c => makePcCard(c, getGradeIndex(c.max) === maxIdx && c.count > 0)).join('')
+    }</div></div>`
+  ).join('');
+
+  if (dotsEl) {
+    dotsEl.innerHTML = pages.length > 1
+      ? pages.map((_, i) => `<button class="pc-carousel-dot" data-pc-slide="${i}"></button>`).join('')
+      : '';
+    dotsEl.querySelectorAll('.pc-carousel-dot').forEach(dot =>
+      dot.addEventListener('click', () => goPcSlide(parseInt(dot.dataset.pcSlide)))
+    );
+  }
+
+  const target = Math.min(getPcInitialSlide(period, cards), pages.length - 1);
+  goPcSlide(target, false);
 }
+
+function getPcInitialSlide(period, cards) {
+  const now = new Date();
+  if (period === 'week') {
+    const dow = now.getDay();
+    const dayIndex = dow === 0 ? 6 : dow - 1; // 0=Mon..6=Sun
+    return Math.floor(dayIndex / 4);
+  }
+  if (period === 'month') {
+    return Math.floor(now.getMonth() / 4);
+  }
+  if (period === 'year') {
+    const currentYear = String(now.getFullYear());
+    const idx = cards.findIndex(c => c.label === currentYear);
+    return idx >= 0 ? Math.floor(idx / 4) : Math.max(0, Math.floor((cards.length - 1) / 4));
+  }
+  return 0;
+}
+
+function goPcSlide(index, animate = true) {
+  _pcCurrentSlide = index;
+  const carouselEl = document.getElementById('pc-carousel');
+  if (!carouselEl) return;
+  if (!animate) {
+    carouselEl.style.transition = 'none';
+    carouselEl.style.transform = `translateX(-${index * 100}%)`;
+    carouselEl.offsetHeight; // force reflow
+    carouselEl.style.transition = '';
+  } else {
+    carouselEl.style.transform = `translateX(-${index * 100}%)`;
+  }
+  document.querySelectorAll('.pc-carousel-dot').forEach((d, i) =>
+    d.classList.toggle('active', i === index)
+  );
+}
+
 
 function buildPcCardData(ascents, period, customFrom, customTo) {
   const now = new Date();
