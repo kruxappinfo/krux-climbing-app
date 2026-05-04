@@ -19500,14 +19500,28 @@ body.map-active #btn-dev-editor {
 .pc-nav {
   position: relative;
 }
+.pc-nav-arrow,
+.pc-nav-arrow:hover,
+.pc-nav-arrow:focus,
+.pc-nav-arrow:focus-visible,
+.pc-nav-arrow:active {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
 .pc-nav-arrow {
   position: absolute;
   top: 50%;
   margin-top: -14px;
   width: 28px;
   height: 28px;
-  border: none;
-  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -19515,17 +19529,10 @@ body.map-active #btn-dev-editor {
   z-index: 3;
   color: rgba(0,0,0,0.35);
   padding: 0;
-  outline: none;
   transition: color 0.15s ease;
 }
 .pc-nav-arrow:hover {
   color: rgba(0,0,0,0.75);
-}
-.pc-nav-arrow:focus,
-.pc-nav-arrow:focus-visible,
-.pc-nav-arrow:active {
-  outline: none;
-  box-shadow: none;
 }
 .pc-nav-arrow-prev { left: -32px; }
 .pc-nav-arrow-next { right: -32px; }
