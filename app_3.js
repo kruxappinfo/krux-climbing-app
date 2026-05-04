@@ -3270,6 +3270,21 @@ function switchView(viewId) {
   // Reload activity data when switching to activity view
   if (viewId === 'activity-view') {
     loadActivityData();
+    // Re-render líneas cuando la vista esté completamente visible (fin de transición CSS)
+    setTimeout(() => {
+      const barsContainer = document.getElementById('histogram-bars');
+      const svgLines = document.getElementById('histogram-lines');
+      if (barsContainer && svgLines && cachedAscentsForHistogram.length > 0) {
+        const histData = processHistogramData(cachedAscentsForHistogram, currentHistogramPeriod);
+        const maxAscents = Math.max(...histData.map(d => d.ascents), 1);
+        const allIdx = histData.flatMap(d => [getGradeIndex(d.maxGrade), getGradeIndex(d.avgGrade), getGradeIndex(d.minGrade)]).filter(i => i >= 0);
+        if (allIdx.length > 0) {
+          const minGradeIdx = Math.max(0, Math.min(...allIdx) - 2);
+          const maxGradeIdx = Math.min(HISTOGRAM_GRADE_ORDER.length - 1, Math.max(...allIdx) + 2);
+          measureAndRenderLines(barsContainer, svgLines, histData, minGradeIdx, maxGradeIdx - minGradeIdx || 1, 0);
+        }
+      }
+    }, 220);
   }
 
   // Specific logic per view
@@ -10393,23 +10408,38 @@ function updateCombinedHistogram(ascents) {
     ).join('');
   }
 
-  xAxisContainer.innerHTML = histogramData.map(item =>
-    `<span class="histogram-x-label">${item.label}</span>`
+  // En mobile con muchas barras, mostrar solo cada N etiquetas
+  const isMobile = window.innerWidth <= 640;
+  const labelStep = isMobile && histogramData.length > 15 ? (histogramData.length > 20 ? 5 : 3) : 1;
+  xAxisContainer.innerHTML = histogramData.map((item, i) =>
+    `<span class="histogram-x-label">${i % labelStep === 0 ? item.label : ''}</span>`
   ).join('');
 
   renderHistogramGrid(document.getElementById('histogram-grid'), minGradeIdx, maxGradeIdx);
+  measureAndRenderLines(barsContainer, svgLines, histogramData, minGradeIdx, gradeRange);
+}
 
-  // Medir posiciones reales de barras tras el render para alinear las líneas
-  requestAnimationFrame(() => {
-    const chartArea = document.getElementById('histogram-chart-area');
-    const barEls = barsContainer.querySelectorAll('.histogram-bar');
+function measureAndRenderLines(barsContainer, svgLines, histogramData, minGradeIdx, gradeRange, attempt) {
+  attempt = attempt || 0;
+  const chartArea = document.getElementById('histogram-chart-area');
+  if (!chartArea) return;
+
+  const doMeasure = () => {
     const areaRect = chartArea.getBoundingClientRect();
+    // Si el área no es visible todavía, reintentar (máx 10 veces, ~300ms)
+    if (areaRect.width === 0 && attempt < 10) {
+      setTimeout(() => measureAndRenderLines(barsContainer, svgLines, histogramData, minGradeIdx, gradeRange, attempt + 1), 30);
+      return;
+    }
+    const barEls = barsContainer.querySelectorAll('.histogram-bar');
     const xPositions = Array.from(barEls).map(el => {
       const r = el.getBoundingClientRect();
       return r.left + r.width / 2 - areaRect.left;
     });
     renderHistogramLines(svgLines, histogramData, minGradeIdx, gradeRange, xPositions);
-  });
+  };
+
+  requestAnimationFrame(doMeasure);
 }
 
 function renderHistogramGrid(svg, minGradeIdx, maxGradeIdx) {

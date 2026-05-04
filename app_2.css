@@ -5325,11 +5325,25 @@ button.secondary:hover {
   .histogram-y-axis {
     min-width: 24px;
   }
+  .histogram-x-axis-spacer {
+    min-width: 24px;
+  }
   .histogram-y-axis .y-label {
     font-size: 9px;
   }
   .histogram-x-axis {
-    padding: 6px 24px 0;
+    padding: 6px 4px 0;
+    gap: 1px;
+  }
+  .histogram-x-label {
+    font-size: 8px;
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .histogram-bar-count {
+    font-size: 9px;
   }
   .histogram-legend {
     gap: 10px;
