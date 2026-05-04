@@ -1,0 +1,3032 @@
+/**
+ * Admin Panel - Unified Administration
+ *
+ * Panel unificado de administración para Climbmaps.
+ * Acceso exclusivo para super-admin (krux.app.info@gmail.com)
+ */
+
+// ============================================
+// CONFIGURACIÓN
+// ============================================
+
+const SUPER_ADMIN_EMAIL = 'krux.app.info@gmail.com';
+
+let db;
+let auth;
+let currentUser = null;
+let allRoutes = [];
+let allUsers = [];
+
+// ============================================
+// INICIALIZACIÓN
+// ============================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    initFirebase();
+    setupNavigation();
+});
+
+function initFirebase() {
+    db = firebase.firestore();
+    auth = firebase.auth();
+
+    auth.onAuthStateChanged(async (user) => {
+        if (user) {
+            currentUser = user;
+            await checkSuperAdminAccess(user);
+        } else {
+            showAccessDenied();
+        }
+    });
+}
+
+// ============================================
+// VERIFICACIÓN DE ACCESO
+// ============================================
+
+async function checkSuperAdminAccess(user) {
+    const loadingState = document.getElementById('loadingState');
+
+    // Verificar si es el super admin
+    if (user.email !== SUPER_ADMIN_EMAIL) {
+        showAccessDenied();
+        return;
+    }
+
+    // Es super admin, mostrar panel
+    loadingState.style.display = 'none';
+    document.getElementById('adminPanel').style.display = 'block';
+
+    // Actualizar UI del usuario
+    updateUserUI(user);
+
+    // Cargar datos iniciales
+    await Promise.all([
+        loadStats(),
+        loadSchoolsFilter(),
+        loadRoutes(),
+        loadUsers()
+    ]);
+}
+
+function showAccessDenied() {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('accessDenied').style.display = 'block';
+    document.getElementById('sidebar').style.display = 'none';
+}
+
+function updateUserUI(user) {
+    const email = user.email || 'Usuario';
+    document.getElementById('userName').textContent = email;
+    document.getElementById('userAvatar').textContent = email.charAt(0).toUpperCase();
+}
+
+// ============================================
+// NAVEGACIÓN
+// ============================================
+
+function setupNavigation() {
+    const navLinks = document.querySelectorAll('.sidebar-nav a');
+
+    navLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const section = link.dataset.section;
+            navigateTo(section);
+
+            // Cerrar sidebar en móvil
+            if (window.innerWidth <= 768) {
+                document.getElementById('sidebar').classList.remove('open');
+            }
+        });
+    });
+
+    // Manejar navegación por hash
+    window.addEventListener('hashchange', () => {
+        const hash = window.location.hash.replace('#', '') || 'dashboard';
+        navigateTo(hash, false);
+    });
+
+    // Cargar sección inicial
+    const initialSection = window.location.hash.replace('#', '') || 'dashboard';
+    navigateTo(initialSection, false);
+}
+
+function navigateTo(section, updateHash = true) {
+    // Actualizar nav activo
+    document.querySelectorAll('.sidebar-nav a').forEach(link => {
+        link.classList.toggle('active', link.dataset.section === section);
+    });
+
+    // Mostrar sección
+    document.querySelectorAll('.section').forEach(sec => {
+        sec.classList.toggle('active', sec.id === `section-${section}`);
+    });
+
+    // Actualizar hash
+    if (updateHash) {
+        window.location.hash = section;
+    }
+
+    // Recargar datos si es necesario
+    if (section === 'routes') {
+        loadRoutes();
+    } else if (section === 'users') {
+        loadUsers();
+        loadSpotterRequestsInUsersSection();
+    } else if (section === 'spotters') {
+        loadSpotterRequests();
+        loadApprovedSpotters();
+    } else if (section === 'suggestions') {
+        loadSuggestions();
+    } else if (section === 'schools') {
+        loadPendingSchools();
+    } else if (section === 'sectors') {
+        loadPendingSectors();
+    } else if (section === 'poi') {
+        loadPendingPOI();
+    }
+}
+
+function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+}
+
+// ============================================
+// ESTADÍSTICAS
+// ============================================
+
+async function loadStats() {
+    try {
+        const collections = ['pending_routes', 'pending_schools', 'pending_sectors', 'pending_poi'];
+        let pending = 0, approved = 0, rejected = 0;
+        let schoolsPending = 0, sectorsPending = 0, poiPending = 0;
+
+        for (const col of collections) {
+            const snapshot = await db.collection(col).get();
+            snapshot.forEach(doc => {
+                const status = doc.data().status || 'pending';
+                if (status === 'pending') {
+                    pending++;
+                    if (col === 'pending_schools') schoolsPending++;
+                    if (col === 'pending_sectors') sectorsPending++;
+                    if (col === 'pending_poi') poiPending++;
+                }
+                else if (status === 'approved') approved++;
+                else if (status === 'rejected') rejected++;
+            });
+        }
+
+        document.getElementById('statPending').textContent = pending;
+        document.getElementById('statApproved').textContent = approved;
+        document.getElementById('statRejected').textContent = rejected;
+
+        // Nav badges
+        const setBadge = (id, count) => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = count;
+                el.style.display = count > 0 ? 'inline' : 'none';
+            }
+        };
+        setBadge('schoolsBadge', schoolsPending);
+        setBadge('sectorsBadge', sectorsPending);
+        setBadge('poiBadge', poiPending);
+
+        // Stats de usuarios
+        const usersSnapshot = await db.collection('admins').get();
+        document.getElementById('statUsers').textContent = usersSnapshot.size;
+
+    } catch (error) {
+        console.error('Error cargando estadísticas:', error);
+    }
+}
+
+// ============================================
+// GESTIÓN DE VÍAS
+// ============================================
+
+async function loadSchoolsFilter() {
+    try {
+        const snapshot = await db.collection('pending_routes').get();
+        const schools = new Set();
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.schoolId) {
+                schools.add(JSON.stringify({ id: data.schoolId, name: data.schoolName || data.schoolId }));
+            }
+        });
+
+        const select = document.getElementById('filterSchool');
+        // Limpiar opciones excepto la primera
+        while (select.options.length > 1) {
+            select.remove(1);
+        }
+
+        schools.forEach(schoolStr => {
+            const school = JSON.parse(schoolStr);
+            const option = document.createElement('option');
+            option.value = school.id;
+            option.textContent = school.name;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error cargando escuelas:', error);
+    }
+}
+
+async function loadRoutes() {
+    const routesList = document.getElementById('routesList');
+    routesList.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Cargando vías...</p>
+        </div>
+    `;
+
+    try {
+        const filterSchool = document.getElementById('filterSchool').value;
+        const filterStatus = document.getElementById('filterStatus').value;
+
+        const snapshot = await db.collection('pending_routes').orderBy('createdAt', 'desc').get();
+        allRoutes = [];
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            data.id = doc.id;
+
+            // Aplicar filtros
+            if (filterSchool !== 'all' && data.schoolId !== filterSchool) return;
+            if (filterStatus !== 'all' && data.status !== filterStatus) return;
+
+            allRoutes.push(data);
+        });
+
+        renderRoutes(allRoutes);
+    } catch (error) {
+        console.error('Error cargando rutas:', error);
+        routesList.innerHTML = `
+            <div class="empty-state">
+                <p>Error al cargar las vías</p>
+            </div>
+        `;
+    }
+}
+
+function renderRoutes(routes) {
+    const routesList = document.getElementById('routesList');
+
+    if (routes.length === 0) {
+        routesList.innerHTML = `
+            <div class="empty-state">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p>No hay vías con los filtros seleccionados</p>
+            </div>
+        `;
+        return;
+    }
+
+    routesList.innerHTML = routes.map(route => createRouteCard(route)).join('');
+}
+
+function createRouteCard(route) {
+    const createdAt = route.createdAt ? new Date(route.createdAt.toDate()).toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }) : 'Fecha desconocida';
+
+    const statusClass = route.status || 'pending';
+    const statusText = {
+        'pending': 'Pendiente',
+        'approved': 'Aprobada',
+        'rejected': 'Rechazada'
+    }[statusClass] || 'Pendiente';
+
+    const badgeClass = {
+        'pending': 'badge-pending',
+        'approved': 'badge-approved',
+        'rejected': 'badge-rejected'
+    }[statusClass] || 'badge-pending';
+
+    const showActions = route.status === 'pending';
+
+    return `
+        <div class="route-card ${statusClass}">
+            <div class="route-header">
+                <div>
+                    <div class="route-name">${escapeHtml(route.nombre || 'Sin nombre')}</div>
+                    <span class="badge ${badgeClass}">${statusText}</span>
+                </div>
+                <div class="route-grade">${escapeHtml(route.grado1 || '?')}</div>
+            </div>
+
+            <div class="route-details">
+                <div>
+                    <div class="route-detail-label">Escuela</div>
+                    <div class="route-detail-value">${escapeHtml(route.schoolName || route.schoolId || '-')}</div>
+                </div>
+                <div>
+                    <div class="route-detail-label">Sector</div>
+                    <div class="route-detail-value">${escapeHtml(route.sector || '-')}</div>
+                </div>
+                <div>
+                    <div class="route-detail-label">Modalidad</div>
+                    <div class="route-detail-value">${escapeHtml(route.modalidad || 'Simple')}</div>
+                </div>
+                <div>
+                    <div class="route-detail-label">Express</div>
+                    <div class="route-detail-value">${route.exp1 || '-'}</div>
+                </div>
+                <div>
+                    <div class="route-detail-label">Metros</div>
+                    <div class="route-detail-value">${route.long1 ? route.long1 + 'm' : '-'}</div>
+                </div>
+                <div>
+                    <div class="route-detail-label">Descripción</div>
+                    <div class="route-detail-value">${escapeHtml(route.descripcion || '-')}</div>
+                </div>
+            </div>
+
+            <div class="route-meta">
+                <span>Enviada por: ${escapeHtml(route.createdByEmail || 'Desconocido')}</span>
+                <span>${createdAt}</span>
+            </div>
+
+            <div class="route-actions">
+                ${route.coordinates ? `
+                <button class="btn btn-primary btn-sm" onclick="viewRouteOnMap('${route.id}', ${route.coordinates[0]}, ${route.coordinates[1]}, '${escapeHtml(route.schoolId || '')}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                    Ver en mapa
+                </button>
+                ` : ''}
+                ${showActions ? `
+                <button class="btn btn-success btn-sm" onclick="approveRoute('${route.id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Aprobar
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="rejectRoute('${route.id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Rechazar
+                </button>
+                ` : ''}
+                <button class="btn btn-edit btn-sm" onclick="openEditModal('${route.id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Editar
+                </button>
+                <button class="btn btn-delete btn-sm" onclick="deleteRoute('${route.id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Eliminar
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+const SPOTTER_POINTS = {
+    pending_routes: 10,
+    pending_poi: 5,
+    pending_schools: 15,
+    pending_sectors: 15
+};
+
+async function awardSpotterPoints(collection, docId) {
+    try {
+        const doc = await db.collection(collection).doc(docId).get();
+        if (!doc.exists) return;
+        const createdBy = doc.data().createdBy;
+        if (!createdBy) return;
+        const points = SPOTTER_POINTS[collection];
+        if (!points) return;
+        await db.collection('admins').doc(createdBy).update({
+            points: firebase.firestore.FieldValue.increment(points)
+        });
+    } catch (e) {
+        console.warn('[Admin] No se pudieron otorgar puntos al spotter:', e);
+    }
+}
+
+async function approveRoute(routeId) {
+    if (!confirm('¿Aprobar esta vía?')) return;
+
+    try {
+        await awardSpotterPoints('pending_routes', routeId);
+        await db.collection('pending_routes').doc(routeId).update({
+            status: 'approved',
+            approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            approvedBy: currentUser.email
+        });
+
+        showToast('Vía aprobada correctamente', 'success');
+        await loadRoutes();
+        await loadStats();
+    } catch (error) {
+        console.error('Error aprobando ruta:', error);
+        showToast('Error al aprobar la vía', 'error');
+    }
+}
+
+async function rejectRoute(routeId) {
+    if (!confirm('¿Rechazar y eliminar esta vía permanentemente?')) return;
+
+    try {
+        // Obtener datos de la vía antes de eliminarla (para eliminar el dibujo asociado)
+        const routeDoc = await db.collection('pending_routes').doc(routeId).get();
+        const routeData = routeDoc.exists ? routeDoc.data() : null;
+
+        // Eliminar completamente el documento (no dejar residuos)
+        await db.collection('pending_routes').doc(routeId).delete();
+
+        // Eliminar el dibujo asociado en sector_route_drawings
+        if (routeData && routeData.schoolId && routeData.sector && routeData.nombre) {
+            await deleteRouteDrawingFromSector(routeData.schoolId, routeData.sector, routeData.nombre);
+        }
+
+        showToast('Vía rechazada y eliminada', 'info');
+        await loadRoutes();
+        await loadStats();
+    } catch (error) {
+        console.error('Error rechazando ruta:', error);
+        showToast('Error al rechazar la vía', 'error');
+    }
+}
+
+async function deleteRoute(routeId) {
+    if (!confirm('¿Eliminar esta vía permanentemente?')) return;
+
+    try {
+        // Obtener datos de la vía antes de eliminarla (para eliminar el dibujo asociado)
+        const routeDoc = await db.collection('pending_routes').doc(routeId).get();
+        const routeData = routeDoc.exists ? routeDoc.data() : null;
+
+        await db.collection('pending_routes').doc(routeId).delete();
+
+        // Eliminar el dibujo asociado en sector_route_drawings
+        if (routeData && routeData.schoolId && routeData.sector && routeData.nombre) {
+            await deleteRouteDrawingFromSector(routeData.schoolId, routeData.sector, routeData.nombre);
+        }
+
+        showToast('Vía eliminada', 'info');
+        await loadRoutes();
+        await loadStats();
+    } catch (error) {
+        console.error('Error eliminando ruta:', error);
+        showToast('Error al eliminar la vía', 'error');
+    }
+}
+
+// ============================================
+// EXPORTACIÓN
+// ============================================
+
+async function exportAllApproved() {
+    try {
+        const filterSchool = document.getElementById('filterSchool')?.value || 'all';
+
+        const snapshot = await db.collection('pending_routes')
+            .where('status', '==', 'approved')
+            .get();
+
+        if (snapshot.empty) {
+            showToast('No hay vías aprobadas para exportar', 'info');
+            return;
+        }
+
+        const routesBySchool = {};
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+
+            if (filterSchool !== 'all' && data.schoolId !== filterSchool) return;
+
+            if (!routesBySchool[data.schoolId]) {
+                routesBySchool[data.schoolId] = {
+                    name: data.schoolName || data.schoolId,
+                    features: []
+                };
+            }
+
+            const feature = {
+                type: 'Feature',
+                properties: {
+                    fid: routesBySchool[data.schoolId].features.length + 1000,
+                    nombre: data.nombre,
+                    grado1: data.grado1,
+                    sector: data.sector,
+                    exp1: data.exp1,
+                    long1: data.long1,
+                    descripcion: data.descripcion,
+                    modalidad: data.modalidad,
+                    variante: data.variante || 'NO'
+                },
+                geometry: {
+                    type: 'MultiPoint',
+                    coordinates: [data.coordinates]
+                }
+            };
+
+            routesBySchool[data.schoolId].features.push(feature);
+        });
+
+        const schoolIds = Object.keys(routesBySchool);
+
+        if (schoolIds.length === 0) {
+            showToast('No hay vías para exportar', 'info');
+            return;
+        }
+
+        for (const schoolId of schoolIds) {
+            const school = routesBySchool[schoolId];
+            const geojson = {
+                type: 'FeatureCollection',
+                name: `${schoolId}_Vias_Aprobadas`,
+                features: school.features
+            };
+
+            downloadJSON(geojson, `${schoolId}_vias_aprobadas_${Date.now()}.geojson`);
+        }
+
+        showToast(`Exportadas ${schoolIds.length} escuela(s)`, 'success');
+
+    } catch (error) {
+        console.error('Error exportando:', error);
+        showToast('Error al exportar', 'error');
+    }
+}
+
+function downloadJSON(data, filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ============================================
+// GESTIÓN DE USUARIOS
+// ============================================
+
+async function loadUsers() {
+    const usersList = document.getElementById('usersList');
+
+    try {
+        const snapshot = await db.collection('admins').get();
+
+        if (snapshot.empty) {
+            usersList.innerHTML = `
+                <tr>
+                    <td colspan="4" class="empty-state">No hay usuarios autorizados</td>
+                </tr>
+            `;
+            return;
+        }
+
+        let html = '';
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const uid = doc.id;
+
+            const roleLabel = data.role === 'admin' ? 'Admin' : 'Subir Fotos';
+            const badgeClass = data.role === 'admin' ? 'badge-admin' : 'badge-uploader';
+
+            html += `
+                <tr>
+                    <td>${escapeHtml(data.email || 'N/A')}</td>
+                    <td><span class="badge ${badgeClass}">${roleLabel}</span></td>
+                    <td style="font-family: monospace; font-size: 12px; color: #999;">${uid.substring(0, 12)}...</td>
+                    <td>
+                        <button
+                            class="btn btn-danger btn-sm"
+                            onclick="removeUser('${uid}', '${escapeHtml(data.email || uid)}')"
+                            ${uid === currentUser?.uid ? 'disabled title="No puedes eliminarte"' : ''}
+                        >
+                            Eliminar
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        usersList.innerHTML = html;
+
+    } catch (error) {
+        console.error('Error cargando usuarios:', error);
+        usersList.innerHTML = `
+            <tr>
+                <td colspan="4" style="color: #ef4444;">Error al cargar usuarios</td>
+            </tr>
+        `;
+    }
+}
+
+async function addUser() {
+    const emailInput = document.getElementById('newUserEmail');
+    const roleSelect = document.getElementById('newUserRole');
+
+    const email = emailInput.value.trim();
+    const role = roleSelect.value;
+
+    if (!email || !email.includes('@')) {
+        showToast('Por favor, ingresa un correo válido', 'error');
+        return;
+    }
+
+    const uid = prompt(
+        `Para agregar a ${email}, necesitas su UID de Firebase.\n\n` +
+        `El usuario debe iniciar sesión al menos una vez en la app.\n` +
+        `Copia su UID desde Firebase Auth:`
+    );
+
+    if (!uid || uid.trim() === '') {
+        showToast('Operación cancelada', 'info');
+        return;
+    }
+
+    try {
+        await db.collection('admins').doc(uid.trim()).set({
+            email: email,
+            role: role,
+            addedBy: currentUser.uid,
+            addedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        showToast(`Usuario ${email} agregado`, 'success');
+        emailInput.value = '';
+        await loadUsers();
+        await loadStats();
+
+    } catch (error) {
+        console.error('Error agregando usuario:', error);
+        showToast('Error al agregar usuario', 'error');
+    }
+}
+
+async function removeUser(uid, email) {
+    if (!confirm(`¿Eliminar a ${email}?`)) return;
+
+    try {
+        await db.collection('admins').doc(uid).delete();
+        showToast(`Usuario ${email} eliminado`, 'success');
+        await loadUsers();
+        await loadStats();
+
+    } catch (error) {
+        console.error('Error eliminando usuario:', error);
+        showToast('Error al eliminar usuario', 'error');
+    }
+}
+
+// ============================================
+// UTILIDADES
+// ============================================
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showToast(message, type = 'info') {
+    const existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(20px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+function logout() {
+    if (confirm('¿Cerrar sesión?')) {
+        auth.signOut().then(() => {
+            window.location.href = 'index.html';
+        });
+    }
+}
+
+// ============================================
+// VER RUTA EN MAPA
+// ============================================
+
+let mapModal = null;
+let mapInstance = null;
+let currentMapRouteId = null;
+
+function viewRouteOnMap(routeId, lng, lat, schoolId) {
+    currentMapRouteId = routeId;
+
+    // Crear modal si no existe
+    if (!mapModal) {
+        createMapModal();
+    }
+
+    // Mostrar modal
+    mapModal.classList.remove('hidden');
+
+    // Forzar resize del mapa después de que el modal sea visible
+    // Esto es necesario porque MapLibre necesita dimensiones calculadas del contenedor
+    setTimeout(() => {
+        if (mapInstance) {
+            mapInstance.resize();
+        }
+        // Cargar datos de la ruta después del resize
+        loadRouteForMap(routeId, lng, lat);
+    }, 50);
+}
+
+function createMapModal() {
+    mapModal = document.createElement('div');
+    mapModal.id = 'map-modal';
+    mapModal.className = 'map-modal-overlay';
+    mapModal.innerHTML = `
+        <div class="map-modal-container">
+            <div class="map-modal-header">
+                <h3 id="map-modal-title">Ubicación de la vía</h3>
+                <button class="map-modal-close" onclick="closeMapModal()">&times;</button>
+            </div>
+            <div class="map-modal-body">
+                <div id="admin-map-container"></div>
+                <div id="map-route-info" class="map-route-info"></div>
+            </div>
+            <div class="map-modal-footer" id="map-modal-actions">
+                <!-- Actions will be inserted here -->
+            </div>
+        </div>
+    `;
+
+    // Añadir estilos
+    const styles = document.createElement('style');
+    styles.textContent = `
+        .map-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .map-modal-overlay.hidden {
+            display: none;
+        }
+        .map-modal-container {
+            background: white;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 900px;
+            max-height: 90vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .map-modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .map-modal-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+        .map-modal-close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #666;
+            line-height: 1;
+            padding: 0;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+        }
+        .map-modal-close:hover {
+            background: #f0f0f0;
+        }
+        .map-modal-body {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        #admin-map-container {
+            width: 100%;
+            height: 400px;
+            background: #e0e0e0;
+        }
+        .map-route-info {
+            padding: 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+        }
+        .map-route-info h4 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .map-route-info .route-grade-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .map-route-details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .map-route-detail {
+            font-size: 13px;
+        }
+        .map-route-detail-label {
+            color: #666;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        .map-route-detail-value {
+            font-weight: 600;
+            color: #333;
+        }
+        .map-modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+        @media (max-width: 600px) {
+            .map-modal-container {
+                max-height: 100vh;
+                border-radius: 0;
+            }
+            #admin-map-container {
+                height: 300px;
+            }
+            .map-modal-footer {
+                flex-direction: column;
+            }
+            .map-modal-footer .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    `;
+    document.head.appendChild(styles);
+    document.body.appendChild(mapModal);
+
+    // Inicializar mapa
+    initAdminMap();
+}
+
+function initAdminMap() {
+    // Cargar MapLibre si no está disponible
+    if (typeof maplibregl === 'undefined') {
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js';
+        script.onload = () => {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css';
+            document.head.appendChild(link);
+            createMapInstance();
+        };
+        document.head.appendChild(script);
+    } else {
+        createMapInstance();
+    }
+}
+
+function createMapInstance() {
+    mapInstance = new maplibregl.Map({
+        container: 'admin-map-container',
+        style: {
+            version: 8,
+            glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+            sources: {
+                'satellite': {
+                    type: 'raster',
+                    tiles: [
+                        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                    ],
+                    tileSize: 256,
+                    attribution: '&copy; Esri'
+                }
+            },
+            layers: [
+                {
+                    id: 'satellite-layer',
+                    type: 'raster',
+                    source: 'satellite',
+                    minzoom: 0,
+                    maxzoom: 22
+                }
+            ]
+        },
+        center: [-3.7, 40.4],
+        zoom: 5
+    });
+
+    mapInstance.addControl(new maplibregl.NavigationControl(), 'top-right');
+}
+
+async function loadRouteForMap(routeId, lng, lat) {
+    try {
+        const doc = await db.collection('pending_routes').doc(routeId).get();
+
+        if (!doc.exists) {
+            showToast('Ruta no encontrada', 'error');
+            closeMapModal();
+            return;
+        }
+
+        const route = doc.data();
+        route.id = doc.id;
+
+        // Actualizar título
+        document.getElementById('map-modal-title').textContent = route.nombre || 'Vía sin nombre';
+
+        // Actualizar info de la ruta
+        const infoContainer = document.getElementById('map-route-info');
+        infoContainer.innerHTML = `
+            <h4>
+                ${escapeHtml(route.nombre || 'Sin nombre')}
+                <span class="route-grade-badge">${escapeHtml(route.grado1 || '?')}</span>
+            </h4>
+            <div class="map-route-details-grid">
+                <div class="map-route-detail">
+                    <div class="map-route-detail-label">Escuela</div>
+                    <div class="map-route-detail-value">${escapeHtml(route.schoolName || route.schoolId || '-')}</div>
+                </div>
+                <div class="map-route-detail">
+                    <div class="map-route-detail-label">Sector</div>
+                    <div class="map-route-detail-value">${escapeHtml(route.sector || '-')}</div>
+                </div>
+                <div class="map-route-detail">
+                    <div class="map-route-detail-label">Modalidad</div>
+                    <div class="map-route-detail-value">${escapeHtml(route.modalidad || 'Simple')}</div>
+                </div>
+                <div class="map-route-detail">
+                    <div class="map-route-detail-label">Express</div>
+                    <div class="map-route-detail-value">${route.exp1 || '-'}</div>
+                </div>
+                <div class="map-route-detail">
+                    <div class="map-route-detail-label">Metros</div>
+                    <div class="map-route-detail-value">${route.long1 ? route.long1 + 'm' : '-'}</div>
+                </div>
+                <div class="map-route-detail">
+                    <div class="map-route-detail-label">Enviada por</div>
+                    <div class="map-route-detail-value">${escapeHtml(route.createdByEmail || '-')}</div>
+                </div>
+            </div>
+        `;
+
+        // Actualizar acciones según estado
+        const actionsContainer = document.getElementById('map-modal-actions');
+        if (route.status === 'pending') {
+            actionsContainer.innerHTML = `
+                <button class="btn btn-secondary" onclick="closeMapModal()">Cerrar</button>
+                <button class="btn btn-danger" onclick="rejectRouteFromMap('${route.id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Rechazar
+                </button>
+                <button class="btn btn-success" onclick="approveRouteFromMap('${route.id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Aprobar
+                </button>
+            `;
+        } else {
+            const statusText = route.status === 'approved' ? 'Aprobada' : 'Rechazada';
+            actionsContainer.innerHTML = `
+                <span style="color: #666;">Estado: <strong>${statusText}</strong></span>
+                <button class="btn btn-secondary" onclick="closeMapModal()">Cerrar</button>
+            `;
+        }
+
+        // Centrar mapa y añadir marcador
+        if (mapInstance) {
+            // Esperar a que el mapa esté listo
+            if (mapInstance.loaded()) {
+                addMarkerToMap(lng, lat, route);
+            } else {
+                mapInstance.on('load', () => addMarkerToMap(lng, lat, route));
+            }
+        }
+
+    } catch (error) {
+        console.error('Error cargando ruta:', error);
+        showToast('Error al cargar la ruta', 'error');
+    }
+}
+
+function addMarkerToMap(lng, lat, route) {
+    // Remover marcadores anteriores
+    const existingMarkers = document.querySelectorAll('.admin-map-marker');
+    existingMarkers.forEach(m => m.remove());
+
+    // Cargar vías oficiales de la escuela para contexto
+    loadOfficialRoutesOnViewMap(route.schoolId);
+
+    // Crear marcador de la vía pendiente (morado/violeta para distinguirla)
+    const el = document.createElement('div');
+    el.className = 'admin-map-marker';
+    el.style.cssText = `
+        width: 16px;
+        height: 16px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: 2px solid white;
+        border-radius: 50%;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        cursor: pointer;
+        z-index: 10;
+    `;
+
+    new maplibregl.Marker({ element: el })
+        .setLngLat([lng, lat])
+        .addTo(mapInstance);
+
+    // Centrar mapa
+    mapInstance.flyTo({
+        center: [lng, lat],
+        zoom: 17,
+        duration: 1000
+    });
+}
+
+/**
+ * Carga las vías oficiales desde el archivo GeoJSON para el modal de visualización
+ */
+async function loadOfficialRoutesOnViewMap(schoolId) {
+    if (!mapInstance || !schoolId) return;
+
+    const geojsonPath = SCHOOL_GEOJSON_PATHS[schoolId];
+    if (!geojsonPath) {
+        console.log(`[ViewMap] No hay GeoJSON de vías oficiales para ${schoolId}`);
+        return;
+    }
+
+    try {
+        // Remover source y layers anteriores si existen
+        if (mapInstance.getLayer('view-official-routes-labels')) mapInstance.removeLayer('view-official-routes-labels');
+        if (mapInstance.getLayer('view-official-routes-layer')) mapInstance.removeLayer('view-official-routes-layer');
+        if (mapInstance.getSource('view-official-routes')) mapInstance.removeSource('view-official-routes');
+
+        // Cargar el GeoJSON
+        const response = await fetch(geojsonPath);
+        if (!response.ok) {
+            console.warn(`[ViewMap] No se pudo cargar ${geojsonPath}`);
+            return;
+        }
+        const geojson = await response.json();
+
+        // Añadir source
+        mapInstance.addSource('view-official-routes', {
+            type: 'geojson',
+            data: geojson
+        });
+
+        // Añadir capa de círculos para las vías oficiales (azul)
+        mapInstance.addLayer({
+            id: 'view-official-routes-layer',
+            type: 'circle',
+            source: 'view-official-routes',
+            paint: {
+                'circle-radius': 6,
+                'circle-color': '#3b82f6',  // Azul para oficiales
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': 1.5,
+                'circle-opacity': 0.8
+            }
+        });
+
+        // Añadir etiquetas con nombre y grado
+        mapInstance.addLayer({
+            id: 'view-official-routes-labels',
+            type: 'symbol',
+            source: 'view-official-routes',
+            layout: {
+                'text-field': ['concat', ['get', 'nombre'], ' (', ['get', 'grado1'], ')'],
+                'text-font': ['Noto Sans Regular'],
+                'text-size': 10,
+                'text-offset': [0, 1.2],
+                'text-anchor': 'top',
+                'text-allow-overlap': false
+            },
+            paint: {
+                'text-color': '#93c5fd',
+                'text-halo-color': '#1e3a5f',
+                'text-halo-width': 1
+            }
+        });
+
+        // Añadir popup al hacer click en las vías oficiales
+        mapInstance.on('click', 'view-official-routes-layer', (e) => {
+            if (!e.features || e.features.length === 0) return;
+            const props = e.features[0].properties;
+
+            new maplibregl.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(`
+                    <div style="padding: 8px;">
+                        <strong>${props.nombre || 'Sin nombre'}</strong><br>
+                        <span style="color: #3b82f6; font-weight: 600;">${props.grado1 || '?'}</span><br>
+                        <small>Sector: ${props.sector || '-'}</small><br>
+                        <small style="color: #3b82f6;">✓ Vía Oficial</small>
+                    </div>
+                `)
+                .addTo(mapInstance);
+        });
+
+        // Cursor pointer al hover
+        mapInstance.on('mouseenter', 'view-official-routes-layer', () => {
+            mapInstance.getCanvas().style.cursor = 'pointer';
+        });
+        mapInstance.on('mouseleave', 'view-official-routes-layer', () => {
+            mapInstance.getCanvas().style.cursor = '';
+        });
+
+        console.log(`[ViewMap] Cargadas ${geojson.features?.length || 0} vías oficiales de ${schoolId}`);
+
+    } catch (error) {
+        console.error('[ViewMap] Error cargando vías oficiales:', error);
+    }
+}
+
+function closeMapModal() {
+    if (mapModal) {
+        mapModal.classList.add('hidden');
+    }
+    currentMapRouteId = null;
+}
+
+async function approveRouteFromMap(routeId) {
+    if (!confirm('¿Aprobar esta vía?')) return;
+
+    try {
+        await awardSpotterPoints('pending_routes', routeId);
+        await db.collection('pending_routes').doc(routeId).update({
+            status: 'approved',
+            approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            approvedBy: currentUser.email
+        });
+
+        showToast('Vía aprobada correctamente', 'success');
+        closeMapModal();
+        await loadRoutes();
+        await loadStats();
+    } catch (error) {
+        console.error('Error aprobando ruta:', error);
+        showToast('Error al aprobar la vía', 'error');
+    }
+}
+
+async function rejectRouteFromMap(routeId) {
+    const reason = prompt('Motivo del rechazo (opcional):');
+
+    try {
+        await db.collection('pending_routes').doc(routeId).update({
+            status: 'rejected',
+            rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            rejectedBy: currentUser.email,
+            rejectionReason: reason || null
+        });
+
+        showToast('Vía rechazada', 'info');
+        closeMapModal();
+        await loadRoutes();
+        await loadStats();
+    } catch (error) {
+        console.error('Error rechazando ruta:', error);
+        showToast('Error al rechazar la vía', 'error');
+    }
+}
+
+// ============================================
+// EDICIÓN DE VÍAS (SPOTTER)
+// ============================================
+
+let editModal = null;
+let editMap = null;
+let editMarker = null;
+let editingRouteId = null;
+let editingRouteData = null;
+
+/**
+ * Abre el modal de edición para una vía
+ */
+async function openEditModal(routeId) {
+    try {
+        const doc = await db.collection('pending_routes').doc(routeId).get();
+        if (!doc.exists) {
+            showToast('Vía no encontrada', 'error');
+            return;
+        }
+
+        editingRouteId = routeId;
+        editingRouteData = doc.data();
+
+        createEditModal();
+
+        // Rellenar formulario
+        document.getElementById('editNombre').value = editingRouteData.nombre || '';
+        document.getElementById('editGrado').value = editingRouteData.grado1 || '';
+        document.getElementById('editSector').value = editingRouteData.sector || '';
+        document.getElementById('editExp').value = editingRouteData.exp1 || '';
+        document.getElementById('editLong').value = editingRouteData.long1 || '';
+        document.getElementById('editDescripcion').value = editingRouteData.descripcion || '';
+        document.getElementById('editModalidad').value = editingRouteData.modalidad || 'Simple';
+
+        editModal.classList.remove('hidden');
+
+        setTimeout(() => initEditMap(), 100);
+
+    } catch (error) {
+        console.error('Error abriendo editor:', error);
+        showToast('Error al cargar la vía', 'error');
+    }
+}
+
+function createEditModal() {
+    if (document.getElementById('editModal')) {
+        editModal = document.getElementById('editModal');
+        return;
+    }
+
+    editModal = document.createElement('div');
+    editModal.id = 'editModal';
+    editModal.className = 'edit-modal-overlay';
+    editModal.innerHTML = `
+        <div class="edit-modal-container">
+            <div class="edit-modal-header">
+                <h3>Editar Vía del Spotter</h3>
+                <button class="edit-modal-close" onclick="closeEditModal()">&times;</button>
+            </div>
+
+            <div class="edit-modal-body">
+                <div class="edit-form-section">
+                    <h4>Información de la Vía</h4>
+                    <div class="edit-form-grid">
+                        <div class="edit-form-group">
+                            <label>Nombre</label>
+                            <input type="text" id="editNombre" class="form-input" placeholder="Nombre de la vía">
+                        </div>
+                        <div class="edit-form-group">
+                            <label>Grado</label>
+                            <input type="text" id="editGrado" class="form-input" placeholder="Ej: 6a+">
+                        </div>
+                        <div class="edit-form-group">
+                            <label>Sector</label>
+                            <input type="text" id="editSector" class="form-input" placeholder="Sector">
+                        </div>
+                        <div class="edit-form-group">
+                            <label>Modalidad</label>
+                            <select id="editModalidad" class="form-select">
+                                <option value="Simple">Simple</option>
+                                <option value="Largo">Largo</option>
+                                <option value="Boulder">Boulder</option>
+                            </select>
+                        </div>
+                        <div class="edit-form-group">
+                            <label>Expresos</label>
+                            <input type="number" id="editExp" class="form-input" placeholder="Nº expresos">
+                        </div>
+                        <div class="edit-form-group">
+                            <label>Metros</label>
+                            <input type="number" id="editLong" class="form-input" placeholder="Longitud (m)">
+                        </div>
+                        <div class="edit-form-group full-width">
+                            <label>Descripción</label>
+                            <textarea id="editDescripcion" class="form-input" rows="3" placeholder="Descripción de la vía..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="edit-form-section">
+                    <h4>Ubicación en el Mapa</h4>
+                    <p class="edit-hint">Arrastra el marcador verde grande para mover la ubicación. Las otras vías de la escuela se muestran para referencia.</p>
+                    <div id="editMapContainer"></div>
+                    <div class="edit-map-legend">
+                        <span class="legend-item"><span class="legend-dot" style="background: #3b82f6;"></span> Oficiales</span>
+                        <span class="legend-item"><span class="legend-dot" style="background: #10b981;"></span> Aprobadas</span>
+                        <span class="legend-item"><span class="legend-dot" style="background: #f59e0b;"></span> Pendientes</span>
+                    </div>
+                    <div class="edit-coords-inputs">
+                        <div class="coord-input-group">
+                            <label>Latitud</label>
+                            <input type="number" id="editLatInput" step="0.000001" placeholder="39.794890" onchange="updateMarkerFromInputs()">
+                        </div>
+                        <div class="coord-input-group">
+                            <label>Longitud</label>
+                            <input type="number" id="editLngInput" step="0.000001" placeholder="-2.148689" onchange="updateMarkerFromInputs()">
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="updateMarkerFromInputs()">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            Ir
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="edit-modal-footer">
+                <button class="btn btn-secondary" onclick="closeEditModal()">Cancelar</button>
+                <button class="btn btn-success" onclick="saveRouteEdits()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Guardar Cambios
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(editModal);
+
+    editModal.addEventListener('click', (e) => {
+        if (e.target === editModal) closeEditModal();
+    });
+}
+
+function initEditMap() {
+    let coords = getRouteCoordinates(editingRouteData);
+    if (!coords) coords = [-3.7, 40.4];
+
+    if (editMap) {
+        editMap.setCenter(coords);
+        editMap.setZoom(17);
+        if (editMarker) editMarker.setLngLat(coords);
+        updateEditCoordsDisplay(coords);
+        // Recargar vías del contexto
+        loadOfficialRoutesOnEditMap();
+        loadOtherRoutesOnEditMap();
+        return;
+    }
+
+    editMap = new maplibregl.Map({
+        container: 'editMapContainer',
+        style: {
+            version: 8,
+            glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+            sources: {
+                'satellite': {
+                    type: 'raster',
+                    tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+                    tileSize: 256
+                }
+            },
+            layers: [{ id: 'satellite-layer', type: 'raster', source: 'satellite' }]
+        },
+        center: coords,
+        zoom: 17
+    });
+
+    editMap.on('load', () => {
+        // Cargar vías oficiales y otras vías para contexto
+        loadOfficialRoutesOnEditMap();
+        loadOtherRoutesOnEditMap();
+    });
+
+    editMarker = new maplibregl.Marker({ color: '#10b981', draggable: true })
+        .setLngLat(coords)
+        .addTo(editMap);
+
+    editMarker.on('dragend', () => {
+        const lngLat = editMarker.getLngLat();
+        updateEditCoordsDisplay([lngLat.lng, lngLat.lat]);
+    });
+
+    updateEditCoordsDisplay(coords);
+}
+
+// Configuración de rutas de GeoJSON por escuela (mismo que maplibre-config.js)
+const SCHOOL_GEOJSON_PATHS = {
+    valeria: 'Cartografia/Valeria/Valeria_Vias.geojson',
+    sanmartin: 'Cartografia/San Martin de ValdeIglesias/SM_Vias.geojson',
+    mora: 'Cartografia/Mora/Mora_Vias.geojson'
+};
+
+/**
+ * Carga las vías oficiales desde el archivo GeoJSON de la escuela
+ */
+async function loadOfficialRoutesOnEditMap() {
+    if (!editMap || !editingRouteData) return;
+
+    const schoolId = editingRouteData.schoolId;
+    if (!schoolId) return;
+
+    const geojsonPath = SCHOOL_GEOJSON_PATHS[schoolId];
+    if (!geojsonPath) {
+        console.log(`[EditMap] No hay GeoJSON de vías oficiales para ${schoolId}`);
+        return;
+    }
+
+    try {
+        // Remover source y layers anteriores si existen
+        if (editMap.getLayer('official-routes-labels')) editMap.removeLayer('official-routes-labels');
+        if (editMap.getLayer('official-routes-layer')) editMap.removeLayer('official-routes-layer');
+        if (editMap.getSource('official-routes')) editMap.removeSource('official-routes');
+
+        // Cargar el GeoJSON
+        const response = await fetch(geojsonPath);
+        if (!response.ok) {
+            console.warn(`[EditMap] No se pudo cargar ${geojsonPath}`);
+            return;
+        }
+        const geojson = await response.json();
+
+        // Añadir source
+        editMap.addSource('official-routes', {
+            type: 'geojson',
+            data: geojson
+        });
+
+        // Añadir capa de círculos para las vías oficiales (azul)
+        editMap.addLayer({
+            id: 'official-routes-layer',
+            type: 'circle',
+            source: 'official-routes',
+            paint: {
+                'circle-radius': 6,
+                'circle-color': '#3b82f6',  // Azul para oficiales
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': 1.5,
+                'circle-opacity': 0.7
+            }
+        });
+
+        // Añadir etiquetas con nombre y grado
+        editMap.addLayer({
+            id: 'official-routes-labels',
+            type: 'symbol',
+            source: 'official-routes',
+            layout: {
+                'text-field': ['concat', ['get', 'nombre'], ' (', ['get', 'grado1'], ')'],
+                'text-font': ['Noto Sans Regular'],
+                'text-size': 10,
+                'text-offset': [0, 1.2],
+                'text-anchor': 'top',
+                'text-allow-overlap': false
+            },
+            paint: {
+                'text-color': '#93c5fd',
+                'text-halo-color': '#1e3a5f',
+                'text-halo-width': 1
+            }
+        });
+
+        // Añadir popup al hacer click en las vías oficiales
+        editMap.on('click', 'official-routes-layer', (e) => {
+            if (!e.features || e.features.length === 0) return;
+            const props = e.features[0].properties;
+
+            new maplibregl.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(`
+                    <div style="padding: 8px;">
+                        <strong>${props.nombre || 'Sin nombre'}</strong><br>
+                        <span style="color: #3b82f6; font-weight: 600;">${props.grado1 || '?'}</span><br>
+                        <small>Sector: ${props.sector || '-'}</small><br>
+                        <small style="color: #3b82f6;">Vía Oficial</small>
+                    </div>
+                `)
+                .addTo(editMap);
+        });
+
+        // Cursor pointer al hover
+        editMap.on('mouseenter', 'official-routes-layer', () => {
+            editMap.getCanvas().style.cursor = 'pointer';
+        });
+        editMap.on('mouseleave', 'official-routes-layer', () => {
+            editMap.getCanvas().style.cursor = '';
+        });
+
+        console.log(`[EditMap] Cargadas ${geojson.features?.length || 0} vías oficiales de ${schoolId}`);
+
+    } catch (error) {
+        console.error('[EditMap] Error cargando vías oficiales:', error);
+    }
+}
+
+/**
+ * Carga las otras vías de la misma escuela en el mapa de edición para contexto
+ */
+async function loadOtherRoutesOnEditMap() {
+    if (!editMap || !editingRouteData) return;
+
+    const schoolId = editingRouteData.schoolId;
+    if (!schoolId) return;
+
+    try {
+        // Obtener todas las vías de la escuela (pendientes y aprobadas)
+        const snapshot = await db.collection('pending_routes')
+            .where('schoolId', '==', schoolId)
+            .get();
+
+        const features = [];
+        snapshot.forEach(doc => {
+            // Excluir la vía que estamos editando
+            if (doc.id === editingRouteId) return;
+
+            const data = doc.data();
+
+            // Solo mostrar vías pendientes y aprobadas (no rechazadas)
+            if (data.status === 'rejected') return;
+
+            const coords = getRouteCoordinates(data);
+            if (!coords) return;
+
+            features.push({
+                type: 'Feature',
+                properties: {
+                    id: doc.id,
+                    nombre: data.nombre || 'Sin nombre',
+                    grado: data.grado1 || '?',
+                    status: data.status || 'pending',
+                    sector: data.sector || ''
+                },
+                geometry: {
+                    type: 'Point',
+                    coordinates: coords
+                }
+            });
+        });
+
+        const geojson = {
+            type: 'FeatureCollection',
+            features: features
+        };
+
+        // Remover source y layers anteriores si existen
+        if (editMap.getLayer('other-routes-labels')) editMap.removeLayer('other-routes-labels');
+        if (editMap.getLayer('other-routes-layer')) editMap.removeLayer('other-routes-layer');
+        if (editMap.getSource('other-routes')) editMap.removeSource('other-routes');
+
+        // Añadir source
+        editMap.addSource('other-routes', {
+            type: 'geojson',
+            data: geojson
+        });
+
+        // Añadir capa de círculos para las otras vías
+        editMap.addLayer({
+            id: 'other-routes-layer',
+            type: 'circle',
+            source: 'other-routes',
+            paint: {
+                'circle-radius': 8,
+                'circle-color': [
+                    'case',
+                    ['==', ['get', 'status'], 'approved'], '#10b981',  // Verde para aprobadas
+                    ['==', ['get', 'status'], 'rejected'], '#ef4444',  // Rojo para rechazadas
+                    '#f59e0b'  // Amarillo para pendientes
+                ],
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': 2,
+                'circle-opacity': 0.8
+            }
+        });
+
+        // Añadir etiquetas con nombre y grado
+        editMap.addLayer({
+            id: 'other-routes-labels',
+            type: 'symbol',
+            source: 'other-routes',
+            layout: {
+                'text-field': ['concat', ['get', 'nombre'], ' (', ['get', 'grado'], ')'],
+                'text-font': ['Noto Sans Regular'],
+                'text-size': 11,
+                'text-offset': [0, 1.5],
+                'text-anchor': 'top',
+                'text-allow-overlap': false
+            },
+            paint: {
+                'text-color': '#ffffff',
+                'text-halo-color': '#000000',
+                'text-halo-width': 1.5
+            }
+        });
+
+        // Añadir popup al hacer click en las vías
+        editMap.on('click', 'other-routes-layer', (e) => {
+            if (!e.features || e.features.length === 0) return;
+            const props = e.features[0].properties;
+            const statusText = {
+                'approved': 'Aprobada',
+                'rejected': 'Rechazada',
+                'pending': 'Pendiente'
+            }[props.status] || 'Pendiente';
+
+            new maplibregl.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(`
+                    <div style="padding: 8px;">
+                        <strong>${props.nombre}</strong><br>
+                        <span style="color: #667eea; font-weight: 600;">${props.grado}</span><br>
+                        <small>Sector: ${props.sector || '-'}</small><br>
+                        <small style="color: ${props.status === 'approved' ? '#10b981' : props.status === 'rejected' ? '#ef4444' : '#f59e0b'};">
+                            ${statusText}
+                        </small>
+                    </div>
+                `)
+                .addTo(editMap);
+        });
+
+        // Cursor pointer al hover
+        editMap.on('mouseenter', 'other-routes-layer', () => {
+            editMap.getCanvas().style.cursor = 'pointer';
+        });
+        editMap.on('mouseleave', 'other-routes-layer', () => {
+            editMap.getCanvas().style.cursor = '';
+        });
+
+        console.log(`[EditMap] Cargadas ${features.length} vías de contexto para ${schoolId}`);
+
+    } catch (error) {
+        console.error('[EditMap] Error cargando vías de contexto:', error);
+    }
+}
+
+function getRouteCoordinates(routeData) {
+    if (routeData.coordinates && Array.isArray(routeData.coordinates)) {
+        return routeData.coordinates;
+    }
+    if (routeData.geojsonFeature?.geometry) {
+        const geom = routeData.geojsonFeature.geometry;
+        if (geom.coordinates) return geom.coordinates;
+        if (geom.lng !== undefined && geom.lat !== undefined) return [geom.lng, geom.lat];
+    }
+    return null;
+}
+
+function updateEditCoordsDisplay(coords) {
+    document.getElementById('editLatInput').value = coords[1].toFixed(6);
+    document.getElementById('editLngInput').value = coords[0].toFixed(6);
+}
+
+/**
+ * Actualiza el marcador desde los inputs de coordenadas manuales
+ */
+function updateMarkerFromInputs() {
+    const lat = parseFloat(document.getElementById('editLatInput').value);
+    const lng = parseFloat(document.getElementById('editLngInput').value);
+
+    if (isNaN(lat) || isNaN(lng)) {
+        showToast('Coordenadas inválidas', 'error');
+        return;
+    }
+
+    // Validar rangos
+    if (lat < -90 || lat > 90) {
+        showToast('Latitud debe estar entre -90 y 90', 'error');
+        return;
+    }
+    if (lng < -180 || lng > 180) {
+        showToast('Longitud debe estar entre -180 y 180', 'error');
+        return;
+    }
+
+    const coords = [lng, lat];
+
+    if (editMarker) {
+        editMarker.setLngLat(coords);
+    }
+    if (editMap) {
+        editMap.flyTo({ center: coords, zoom: 17 });
+    }
+}
+
+function closeEditModal() {
+    if (editModal) editModal.classList.add('hidden');
+    editingRouteId = null;
+    editingRouteData = null;
+}
+
+async function saveRouteEdits() {
+    if (!editingRouteId) {
+        showToast('Error: No hay vía seleccionada', 'error');
+        return;
+    }
+
+    try {
+        const lngLat = editMarker.getLngLat();
+        const newCoords = [lngLat.lng, lngLat.lat];
+
+        const nombre = document.getElementById('editNombre').value.trim();
+        const grado1 = document.getElementById('editGrado').value.trim();
+        const sector = document.getElementById('editSector').value.trim();
+        const exp1 = document.getElementById('editExp').value.trim();
+        const long1 = document.getElementById('editLong').value.trim();
+        const descripcion = document.getElementById('editDescripcion').value.trim();
+        const modalidad = document.getElementById('editModalidad').value;
+
+        if (!nombre) {
+            showToast('El nombre es obligatorio', 'error');
+            return;
+        }
+
+        const updateData = {
+            nombre,
+            grado1,
+            sector,
+            exp1,
+            long1,
+            descripcion,
+            modalidad,
+            coordinates: newCoords,
+            editedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            editedBy: currentUser.email,
+            'geojsonFeature.properties.nombre': nombre,
+            'geojsonFeature.properties.grado1': grado1,
+            'geojsonFeature.properties.sector': sector,
+            'geojsonFeature.properties.exp1': exp1,
+            'geojsonFeature.properties.long1': long1,
+            'geojsonFeature.properties.descripcion': descripcion,
+            'geojsonFeature.properties.modalidad': modalidad,
+            'geojsonFeature.geometry.lng': newCoords[0],
+            'geojsonFeature.geometry.lat': newCoords[1]
+        };
+
+        await db.collection('pending_routes').doc(editingRouteId).update(updateData);
+
+        showToast('Vía actualizada correctamente', 'success');
+        closeEditModal();
+        await loadRoutes();
+
+    } catch (error) {
+        console.error('Error guardando cambios:', error);
+        showToast('Error al guardar los cambios', 'error');
+    }
+}
+
+// ============================================
+// LIMPIEZA DE DIBUJOS HUÉRFANOS
+// ============================================
+
+/**
+ * Elimina el dibujo de una vía específica de sector_route_drawings
+ */
+async function deleteRouteDrawingFromSector(schoolId, sectorName, routeName) {
+    try {
+        const normalizedSector = normalizeSectorNameForDrawing(sectorName);
+        const docId = `${schoolId}_${normalizedSector}`;
+
+        const docRef = db.collection('sector_route_drawings').doc(docId);
+        const doc = await docRef.get();
+
+        if (doc.exists) {
+            const data = doc.data();
+            const drawings = data.drawings || [];
+
+            // Filtrar para eliminar el dibujo de la vía específica
+            const updatedDrawings = drawings.filter(d => d.routeName !== routeName);
+
+            if (updatedDrawings.length !== drawings.length) {
+                // Se encontró y eliminó el dibujo
+                await docRef.update({
+                    drawings: updatedDrawings,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                console.log(`[Admin] Dibujo de "${routeName}" eliminado de sector_route_drawings`);
+            }
+        }
+    } catch (error) {
+        console.error('[Admin] Error eliminando dibujo de vía:', error);
+    }
+}
+
+/**
+ * Normaliza el nombre del sector para usarlo como ID de documento
+ */
+function normalizeSectorNameForDrawing(name) {
+    return name
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Quitar acentos
+        .replace(/[^a-z0-9]/g, '_')      // Reemplazar caracteres especiales
+        .replace(/_+/g, '_')              // Evitar guiones múltiples
+        .replace(/^_|_$/g, '');           // Quitar guiones al inicio/final
+}
+
+/**
+ * Busca y elimina dibujos de vías que ya no existen
+ */
+async function cleanOrphanedDrawings() {
+    if (!confirm('¿Buscar y eliminar dibujos de vías que ya no existen? Esto limpiará las líneas huérfanas de los sectores.')) return;
+
+    showToast('Buscando dibujos huérfanos...', 'info');
+
+    try {
+        // 1. Obtener todas las vías aprobadas de pending_routes
+        const approvedSnapshot = await db.collection('pending_routes')
+            .where('status', '==', 'approved')
+            .get();
+
+        const approvedRouteNames = new Set();
+
+        approvedSnapshot.forEach(doc => {
+            const data = doc.data();
+            const key = `${data.schoolId}_${data.sector}_${data.nombre}`;
+            approvedRouteNames.add(key);
+        });
+
+        // 2. Obtener todos los documentos de dibujos
+        const drawingsSnapshot = await db.collection('sector_route_drawings').get();
+
+        let totalCleaned = 0;
+
+        for (const drawingDoc of drawingsSnapshot.docs) {
+            const data = drawingDoc.data();
+            const drawings = data.drawings || [];
+            const schoolId = data.schoolId;
+            const sectorName = data.sectorName;
+
+            if (drawings.length === 0) continue;
+
+            // Cargar vías del GeoJSON para esta escuela/sector
+            const geojsonRoutes = await loadGeoJSONRoutesForSector(schoolId, sectorName);
+
+            // Filtrar dibujos que no tienen vía correspondiente
+            const validDrawings = [];
+            const orphanedDrawings = [];
+
+            for (const drawing of drawings) {
+                const routeName = drawing.routeName;
+                const key = `${schoolId}_${sectorName}_${routeName}`;
+
+                // Verificar si existe en pending_routes aprobadas O en GeoJSON
+                const existsInApproved = approvedRouteNames.has(key);
+                const existsInGeoJSON = geojsonRoutes.includes(routeName);
+
+                if (existsInApproved || existsInGeoJSON) {
+                    validDrawings.push(drawing);
+                } else {
+                    orphanedDrawings.push(drawing);
+                }
+            }
+
+            // Si hay dibujos huérfanos, actualizar el documento
+            if (orphanedDrawings.length > 0) {
+                console.log(`[CleanOrphaned] Sector "${sectorName}": eliminando ${orphanedDrawings.length} dibujos huérfanos:`,
+                    orphanedDrawings.map(d => d.routeName));
+
+                await db.collection('sector_route_drawings').doc(drawingDoc.id).update({
+                    drawings: validDrawings,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                totalCleaned += orphanedDrawings.length;
+            }
+        }
+
+        if (totalCleaned > 0) {
+            showToast(`Limpiados ${totalCleaned} dibujos huérfanos`, 'success');
+        } else {
+            showToast('No se encontraron dibujos huérfanos', 'info');
+        }
+
+    } catch (error) {
+        console.error('[CleanOrphaned] Error:', error);
+        showToast('Error al limpiar dibujos huérfanos', 'error');
+    }
+}
+
+/**
+ * Carga los nombres de las vías del GeoJSON para un sector específico
+ */
+async function loadGeoJSONRoutesForSector(schoolId, sectorName) {
+    try {
+        const geojsonPaths = {
+            'valeria': 'Cartografia/Valeria/Valeria_Vias.geojson',
+            'sanmartin': 'Cartografia/San Martin de ValdeIglesias/SM_Vias.geojson',
+            'mora': 'Cartografia/Mora/Mora_Vias.geojson'
+        };
+
+        const path = geojsonPaths[schoolId];
+        if (!path) return [];
+
+        const response = await fetch(path + '?v=' + Date.now());
+        if (!response.ok) return [];
+
+        const geojson = await response.json();
+        if (!geojson.features) return [];
+
+        return geojson.features
+            .filter(f => f.properties.sector === sectorName)
+            .map(f => f.properties.nombre);
+
+    } catch (error) {
+        console.warn(`[CleanOrphaned] Error cargando GeoJSON para ${schoolId}:`, error);
+        return [];
+    }
+}
+
+// ============================================
+// SPOTTER MANAGEMENT
+// ============================================
+
+let spotterRequests = [];
+let approvedSpotters = [];
+
+// Load spotter requests
+async function loadSpotterRequests() {
+    const requestsList = document.getElementById('spotterRequestsList');
+    const pendingCount = document.getElementById('pendingSpottersCount');
+    const navBadge = document.getElementById('spottersBadge');
+    const usersBadge = document.getElementById('usersBadge');
+
+    if (!requestsList) return;
+
+    requestsList.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Cargando solicitudes...</p>
+        </div>
+    `;
+
+    try {
+        // Consulta sin orderBy para evitar necesidad de índice compuesto
+        const snapshot = await db.collection('spotter_requests')
+            .where('status', '==', 'pending')
+            .get();
+
+        spotterRequests = [];
+        snapshot.forEach(doc => {
+            spotterRequests.push({ id: doc.id, ...doc.data() });
+        });
+
+        // Ordenar en el cliente por fecha de creación (más recientes primero)
+        spotterRequests.sort((a, b) => {
+            const dateA = a.createdAt?.toDate?.() || new Date(0);
+            const dateB = b.createdAt?.toDate?.() || new Date(0);
+            return dateB - dateA;
+        });
+
+        // Update pending count
+        if (pendingCount) {
+            pendingCount.textContent = `${spotterRequests.length} pendiente${spotterRequests.length !== 1 ? 's' : ''}`;
+        }
+
+        // Update nav badge for Spotters
+        if (navBadge) {
+            if (spotterRequests.length > 0) {
+                navBadge.style.display = 'inline';
+                navBadge.textContent = spotterRequests.length;
+            } else {
+                navBadge.style.display = 'none';
+            }
+        }
+
+        // Update nav badge for Users (same count)
+        if (usersBadge) {
+            if (spotterRequests.length > 0) {
+                usersBadge.style.display = 'inline';
+                usersBadge.textContent = spotterRequests.length;
+            } else {
+                usersBadge.style.display = 'none';
+            }
+        }
+
+        renderSpotterRequests();
+    } catch (error) {
+        console.error('Error loading spotter requests:', error);
+        requestsList.innerHTML = `
+            <div class="empty-spotters">
+                <p>Error al cargar las solicitudes</p>
+            </div>
+        `;
+    }
+}
+
+// Render spotter request cards
+function renderSpotterRequests() {
+    const requestsList = document.getElementById('spotterRequestsList');
+    if (!requestsList) return;
+
+    if (spotterRequests.length === 0) {
+        requestsList.innerHTML = `
+            <div class="empty-spotters">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p>No hay solicitudes pendientes</p>
+            </div>
+        `;
+        return;
+    }
+
+    requestsList.innerHTML = spotterRequests.map(request => createSpotterRequestCard(request)).join('');
+}
+
+// Create spotter request card HTML
+function createSpotterRequestCard(request) {
+    const createdAt = request.createdAt ? new Date(request.createdAt.toDate()).toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }) : 'Fecha desconocida';
+
+    const avatarUrl = request.userPhotoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(request.firstname + '+' + request.lastname)}&background=fbbf24&color=1f2937&size=56`;
+    const fullName = `${escapeHtml(request.firstname)} ${escapeHtml(request.lastname)}`;
+
+    return `
+        <div class="spotter-request-card" data-request-id="${request.id}">
+            <div class="spotter-request-header">
+                <img src="${avatarUrl}" alt="${fullName}" class="spotter-avatar" onerror="this.src='https://ui-avatars.com/api/?name=U&background=fbbf24&color=1f2937&size=56'">
+                <div class="spotter-info">
+                    <div class="spotter-name">${fullName}</div>
+                    <div class="spotter-email">${escapeHtml(request.email)}</div>
+                    <div class="spotter-date">Solicitado: ${createdAt}</div>
+                </div>
+            </div>
+            ${request.message ? `
+                <div class="spotter-message-section">
+                    <div class="spotter-message-label">Motivación</div>
+                    <div class="spotter-message-text">${escapeHtml(request.message)}</div>
+                </div>
+            ` : ''}
+            <div class="spotter-actions">
+                <button class="btn btn-danger btn-sm" onclick="rejectSpotterRequest('${request.id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Rechazar
+                </button>
+                <button class="btn btn-success btn-sm" onclick="approveSpotterRequest('${request.id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Aprobar
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+// Approve spotter request
+async function approveSpotterRequest(requestId) {
+    if (!confirm('¿Aprobar esta solicitud de Spotter?')) return;
+
+    try {
+        const requestDoc = await db.collection('spotter_requests').doc(requestId).get();
+        if (!requestDoc.exists) {
+            showToast('Solicitud no encontrada', 'error');
+            return;
+        }
+
+        const requestData = requestDoc.data();
+
+        // Add user to admins collection with spotter role
+        await db.collection('admins').doc(requestData.userId).set({
+            email: requestData.email,
+            role: 'spotter',
+            name: `${requestData.firstname} ${requestData.lastname}`,
+            addedBy: currentUser.uid,
+            addedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            approvedFromRequest: requestId
+        });
+
+        // Update request status
+        await db.collection('spotter_requests').doc(requestId).update({
+            status: 'approved',
+            approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            approvedBy: currentUser.uid
+        });
+
+        showToast('Spotter aprobado correctamente', 'success');
+        loadSpotterRequests();
+        loadApprovedSpotters();
+        loadSpotterRequestsInUsersSection();
+        loadUsers();
+        loadStats();
+
+    } catch (error) {
+        console.error('Error approving spotter:', error);
+        showToast('Error al aprobar el spotter', 'error');
+    }
+}
+
+// Reject spotter request
+async function rejectSpotterRequest(requestId) {
+    const reason = prompt('Motivo del rechazo (opcional):');
+
+    try {
+        await db.collection('spotter_requests').doc(requestId).update({
+            status: 'rejected',
+            rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            rejectedBy: currentUser.uid,
+            rejectionReason: reason || ''
+        });
+
+        showToast('Solicitud rechazada', 'info');
+        loadSpotterRequests();
+        loadSpotterRequestsInUsersSection();
+
+    } catch (error) {
+        console.error('Error rejecting spotter:', error);
+        showToast('Error al rechazar la solicitud', 'error');
+    }
+}
+
+// Load approved spotters
+async function loadApprovedSpotters() {
+    const spottersList = document.getElementById('approvedSpottersList');
+    if (!spottersList) return;
+
+    spottersList.innerHTML = '<tr><td colspan="4" class="loading">Cargando spotters...</td></tr>';
+
+    try {
+        const snapshot = await db.collection('admins')
+            .where('role', '==', 'spotter')
+            .get();
+
+        approvedSpotters = [];
+        snapshot.forEach(doc => {
+            approvedSpotters.push({ id: doc.id, ...doc.data() });
+        });
+
+        renderApprovedSpotters();
+
+    } catch (error) {
+        console.error('Error loading approved spotters:', error);
+        spottersList.innerHTML = '<tr><td colspan="4">Error al cargar los spotters</td></tr>';
+    }
+}
+
+// Render approved spotters table
+function renderApprovedSpotters() {
+    const spottersList = document.getElementById('approvedSpottersList');
+    if (!spottersList) return;
+
+    if (approvedSpotters.length === 0) {
+        spottersList.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #6b7280;">No hay spotters aprobados</td></tr>';
+        return;
+    }
+
+    spottersList.innerHTML = approvedSpotters.map(spotter => {
+        const addedAt = spotter.addedAt ? new Date(spotter.addedAt.toDate()).toLocaleDateString('es-ES', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        }) : 'Desconocido';
+
+        return `
+            <tr>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="badge badge-spotter">Spotter</span>
+                        ${escapeHtml(spotter.name || 'Sin nombre')}
+                    </div>
+                </td>
+                <td>${escapeHtml(spotter.email || '-')}</td>
+                <td>${addedAt}</td>
+                <td>
+                    <button class="btn btn-danger btn-sm" onclick="revokeSpotterRole('${spotter.id}', '${escapeHtml(spotter.email)}')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Revocar
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Revoke spotter role
+async function revokeSpotterRole(userId, email) {
+    if (!confirm(`¿Revocar el rol de Spotter a ${email}?`)) return;
+
+    try {
+        await db.collection('admins').doc(userId).delete();
+
+        // Also update the request status if exists
+        const requestDoc = await db.collection('spotter_requests').doc(userId).get();
+        if (requestDoc.exists) {
+            await db.collection('spotter_requests').doc(userId).update({
+                status: 'revoked',
+                revokedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                revokedBy: currentUser.uid
+            });
+        }
+
+        showToast('Rol de Spotter revocado', 'success');
+        loadApprovedSpotters();
+        loadUsers();
+        loadStats();
+
+    } catch (error) {
+        console.error('Error revoking spotter role:', error);
+        showToast('Error al revocar el rol', 'error');
+    }
+}
+
+/**
+ * Carga las solicitudes de spotter pendientes en la sección de Usuarios
+ */
+async function loadSpotterRequestsInUsersSection() {
+    const requestsList = document.getElementById('usersSpotterRequestsList');
+    const pendingCount = document.getElementById('usersSpotterCount');
+    const card = document.getElementById('usersSpotterRequestsCard');
+    const navBadge = document.getElementById('spottersBadge');
+    const usersBadge = document.getElementById('usersBadge');
+
+    if (!requestsList || !card) return;
+
+    requestsList.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Cargando solicitudes...</p>
+        </div>
+    `;
+
+    try {
+        // Consulta sin orderBy para evitar necesidad de índice compuesto
+        const snapshot = await db.collection('spotter_requests')
+            .where('status', '==', 'pending')
+            .get();
+
+        const requests = [];
+        snapshot.forEach(doc => {
+            requests.push({ id: doc.id, ...doc.data() });
+        });
+
+        // Ordenar en el cliente por fecha de creación (más recientes primero)
+        requests.sort((a, b) => {
+            const dateA = a.createdAt?.toDate?.() || new Date(0);
+            const dateB = b.createdAt?.toDate?.() || new Date(0);
+            return dateB - dateA;
+        });
+
+        // Update pending count badge
+        if (pendingCount) {
+            pendingCount.textContent = `${requests.length} pendiente${requests.length !== 1 ? 's' : ''}`;
+        }
+
+        // Update nav badges
+        [navBadge, usersBadge].forEach(badge => {
+            if (badge) {
+                if (requests.length > 0) {
+                    badge.style.display = 'inline';
+                    badge.textContent = requests.length;
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+        });
+
+        // Show requests or empty state
+        if (requests.length > 0) {
+            requestsList.innerHTML = requests.map(request => createSpotterRequestCard(request)).join('');
+        } else {
+            requestsList.innerHTML = `
+                <div class="empty-spotters">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>No hay solicitudes de Spotter pendientes</p>
+                </div>
+            `;
+        }
+
+    } catch (error) {
+        console.error('Error loading spotter requests in users section:', error);
+        requestsList.innerHTML = `
+            <div class="empty-spotters">
+                <p>Error al cargar las solicitudes</p>
+            </div>
+        `;
+    }
+}
+
+// Load spotters on initial load if on dashboard
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        loadSpotterRequests(); // Load to update badge count
+        loadSuggestionsBadge(); // Load suggestions badge count
+    }, 1000);
+});
+
+// ============================================
+// GESTIÓN DE SUGERENCIAS DE USUARIOS
+// ============================================
+
+let allSuggestions = [];
+
+/**
+ * Carga el contador de sugerencias pendientes para el badge
+ */
+async function loadSuggestionsBadge() {
+    try {
+        const snapshot = await db.collection('routeSuggestions')
+            .where('status', '==', 'pending')
+            .get();
+
+        const count = snapshot.size;
+        const badge = document.getElementById('suggestionsBadge');
+
+        if (count > 0) {
+            badge.textContent = count;
+            badge.style.display = 'inline';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error loading suggestions badge:', error);
+    }
+}
+
+/**
+ * Carga las sugerencias según los filtros.
+ *
+ * NOTA: Los documentos en routeSuggestions se guardan con esta estructura:
+ *   { routeName, schoolId, userId, userEmail, status, timestamp, data: { descripcion?, exp1?, long1? } }
+ * El campo de fecha es "timestamp" (no "createdAt") y los valores sugeridos están
+ * dentro del objeto "data" (no en campos "field"/"suggestedValue" a nivel raíz).
+ *
+ * Para evitar problemas de índices compuestos en Firestore, solo aplicamos
+ * el filtro de estado en la query y filtramos el campo en el cliente.
+ */
+async function loadSuggestions() {
+    const container = document.getElementById('suggestionsList');
+    container.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Cargando sugerencias...</p>
+        </div>
+    `;
+
+    try {
+        const statusFilter = document.getElementById('filterSuggestionStatus').value;
+        const fieldFilter = document.getElementById('filterSuggestionField').value;
+
+        let query = db.collection('routeSuggestions');
+
+        // Aplicar filtro de estado en Firestore
+        if (statusFilter !== 'all') {
+            query = query.where('status', '==', statusFilter);
+        }
+
+        // Ordenar por fecha — el campo real es "timestamp"
+        query = query.orderBy('timestamp', 'desc');
+
+        const snapshot = await query.get();
+        allSuggestions = [];
+
+        snapshot.forEach(doc => {
+            const raw = doc.data();
+
+            // Normalizar: expandir el objeto "data" a pares campo/valor individuales
+            // para que renderSuggestions pueda iterar sobre cada campo sugerido
+            const dataFields = raw.data || {};
+            const fieldKeys = Object.keys(dataFields);
+
+            // Si no hay campos dentro de data, incluir el doc tal cual
+            // (por si en el futuro se guardan con estructura plana)
+            if (fieldKeys.length === 0) {
+                // Formato plano (field + suggestedValue a nivel raíz) — compatibilidad
+                allSuggestions.push({ id: doc.id, ...raw });
+            } else {
+                // Formato anidado: crear una entrada por cada campo sugerido
+                fieldKeys.forEach(fieldKey => {
+                    allSuggestions.push({
+                        id: doc.id,
+                        routeName: raw.routeName,
+                        schoolId: raw.schoolId,
+                        userId: raw.userId,
+                        userEmail: raw.userEmail,
+                        status: raw.status,
+                        createdAt: raw.timestamp || raw.createdAt || null,
+                        field: fieldKey,
+                        suggestedValue: String(dataFields[fieldKey])
+                    });
+                });
+            }
+        });
+
+        // Filtrar por campo en el cliente (evita índice compuesto en Firestore)
+        if (fieldFilter !== 'all') {
+            allSuggestions = allSuggestions.filter(s => s.field === fieldFilter);
+        }
+
+        renderSuggestions(allSuggestions);
+
+        // Actualizar badge
+        loadSuggestionsBadge();
+
+    } catch (error) {
+        console.error('Error loading suggestions:', error);
+        container.innerHTML = `
+            <div class="empty-suggestions">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <p>Error al cargar las sugerencias</p>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Renderiza las tarjetas de sugerencias
+ */
+function renderSuggestions(suggestions) {
+    const container = document.getElementById('suggestionsList');
+
+    if (suggestions.length === 0) {
+        container.innerHTML = `
+            <div class="empty-suggestions">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p>No hay sugerencias que mostrar</p>
+            </div>
+        `;
+        return;
+    }
+
+    const fieldLabels = {
+        descripcion: 'Tipo de escalada',
+        exp1: 'Número de express',
+        long1: 'Metros de la vía'
+    };
+
+    const fieldUnits = {
+        descripcion: '',
+        exp1: ' express',
+        long1: ' metros'
+    };
+
+    container.innerHTML = suggestions.map((suggestion, idx) => {
+        // Usar un ID único por entrada (docId + campo) para evitar colisiones
+        const uniqueKey = suggestion.field ? `${suggestion.id}_${suggestion.field}` : `${suggestion.id}_${idx}`;
+
+        const date = suggestion.createdAt?.toDate?.() ?
+            suggestion.createdAt.toDate().toLocaleDateString('es-ES', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            }) : 'Fecha desconocida';
+
+        const userInitial = suggestion.userEmail ?
+            suggestion.userEmail.charAt(0).toUpperCase() : '?';
+
+        const fieldLabel = fieldLabels[suggestion.field] || suggestion.field || 'Desconocido';
+        const fieldUnit = fieldUnits[suggestion.field] || '';
+
+        const isPending = suggestion.status === 'pending';
+
+        return `
+            <div class="suggestion-card ${suggestion.status}" data-id="${suggestion.id}" data-field="${suggestion.field || ''}">
+                <div class="suggestion-header">
+                    <div class="suggestion-route-info">
+                        <div class="suggestion-route-name">${escapeHtml(suggestion.routeName)}</div>
+                        <div class="suggestion-school">${escapeHtml(suggestion.schoolId || 'Escuela desconocida')}</div>
+                    </div>
+                    <span class="suggestion-field-badge ${suggestion.field || ''}">${fieldLabel}</span>
+                </div>
+
+                <div class="suggestion-content">
+                    <div class="suggestion-value-label">Valor sugerido</div>
+                    <div class="suggestion-value" id="value-${uniqueKey}">
+                        ${escapeHtml(suggestion.suggestedValue || '')}${fieldUnit}
+                    </div>
+                    ${isPending ? `
+                        <input type="${suggestion.field === 'descripcion' ? 'text' : 'number'}"
+                               class="suggestion-edit-input"
+                               id="input-${uniqueKey}"
+                               value="${escapeHtml(suggestion.suggestedValue || '')}"
+                               placeholder="Editar valor antes de aprobar...">
+                    ` : ''}
+                </div>
+
+                <div class="suggestion-meta">
+                    <div class="suggestion-user">
+                        <div class="suggestion-user-avatar">${userInitial}</div>
+                        <span>${escapeHtml(suggestion.userEmail || 'Usuario anónimo')}</span>
+                    </div>
+                    <span>${date}</span>
+                </div>
+
+                ${isPending ? `
+                    <div class="suggestion-actions">
+                        <button class="btn btn-success btn-sm" onclick="approveSuggestion('${suggestion.id}', '${suggestion.field || ''}')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Aprobar
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="rejectSuggestion('${suggestion.id}')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Rechazar
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="deleteSuggestion('${suggestion.id}')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Eliminar
+                        </button>
+                    </div>
+                ` : `
+                    <div class="suggestion-actions">
+                        <span class="badge badge-${suggestion.status}">
+                            ${suggestion.status === 'approved' ? 'Aprobada' : 'Rechazada'}
+                        </span>
+                    </div>
+                `}
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Aprueba una sugerencia y actualiza la vía en los datos
+ */
+async function approveSuggestion(suggestionId, fieldName) {
+    // Buscar la sugerencia por docId + campo (para docs con múltiples campos)
+    const suggestion = allSuggestions.find(s => s.id === suggestionId && (!fieldName || s.field === fieldName));
+    if (!suggestion) return;
+
+    // Obtener el valor editado — el input usa el uniqueKey (docId_field)
+    const uniqueKey = fieldName ? `${suggestionId}_${fieldName}` : suggestionId;
+    const inputEl = document.getElementById(`input-${uniqueKey}`);
+    const finalValue = inputEl ? inputEl.value.trim() : suggestion.suggestedValue;
+
+    if (!finalValue) {
+        showToast('El valor no puede estar vacío', 'error');
+        return;
+    }
+
+    if (!confirm(`¿Aprobar esta sugerencia?\n\nVía: ${suggestion.routeName}\nCampo: ${suggestion.field}\nValor: ${finalValue}`)) {
+        return;
+    }
+
+    try {
+        // 1. Actualizar el estado de la sugerencia
+        await db.collection('routeSuggestions').doc(suggestionId).update({
+            status: 'approved',
+            approvedValue: finalValue,
+            approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            approvedBy: currentUser.email
+        });
+
+        // 2. Buscar la vía en pending_routes y actualizarla
+        const routeQuery = await db.collection('pending_routes')
+            .where('nombre', '==', suggestion.routeName)
+            .where('schoolId', '==', suggestion.schoolId)
+            .get();
+
+        if (!routeQuery.empty) {
+            const routeDoc = routeQuery.docs[0];
+            const updateData = {};
+            updateData[suggestion.field] = finalValue;
+
+            await db.collection('pending_routes').doc(routeDoc.id).update(updateData);
+            console.log(`Vía "${suggestion.routeName}" actualizada con ${suggestion.field}=${finalValue}`);
+        } else {
+            console.warn(`No se encontró la vía "${suggestion.routeName}" en pending_routes`);
+        }
+
+        showToast('Sugerencia aprobada y vía actualizada', 'success');
+        loadSuggestions();
+
+    } catch (error) {
+        console.error('Error approving suggestion:', error);
+        showToast('Error al aprobar la sugerencia', 'error');
+    }
+}
+
+/**
+ * Rechaza una sugerencia
+ */
+async function rejectSuggestion(suggestionId) {
+    const suggestion = allSuggestions.find(s => s.id === suggestionId);
+    if (!suggestion) return;
+
+    if (!confirm(`¿Rechazar esta sugerencia?\n\nVía: ${suggestion.routeName}\nValor: ${suggestion.suggestedValue}`)) {
+        return;
+    }
+
+    try {
+        await db.collection('routeSuggestions').doc(suggestionId).update({
+            status: 'rejected',
+            rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            rejectedBy: currentUser.email
+        });
+
+        showToast('Sugerencia rechazada', 'info');
+        loadSuggestions();
+
+    } catch (error) {
+        console.error('Error rejecting suggestion:', error);
+        showToast('Error al rechazar la sugerencia', 'error');
+    }
+}
+
+/**
+ * Elimina una sugerencia
+ */
+async function deleteSuggestion(suggestionId) {
+    if (!confirm('¿Eliminar esta sugerencia permanentemente?')) {
+        return;
+    }
+
+    try {
+        await db.collection('routeSuggestions').doc(suggestionId).delete();
+        showToast('Sugerencia eliminada', 'info');
+        loadSuggestions();
+
+    } catch (error) {
+        console.error('Error deleting suggestion:', error);
+        showToast('Error al eliminar la sugerencia', 'error');
+    }
+}
+
+/**
+ * Escapa HTML para prevenir XSS
+ */
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ============================================
+// GESTIÓN DE ESCUELAS PENDIENTES
+// ============================================
+
+async function loadPendingSchools() {
+    const listEl = document.getElementById('schoolsList');
+    listEl.innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando escuelas...</p></div>';
+
+    try {
+        const filterStatus = document.getElementById('filterSchoolStatus').value;
+        let query = db.collection('pending_schools');
+        if (filterStatus !== 'all') query = query.where('status', '==', filterStatus);
+
+        const snapshot = await query.get();
+        let items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+        if (items.length === 0) {
+            listEl.innerHTML = `
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>No hay escuelas que mostrar</p>
+                </div>`;
+            return;
+        }
+
+        listEl.innerHTML = items.map(item => {
+            const createdAt = item.createdAt ? new Date(item.createdAt.toDate()).toLocaleDateString('es-ES', {
+                year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            }) : 'Fecha desconocida';
+            const statusClass = item.status || 'pending';
+            const statusText = { 'pending': 'Pendiente', 'approved': 'Aprobada', 'rejected': 'Rechazada' }[statusClass] || 'Pendiente';
+            const badgeClass = { 'pending': 'badge-pending', 'approved': 'badge-approved', 'rejected': 'badge-rejected' }[statusClass];
+            const showActions = item.status === 'pending';
+            const coords = item.coordinates ? `[${item.coordinates[1]?.toFixed(5)}, ${item.coordinates[0]?.toFixed(5)}]` : 'Sin coordenadas';
+
+            return `
+                <div class="route-card ${statusClass}">
+                    <div class="route-header">
+                        <div>
+                            <div class="route-name">${escapeHtml(item.nombre || 'Sin nombre')}</div>
+                            <span class="badge ${badgeClass}">${statusText}</span>
+                        </div>
+                    </div>
+                    <div class="route-details">
+                        <div>
+                            <div class="route-detail-label">Descripcion</div>
+                            <div class="route-detail-value">${escapeHtml(item.descripcion || '-')}</div>
+                        </div>
+                        <div>
+                            <div class="route-detail-label">Coordenadas</div>
+                            <div class="route-detail-value">${coords}</div>
+                        </div>
+                    </div>
+                    <div class="route-meta">
+                        <span>Enviada por: ${escapeHtml(item.createdByEmail || 'Desconocido')}</span>
+                        <span>${createdAt}</span>
+                    </div>
+                    ${showActions ? `
+                    <div class="route-actions">
+                        <button class="btn btn-success btn-sm" onclick="approveItem('pending_schools', '${item.id}', loadPendingSchools)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Aprobar
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="rejectItem('pending_schools', '${item.id}', loadPendingSchools)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Rechazar
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>`;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading pending schools:', error);
+        listEl.innerHTML = '<div class="empty-state"><p>Error al cargar escuelas</p></div>';
+    }
+}
+
+// ============================================
+// GESTIÓN DE SECTORES PENDIENTES
+// ============================================
+
+async function loadPendingSectors() {
+    const listEl = document.getElementById('sectorsList');
+    listEl.innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando sectores...</p></div>';
+
+    try {
+        const filterStatus = document.getElementById('filterSectorStatus').value;
+        let query = db.collection('pending_sectors');
+        if (filterStatus !== 'all') query = query.where('status', '==', filterStatus);
+
+        const snapshot = await query.get();
+        let items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+        if (items.length === 0) {
+            listEl.innerHTML = `
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>No hay sectores que mostrar</p>
+                </div>`;
+            return;
+        }
+
+        listEl.innerHTML = items.map(item => {
+            const createdAt = item.createdAt ? new Date(item.createdAt.toDate()).toLocaleDateString('es-ES', {
+                year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            }) : 'Fecha desconocida';
+            const statusClass = item.status || 'pending';
+            const statusText = { 'pending': 'Pendiente', 'approved': 'Aprobado', 'rejected': 'Rechazado' }[statusClass] || 'Pendiente';
+            const badgeClass = { 'pending': 'badge-pending', 'approved': 'badge-approved', 'rejected': 'badge-rejected' }[statusClass];
+            const showActions = item.status === 'pending';
+            const vertexCount = item.vertices?.length || 0;
+
+            return `
+                <div class="route-card ${statusClass}">
+                    <div class="route-header">
+                        <div>
+                            <div class="route-name">${escapeHtml(item.nombre || 'Sin nombre')}</div>
+                            <span class="badge ${badgeClass}">${statusText}</span>
+                        </div>
+                    </div>
+                    <div class="route-details">
+                        <div>
+                            <div class="route-detail-label">Escuela</div>
+                            <div class="route-detail-value">${escapeHtml(item.schoolId || 'No asignada')}</div>
+                        </div>
+                        <div>
+                            <div class="route-detail-label">Restriccion</div>
+                            <div class="route-detail-value">${item.restr || 'NO'}${item.restr === 'SI' ? ` (${item.Fecha_inicio || '?'} - ${item.Fecha_fin || '?'})` : ''}</div>
+                        </div>
+                        <div>
+                            <div class="route-detail-label">Exposicion</div>
+                            <div class="route-detail-value">${escapeHtml(item.exposicion || '-')}</div>
+                        </div>
+                        <div>
+                            <div class="route-detail-label">Vertices</div>
+                            <div class="route-detail-value">${vertexCount} puntos</div>
+                        </div>
+                    </div>
+                    <div class="route-meta">
+                        <span>Enviado por: ${escapeHtml(item.createdByEmail || 'Desconocido')}</span>
+                        <span>${createdAt}</span>
+                    </div>
+                    ${showActions ? `
+                    <div class="route-actions">
+                        <button class="btn btn-success btn-sm" onclick="approveItem('pending_sectors', '${item.id}', loadPendingSectors)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Aprobar
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="rejectItem('pending_sectors', '${item.id}', loadPendingSectors)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Rechazar
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>`;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading pending sectors:', error);
+        listEl.innerHTML = '<div class="empty-state"><p>Error al cargar sectores</p></div>';
+    }
+}
+
+// ============================================
+// GESTIÓN DE POI PENDIENTES
+// ============================================
+
+const POI_EMOJIS = {
+    'fuente': '🚰', 'ducha': '🚿', 'hospital': '🏥', 'parking': '🅿️',
+    'refugio': '🏠', 'mirador': '👁️', 'cueva': '🕳️', 'bar': '🍺',
+    'restaurante': '🍽️', 'tienda': '🛒', 'farmacia': '💊', 'gasolinera': '⛽',
+    'camping': '⛺', 'wc': '🚻', 'escalera': '🪜', 'puente': '🌉',
+    'peligro': '⚠️', 'informacion': 'ℹ️', 'iglesia': '⛪', 'hotel': '🏨',
+    'supermercado': '🛒', 'albergue': '🛏️', 'merendero': '🧺'
+};
+
+function getAdminPOIEmoji(desc) {
+    if (!desc) return '📍';
+    return POI_EMOJIS[desc.toLowerCase().trim()] || '📍';
+}
+
+async function loadPendingPOI() {
+    const listEl = document.getElementById('poiList');
+    listEl.innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando puntos de interes...</p></div>';
+
+    try {
+        const filterStatus = document.getElementById('filterPOIStatus').value;
+        let query = db.collection('pending_poi');
+        if (filterStatus !== 'all') query = query.where('status', '==', filterStatus);
+
+        const snapshot = await query.get();
+        let items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+        if (items.length === 0) {
+            listEl.innerHTML = `
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>No hay puntos de interes que mostrar</p>
+                </div>`;
+            return;
+        }
+
+        listEl.innerHTML = items.map(item => {
+            const createdAt = item.createdAt ? new Date(item.createdAt.toDate()).toLocaleDateString('es-ES', {
+                year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            }) : 'Fecha desconocida';
+            const statusClass = item.status || 'pending';
+            const statusText = { 'pending': 'Pendiente', 'approved': 'Aprobado', 'rejected': 'Rechazado' }[statusClass] || 'Pendiente';
+            const badgeClass = { 'pending': 'badge-pending', 'approved': 'badge-approved', 'rejected': 'badge-rejected' }[statusClass];
+            const showActions = item.status === 'pending';
+            const emoji = getAdminPOIEmoji(item.descripcio);
+            const coords = item.coordinates ? `[${item.coordinates[1]?.toFixed(5)}, ${item.coordinates[0]?.toFixed(5)}]` : 'Sin coordenadas';
+
+            return `
+                <div class="route-card ${statusClass}">
+                    <div class="route-header">
+                        <div>
+                            <div class="route-name">${emoji} ${escapeHtml(item.descripcio || 'Sin tipo')} ${item.nombre ? '— ' + escapeHtml(item.nombre) : ''}</div>
+                            <span class="badge ${badgeClass}">${statusText}</span>
+                        </div>
+                    </div>
+                    <div class="route-details">
+                        <div>
+                            <div class="route-detail-label">Escuela</div>
+                            <div class="route-detail-value">${escapeHtml(item.schoolId || 'No asignada')}</div>
+                        </div>
+                        <div>
+                            <div class="route-detail-label">Coordenadas</div>
+                            <div class="route-detail-value">${coords}</div>
+                        </div>
+                        ${item.link ? `
+                        <div>
+                            <div class="route-detail-label">Enlace</div>
+                            <div class="route-detail-value"><a href="${escapeHtml(item.link)}" target="_blank" style="color:#667eea;">Ver enlace</a></div>
+                        </div>
+                        ` : ''}
+                    </div>
+                    <div class="route-meta">
+                        <span>Enviado por: ${escapeHtml(item.createdByEmail || 'Desconocido')}</span>
+                        <span>${createdAt}</span>
+                    </div>
+                    ${showActions ? `
+                    <div class="route-actions">
+                        <button class="btn btn-success btn-sm" onclick="approveItem('pending_poi', '${item.id}', loadPendingPOI)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Aprobar
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="rejectItem('pending_poi', '${item.id}', loadPendingPOI)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Rechazar
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>`;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading pending POI:', error);
+        listEl.innerHTML = '<div class="empty-state"><p>Error al cargar puntos de interes</p></div>';
+    }
+}
+
+// ============================================
+// APROBAR/RECHAZAR GENÉRICO (Escuelas, Sectores, POI)
+// ============================================
+
+async function approveItem(collection, docId, reloadFn) {
+    if (!confirm('¿Aprobar este elemento?')) return;
+    try {
+        await awardSpotterPoints(collection, docId);
+        await db.collection(collection).doc(docId).update({
+            status: 'approved',
+            approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            approvedBy: currentUser.email
+        });
+        showToast('Aprobado correctamente', 'success');
+        if (typeof reloadFn === 'function') reloadFn();
+        loadStats();
+    } catch (error) {
+        console.error('Error approving item:', error);
+        showToast('Error al aprobar', 'error');
+    }
+}
+
+async function rejectItem(collection, docId, reloadFn) {
+    const reason = prompt('Motivo del rechazo (opcional):');
+    if (reason === null) return; // Canceló el prompt
+    try {
+        await db.collection(collection).doc(docId).update({
+            status: 'rejected',
+            rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            rejectedBy: currentUser.email,
+            rejectionReason: reason || ''
+        });
+        showToast('Rechazado correctamente', 'info');
+        if (typeof reloadFn === 'function') reloadFn();
+        loadStats();
+    } catch (error) {
+        console.error('Error rejecting item:', error);
+        showToast('Error al rechazar', 'error');
+    }
+}
+
+console.log('[Admin] Panel de administración cargado');

@@ -1,0 +1,1991 @@
+/**
+ * Route Drawing Module - Estilos
+ * Editor de dibujo de vías en imágenes de sector
+ */
+
+/* ============================================
+   EDITOR OVERLAY
+   ============================================ */
+
+.rd-editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.95);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  animation: rd-fade-in 0.2s ease-out;
+  /* Safe Area para móviles con notch */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+@keyframes rd-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.rd-editor-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  max-width: 100vw;
+  overflow: hidden;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.rd-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 20px;
+  background: #1f2937;
+  border-bottom: 1px solid #374151;
+  flex-shrink: 0;
+}
+
+.rd-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rd-editor-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.rd-route-count {
+  font-size: 13px;
+  color: #9ca3af;
+  background: #374151;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.rd-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Navegación de imágenes en el header */
+.rd-image-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 10px;
+  padding: 4px 8px;
+}
+
+.rd-btn-nav-image {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.rd-btn-nav-image:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.3);
+  color: #ffffff;
+  border-color: #10b981;
+}
+
+.rd-btn-nav-image:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.rd-btn-nav-image:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.rd-image-indicator {
+  font-size: 13px;
+  font-weight: 600;
+  color: #10b981;
+  white-space: nowrap;
+  min-width: 70px;
+  text-align: center;
+}
+
+.rd-btn-icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 8px;
+  background: rgba(55, 65, 81, 0.6);
+  border: 1px solid #4b5563;
+  color: #d1d5db;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.rd-btn-icon svg {
+  flex-shrink: 0;
+}
+
+.rd-btn-icon:hover {
+  background: #4b5563;
+  color: #ffffff;
+  border-color: #6b7280;
+}
+
+.rd-btn-icon:active {
+  transform: scale(0.95);
+}
+
+/* Botón de lista de vías - azul */
+.rd-btn-routes-toggle {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #3b82f6;
+  color: #93c5fd;
+}
+
+.rd-btn-routes-toggle:hover {
+  background: rgba(59, 130, 246, 0.4);
+  color: #ffffff;
+  border-color: #60a5fa;
+}
+
+/* Botón de reset - amarillo */
+.rd-btn-reset {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: #f59e0b;
+  color: #fcd34d;
+}
+
+.rd-btn-reset:hover {
+  background: rgba(245, 158, 11, 0.4);
+  color: #ffffff;
+  border-color: #fbbf24;
+}
+
+/* Botón de cerrar - rojo */
+.rd-btn-close {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+.rd-btn-close:hover {
+  background: rgba(239, 68, 68, 0.4);
+  color: #ffffff;
+  border-color: #f87171;
+}
+
+/* Botón de añadir (+) - verde */
+.rd-btn-add {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10b981;
+  color: #34d399;
+}
+
+.rd-btn-add:hover {
+  background: rgba(16, 185, 129, 0.4);
+  color: #ffffff;
+  border-color: #34d399;
+}
+
+/* ============================================
+   CANVAS CONTAINER
+   ============================================ */
+
+.rd-canvas-container {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111827;
+  overflow: hidden;
+}
+
+#rd-canvas-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+  will-change: transform;
+  touch-action: none;
+}
+
+#rd-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  /* Mejorar nitidez del canvas en pantallas de alta densidad */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+/* ============================================
+   PANEL LATERAL DE VÍAS
+   ============================================ */
+
+.rd-routes-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 320px;
+  max-width: 85vw;
+  height: 100%;
+  background: #1f2937;
+  border-left: 1px solid #374151;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease;
+  z-index: 100;
+  /* Safe Area para el panel en móviles */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.rd-routes-panel.rd-panel-collapsed {
+  transform: translateX(100%);
+}
+
+.rd-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 20px;
+  border-bottom: 1px solid #374151;
+}
+
+.rd-panel-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.rd-panel-search {
+  padding: 12px 20px;
+  border-bottom: 1px solid #374151;
+}
+
+.rd-panel-search input {
+  width: 100%;
+  padding: 10px 14px;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.rd-panel-search input:focus {
+  border-color: #10b981;
+}
+
+.rd-panel-search input::placeholder {
+  color: #6b7280;
+}
+
+.rd-panel-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+/* Scrollbar styling */
+.rd-panel-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.rd-panel-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rd-panel-list::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 4px;
+}
+
+.rd-panel-list::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* ============================================
+   ITEMS DE VÍAS
+   ============================================ */
+
+.rd-route-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  gap: 10px;
+}
+
+.rd-route-item:hover {
+  background: #1f2937;
+  border-color: #10b981;
+  transform: translateX(-2px);
+}
+
+.rd-route-item.rd-has-drawing {
+  border-color: #10b981;
+  background: linear-gradient(90deg, #111827 0%, #064e3b 100%);
+}
+
+.rd-route-variant-item {
+  margin-left: 16px;
+  border-left: 3px solid #6366f1;
+  background: #0f172a;
+}
+
+.rd-route-variant-item:hover {
+  border-color: #6366f1;
+}
+
+.rd-route-variant-item.rd-has-drawing {
+  border-color: #6366f1;
+  background: linear-gradient(90deg, #0f172a 0%, #1e1b4b 100%);
+}
+
+.rd-variant-label {
+  font-style: normal;
+  font-size: 0.7em;
+  color: #818cf8;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+/* Iconos de estado de vía */
+.rd-route-status {
+  flex-shrink: 0;
+}
+
+.rd-status-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Icono de vía dibujada - verde con check */
+.rd-status-drawn {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid #10b981;
+  color: #10b981;
+}
+
+/* Icono de vía sin dibujar - gris con lápiz */
+.rd-status-pending {
+  background: rgba(107, 114, 128, 0.2);
+  border: 1px solid #6b7280;
+  color: #9ca3af;
+}
+
+.rd-route-item:hover .rd-status-pending {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #3b82f6;
+  color: #60a5fa;
+}
+
+.rd-route-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rd-route-name {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.rd-route-grade {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+/* Contenedor de acciones (editar y eliminar) */
+.rd-route-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Botón de editar - azul */
+.rd-btn-edit {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid #3b82f6;
+  color: #93c5fd;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.rd-btn-edit:hover {
+  background: #3b82f6;
+  color: #ffffff;
+  transform: scale(1.05);
+}
+
+.rd-btn-edit:active {
+  transform: scale(0.95);
+}
+
+.rd-btn-delete {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: rgba(153, 27, 27, 0.3);
+  border: 1px solid #dc2626;
+  color: #fca5a5;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.rd-btn-delete:hover {
+  background: #dc2626;
+  color: #ffffff;
+  transform: scale(1.05);
+}
+
+.rd-btn-delete:active {
+  transform: scale(0.95);
+}
+
+.rd-empty-message {
+  text-align: center;
+  color: #6b7280;
+  padding: 40px 20px;
+  font-size: 14px;
+}
+
+/* ============================================
+   CONTROLES DE DIBUJO
+   ============================================ */
+
+.rd-drawing-controls {
+  position: absolute;
+  top: 70px;
+  right: 12px;
+  right: calc(12px + env(safe-area-inset-right));
+  background: rgba(31, 41, 55, 0.9);
+  backdrop-filter: blur(8px);
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid #374151;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 250;
+  transition: right 0.3s ease, opacity 0.3s ease;
+  animation: rd-fade-in 0.2s ease-out;
+}
+
+/* Cuando el panel de vías está abierto, retraer los controles */
+.rd-routes-panel:not(.rd-panel-collapsed) ~ .rd-drawing-controls {
+  right: 332px;
+}
+
+@keyframes rd-fade-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.rd-btn-control {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #374151;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.rd-btn-control svg {
+  flex-shrink: 0;
+}
+
+.rd-btn-control:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rd-btn-control:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.rd-btn-control:not(:disabled):active {
+  transform: translateY(0);
+}
+
+.rd-btn-undo {
+  background: #374151;
+}
+
+.rd-btn-undo:not(:disabled):hover {
+  background: #4b5563;
+}
+
+.rd-btn-finish {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.rd-btn-finish:not(:disabled):hover {
+  background: #059669;
+}
+
+.rd-btn-cancel {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+
+.rd-btn-cancel:hover {
+  background: #dc2626;
+}
+
+/* ============================================
+   INSTRUCCIONES FLOTANTES
+   ============================================ */
+
+.rd-instructions {
+  position: absolute;
+  bottom: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(31, 41, 55, 0.95);
+  backdrop-filter: blur(8px);
+  padding: 12px 24px;
+  border-radius: 12px;
+  border: 1px solid #374151;
+  max-width: 90%;
+  z-index: 200;
+  animation: rd-slide-up 0.3s ease-out;
+}
+
+@keyframes rd-slide-up {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes rd-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.rd-instructions p {
+  margin: 0;
+  color: #ffffff;
+  font-size: 14px;
+  text-align: center;
+}
+
+/* ============================================
+   TOAST NOTIFICATIONS
+   ============================================ */
+
+.rd-toast {
+  position: fixed;
+  bottom: 80px;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #ffffff;
+  padding: 14px 24px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  z-index: 20000;
+  max-width: 90%;
+  text-align: center;
+  animation: rd-toast-in 0.3s ease-out;
+}
+
+@keyframes rd-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.rd-toast.rd-toast-hide {
+  animation: rd-toast-out 0.3s ease-out forwards;
+}
+
+@keyframes rd-toast-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+}
+
+.rd-toast.rd-toast-success {
+  background: #065f46;
+  border: 1px solid #10b981;
+}
+
+.rd-toast.rd-toast-error {
+  background: #991b1b;
+  border: 1px solid #ef4444;
+}
+
+.rd-toast.rd-toast-warning {
+  background: #92400e;
+  border: 1px solid #f59e0b;
+}
+
+.rd-toast.rd-toast-info {
+  background: #1e40af;
+  border: 1px solid #3b82f6;
+}
+
+/* ============================================
+   SECTOR VIEWER - BOTÓN DE DIBUJO
+   ============================================ */
+
+.sector-viewer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sector-viewer-draw {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: #10b981;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.sector-viewer-draw:hover {
+  background: #059669;
+  transform: scale(1.05);
+}
+
+.sector-viewer-draw:active {
+  transform: scale(0.95);
+}
+
+/* Actualizar sector-viewer-upload para ser consistente */
+.sector-viewer-upload {
+  width: 40px;
+  height: 40px;
+}
+
+/* ============================================
+   SECTOR VIEWER - CANVAS CON VÍAS
+   ============================================ */
+
+.sector-viewer-image-container {
+  position: relative !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sector-viewer-canvas {
+  position: absolute;
+  /* top y left se establecen dinámicamente en JS para coincidir con la imagen */
+  pointer-events: auto !important;
+  cursor: pointer;
+  z-index: 10;
+  touch-action: none; /* Permite gestos táctiles personalizados */
+  /* Mejorar nitidez del canvas en pantallas de alta densidad */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+.sector-viewer-image {
+  position: relative;
+  z-index: 1;
+}
+
+/* Info de vía tocada en el visor */
+.sv-route-info {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  animation: sv-info-in 0.3s ease-out;
+}
+
+@keyframes sv-info-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.sv-route-info.sv-route-info-hide {
+  animation: sv-info-out 0.3s ease-out forwards;
+}
+
+@keyframes sv-info-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+}
+
+.sv-route-info-content {
+  background: rgba(16, 185, 129, 0.95);
+  backdrop-filter: blur(8px);
+  padding: 12px 20px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.sv-route-number {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #10b981;
+  font-weight: bold;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sv-route-name {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.sv-route-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: #ffffff;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  margin-left: 8px;
+}
+
+.sv-route-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* ============================================
+   POPUP DE VÍA - BOTÓN DE DESARROLLADOR
+   ============================================ */
+
+.ml-route-dev-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ml-route-dev-btn {
+  width: 100%;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.ml-route-dev-btn:hover {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.ml-route-dev-btn:active {
+  transform: translateY(0);
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 768px) {
+  .rd-routes-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .rd-editor-header h2 {
+    font-size: 16px;
+  }
+
+  .rd-route-count {
+    font-size: 12px;
+    padding: 3px 8px;
+  }
+
+  .rd-instructions {
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    padding: 10px 16px;
+  }
+
+  .rd-instructions p {
+    font-size: 13px;
+  }
+
+  .rd-drawing-controls {
+    top: 60px;
+    right: 10px;
+    padding: 5px;
+    gap: 5px;
+  }
+
+  .rd-btn-control {
+    padding: 7px 10px;
+    font-size: 11px;
+    gap: 4px;
+  }
+
+  .rd-btn-control svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* En tablet, cuando panel abierto mover controles */
+  .rd-routes-panel:not(.rd-panel-collapsed) ~ .rd-drawing-controls {
+    right: calc(85vw + 10px);
+  }
+}
+
+@media (max-height: 400px) {
+  .rd-drawing-controls {
+    top: auto;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    right: 50%;
+    transform: translateX(50%);
+    flex-direction: row;
+    animation: rd-slide-up 0.3s ease-out;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Mobile: controles compactos horizontales en la parte inferior */
+  .rd-drawing-controls {
+    top: auto;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    flex-direction: row;
+    padding: 5px 6px;
+    gap: 5px;
+    border-radius: 10px;
+  }
+
+  .rd-btn-control {
+    padding: 8px 10px;
+    font-size: 11px;
+    gap: 3px;
+    border-radius: 6px;
+    min-width: auto;
+    min-height: auto;
+    justify-content: center;
+  }
+
+  .rd-btn-control svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* En mobile, cuando panel abierto ocultar controles */
+  .rd-routes-panel:not(.rd-panel-collapsed) ~ .rd-drawing-controls {
+    opacity: 0;
+    pointer-events: none;
+    left: -100%;
+    transform: none;
+  }
+  .rd-header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .rd-editor-header {
+    padding: 12px 15px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .rd-btn-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .rd-image-nav {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    padding: 6px 12px;
+  }
+
+  .rd-image-indicator {
+    font-size: 12px;
+  }
+}
+
+/* ============================================
+   HOVER POPUP - Info de vía al pasar el mouse
+   ============================================ */
+
+.sv-hover-popup {
+  pointer-events: none;
+  z-index: 999999 !important;
+  position: fixed !important;
+}
+
+@keyframes sv-hover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.sv-hover-popup-content {
+  background: rgba(31, 41, 55, 0.98);
+  backdrop-filter: blur(12px);
+  padding: 10px 14px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sv-hover-number {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sv-hover-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sv-hover-name {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 14px;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sv-hover-grade {
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+/* ============================================
+   LOCKED POPUP - Popup fijo de vía seleccionada
+   ============================================ */
+
+.sv-locked-popup {
+  pointer-events: auto;
+  z-index: 999999 !important;
+  animation: sv-locked-in 0.2s ease-out;
+}
+
+@keyframes sv-locked-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.sv-locked-popup-content {
+  background: rgba(31, 41, 55, 0.95);
+  backdrop-filter: blur(12px);
+  padding: 10px 14px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sv-locked-grade {
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.sv-locked-name {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 14px;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sv-locked-popup-navigable {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background 0.15s, transform 0.12s;
+}
+
+.sv-locked-popup-navigable:active {
+  background: rgba(51, 61, 75, 0.98);
+  transform: scale(0.96);
+}
+
+.sv-locked-nav-arrow {
+  color: #f59e0b;
+  font-size: 16px;
+  margin-left: 2px;
+  opacity: 0.85;
+  transition: transform 0.15s;
+}
+
+.sv-locked-popup-navigable:active .sv-locked-nav-arrow {
+  transform: translateX(2px);
+}
+
+/* ============================================
+   ESTILOS PARA MODO DIBUJO OBLIGATORIO
+   ============================================ */
+
+/* Contenedor simplificado sin panel lateral */
+.rd-editor-mandatory-simple {
+  display: flex;
+  flex-direction: column;
+}
+
+.rd-editor-mandatory-simple .rd-canvas-full {
+  width: 100% !important;
+  flex: 1;
+}
+
+/* Ocultar panel lateral en modo simplificado */
+.rd-editor-mandatory-simple .rd-routes-panel {
+  display: none !important;
+}
+
+/* Header en modo obligatorio */
+.rd-mandatory-header {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+}
+
+.rd-mandatory-header h2 {
+  max-width: none;
+  font-size: 16px;
+}
+
+/* Grado en el header */
+.rd-route-grade-header {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: white;
+  margin-left: 10px;
+}
+
+/* Badge de dibujo obligatorio */
+.rd-mandatory-badge {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  margin-left: 10px;
+}
+
+/* Botón de cancelar en modo obligatorio (rojo) */
+.rd-btn-cancel-mandatory {
+  background: rgba(255, 255, 255, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+}
+
+.rd-btn-cancel-mandatory:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Instrucciones en modo obligatorio */
+.rd-instructions-mandatory {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
+  border: 2px solid #f59e0b !important;
+}
+
+.rd-instructions-mandatory p {
+  color: #92400e !important;
+}
+
+/* ============================================
+   MODALES DE CONFIRMACIÓN
+   ============================================ */
+
+.rd-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  z-index: 20001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: rd-modal-fade-in 0.2s ease-out;
+}
+
+@keyframes rd-modal-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.rd-modal-container {
+  background: #1f2937;
+  border-radius: 16px;
+  border: 1px solid #374151;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  animation: rd-modal-slide-up 0.3s ease-out;
+  overflow: hidden;
+}
+
+@keyframes rd-modal-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.rd-modal-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #374151;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rd-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.rd-modal-header-warning {
+  background: linear-gradient(135deg, #92400e 0%, #78350f 100%);
+}
+
+.rd-modal-header-warning svg {
+  color: #fcd34d;
+}
+
+.rd-modal-body {
+  padding: 20px 24px;
+}
+
+.rd-modal-body p {
+  margin: 0 0 16px 0;
+  color: #d1d5db;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.rd-modal-body p:last-child {
+  margin-bottom: 0;
+}
+
+.rd-modal-body strong {
+  color: #f59e0b;
+}
+
+.rd-modal-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: #111827;
+  border: 2px solid #374151;
+  border-radius: 10px;
+  color: #ffffff;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.rd-modal-input:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+}
+
+.rd-modal-input::placeholder {
+  color: #6b7280;
+}
+
+.rd-modal-hint {
+  margin: 10px 0 0 0 !important;
+  font-size: 13px !important;
+  min-height: 20px;
+  transition: color 0.2s;
+}
+
+.rd-modal-hint-success {
+  color: #10b981 !important;
+}
+
+.rd-modal-hint-error {
+  color: #ef4444 !important;
+}
+
+.rd-modal-footer {
+  padding: 16px 24px 20px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.rd-modal-btn {
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.rd-modal-btn:active {
+  transform: scale(0.97);
+}
+
+.rd-modal-btn-cancel {
+  background: #374151;
+  color: #d1d5db;
+}
+
+.rd-modal-btn-cancel:hover {
+  background: #4b5563;
+  color: #ffffff;
+}
+
+.rd-modal-btn-confirm {
+  background: #f59e0b;
+  color: #1f2937;
+}
+
+.rd-modal-btn-confirm:hover:not(:disabled) {
+  background: #fbbf24;
+}
+
+.rd-modal-btn-confirm:disabled {
+  background: #4b5563;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   MODAL DE SELECCIÓN DE TIPO DE REUNIÓN
+   ============================================ */
+
+.rd-anchor-modal-container {
+  max-width: 420px;
+}
+
+.rd-anchor-body {
+  padding: 16px 24px 24px;
+}
+
+.rd-anchor-body > p {
+  margin-bottom: 20px;
+  color: #9ca3af;
+}
+
+.rd-anchor-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rd-anchor-option {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: #111827;
+  border: 2px solid #374151;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.rd-anchor-option:hover {
+  background: #1f2937;
+  border-color: #10b981;
+  transform: translateX(4px);
+}
+
+.rd-anchor-option:active {
+  transform: translateX(2px) scale(0.98);
+}
+
+.rd-anchor-icon {
+  width: 56px;
+  height: 56px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rd-anchor-icon svg {
+  width: 40px;
+  height: auto;
+}
+
+.rd-anchor-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rd-anchor-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.rd-anchor-desc {
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.rd-anchor-separator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+}
+
+.rd-anchor-separator::before,
+.rd-anchor-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #374151;
+}
+
+.rd-anchor-separator span {
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.rd-anchor-option-unfinished {
+  border-color: #92400e;
+  background: #1c1207;
+}
+
+.rd-anchor-option-unfinished:hover {
+  border-color: #f59e0b !important;
+  background: #27200f;
+}
+
+/* Responsive para modal de anchor */
+@media (max-width: 480px) {
+  .rd-anchor-modal-container {
+    max-width: 100%;
+    margin: 0 10px;
+  }
+
+  .rd-anchor-option {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .rd-anchor-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .rd-anchor-icon svg {
+    width: 32px;
+  }
+
+  .rd-anchor-name {
+    font-size: 15px;
+  }
+
+  .rd-anchor-desc {
+    font-size: 12px;
+  }
+}
+
+/* ============================================
+   SELECTOR DE IMAGEN (Para múltiples fotos)
+   ============================================ */
+
+.rd-image-selector-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: rd-fade-in 0.2s ease-out;
+}
+
+.rd-image-selector-container {
+  background: #1f2937;
+  border-radius: 16px;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.rd-image-selector-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.rd-image-selector-header h3 {
+  color: #fff;
+  font-size: 18px;
+  margin: 0 0 8px 0;
+  font-weight: 600;
+}
+
+.rd-image-selector-subtitle {
+  color: #10b981;
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.rd-image-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.rd-image-selector-item {
+  position: relative;
+  aspect-ratio: 4/3;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 3px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.rd-image-selector-item:hover {
+  border-color: #10b981;
+  transform: scale(1.02);
+}
+
+.rd-image-selector-item:active {
+  transform: scale(0.98);
+}
+
+.rd-image-selector-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.rd-image-selector-number {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.rd-image-selector-cancel {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  background: #374151;
+  color: #9ca3af;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.rd-image-selector-cancel:hover {
+  background: #4b5563;
+}
+
+/* Responsive para selector de imagen */
+@media (max-width: 480px) {
+  .rd-image-selector-container {
+    padding: 16px;
+    border-radius: 12px;
+  }
+
+  .rd-image-selector-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .rd-image-selector-header h3 {
+    font-size: 16px;
+  }
+
+  .rd-image-selector-subtitle {
+    font-size: 14px;
+  }
+}
+
+/* ============================================
+   MODAL DE ACCIÓN (Editar / Bifurcar)
+   ============================================ */
+
+.rd-action-modal-container {
+  max-width: 380px;
+}
+
+.rd-action-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rd-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 16px;
+  background: #111827;
+  border: 2px solid #374151;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rd-action-btn:hover {
+  transform: translateX(4px);
+}
+
+.rd-action-btn:active {
+  transform: translateX(2px) scale(0.98);
+}
+
+.rd-action-btn svg {
+  flex-shrink: 0;
+}
+
+/* Botón Editar - azul */
+.rd-action-edit {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  color: #93c5fd;
+}
+
+.rd-action-edit:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #60a5fa;
+}
+
+/* Botón Bifurcar - violeta */
+.rd-action-bifurcate {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.1);
+  color: #c4b5fd;
+}
+
+.rd-action-bifurcate:hover {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: #a78bfa;
+}
+
+/* ============================================
+   MODAL SELECTOR DE RAMAS
+   ============================================ */
+
+.rd-branch-modal-container {
+  max-width: 420px;
+}
+
+.rd-branch-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.rd-branch-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: #111827;
+  border: 2px solid #374151;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rd-branch-option:hover {
+  background: #1f2937;
+  border-color: #8b5cf6;
+  transform: translateX(4px);
+}
+
+.rd-branch-option:active {
+  transform: translateX(2px) scale(0.98);
+}
+
+.rd-branch-option svg {
+  flex-shrink: 0;
+  color: #9ca3af;
+}
+
+.rd-branch-option:hover svg {
+  color: #c4b5fd;
+}
+
+/* Tronco principal - verde */
+.rd-branch-trunk {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.rd-branch-trunk:hover {
+  border-color: #34d399;
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.rd-branch-trunk svg {
+  color: #10b981;
+}
+
+/* Badge de puntos por rama */
+.rd-branch-points {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  background: rgba(107, 114, 128, 0.15);
+  padding: 3px 8px;
+  border-radius: 8px;
+}
+
+/* Sección de eliminar ramas */
+.rd-branch-delete-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid #374151;
+}
+
+.rd-branch-delete-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(153, 27, 27, 0.15);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #fca5a5;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.rd-branch-delete-btn:hover {
+  background: rgba(220, 38, 38, 0.25);
+  border-color: #dc2626;
+  color: #fecaca;
+}
+
+.rd-branch-delete-btn:active {
+  transform: scale(0.98);
+}
+
+.rd-branch-delete-btn svg {
+  flex-shrink: 0;
+}
+
+/* ============================================
+   BADGE DE RAMALES EN LISTA DE VÍAS
+   ============================================ */
+
+.rd-branch-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  padding: 2px 7px;
+  border-radius: 8px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+/* ============================================
+   RESPONSIVE PARA BIFURCACIÓN
+   ============================================ */
+
+@media (max-width: 480px) {
+  .rd-action-modal-container {
+    max-width: 100%;
+    margin: 0 10px;
+  }
+
+  .rd-action-btn {
+    padding: 14px;
+    font-size: 14px;
+  }
+
+  .rd-branch-modal-container {
+    max-width: 100%;
+    margin: 0 10px;
+  }
+
+  .rd-branch-option {
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+}
+
+/* ============================================
+   MENÚ CONTEXTUAL DE ELEMENTOS AUXILIARES
+   ============================================ */
+
+.rd-aux-context-menu {
+  position: absolute;
+  z-index: 1100;
+  background: rgba(17, 24, 39, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 6px;
+  min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  animation: rd-aux-menu-in 0.15s ease-out;
+}
+
+@keyframes rd-aux-menu-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.rd-aux-menu-title {
+  padding: 8px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.rd-aux-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #e5e7eb;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: left;
+  min-height: 44px;
+}
+
+.rd-aux-menu-item:hover,
+.rd-aux-menu-item:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.rd-aux-menu-item svg {
+  flex-shrink: 0;
+}
+
+.rd-aux-menu-item span {
+  flex: 1;
+}
