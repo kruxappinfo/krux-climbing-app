@@ -11065,13 +11065,11 @@ function buildActivityHeroMilestone(allAscents) {
   const next = HERO_MILESTONES[currentIdx + 1] || null;
 
   const nameEl = document.getElementById('hero-milestone-name');
-  const infoEl = document.getElementById('hero-milestone-info');
   const fillEl = document.getElementById('hero-progress-fill');
   const nextEl = document.getElementById('hero-milestone-next');
 
   if (totalMeters === 0) {
-    if (nameEl) nameEl.textContent = 'Sin ascensiones registradas';
-    if (infoEl) infoEl.textContent = 'Registra vías para ver tu progreso';
+    if (nameEl) nameEl.textContent = '· registra vías para ver hitos';
     if (fillEl) fillEl.style.width = '0%';
     if (nextEl) nextEl.textContent = '';
     return;
@@ -11079,13 +11077,8 @@ function buildActivityHeroMilestone(allAscents) {
 
   if (nameEl) {
     nameEl.innerHTML = current
-      ? `Equivalente a ${current.emoji} <strong>${current.name}</strong>`
-      : `Camino a tu primer hito`;
-  }
-  if (infoEl) {
-    infoEl.innerHTML = current
-      ? `Has subido <strong>${current.m.toLocaleString('es-ES')} m</strong> y más.`
-      : `¡Sigue escalando para alcanzar tu primer hito!`;
+      ? `· ${current.emoji} <strong>${current.name}</strong>`
+      : `· camino al primer hito`;
   }
 
   if (next) {
@@ -11096,39 +11089,12 @@ function buildActivityHeroMilestone(allAscents) {
     if (nextEl) nextEl.innerHTML = `Próximo: ${next.emoji} <strong>${next.name}</strong> · faltan <strong>${remaining.toLocaleString('es-ES')} m</strong>`;
   } else {
     if (fillEl) fillEl.style.width = '100%';
-    if (nextEl) nextEl.innerHTML = '🎉 Has alcanzado todos los hitos. ¡Increíble!';
+    if (nextEl) nextEl.innerHTML = '🎉 Todos los hitos alcanzados';
   }
-}
-
-let _heroSlidesInit = false;
-function initHeroSlides() {
-  if (_heroSlidesInit) return;
-  const slides = document.getElementById('hero-slides');
-  if (!slides) return;
-  _heroSlidesInit = true;
-  const dots = document.querySelectorAll('.act-hero-dot');
-  const goTo = idx => {
-    slides.style.transform = `translateX(-${idx * 100}%)`;
-    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
-  };
-  dots.forEach(dot => dot.addEventListener('click', () => goTo(parseInt(dot.dataset.heroSlide))));
-
-  // Swipe
-  let startX = 0, currentIdx = 0;
-  slides.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
-  slides.addEventListener('touchend', e => {
-    const dx = e.changedTouches[0].clientX - startX;
-    if (Math.abs(dx) > 40) {
-      currentIdx = Math.max(0, Math.min(dots.length - 1, currentIdx + (dx < 0 ? 1 : -1)));
-      goTo(currentIdx);
-    }
-  }, { passive: true });
-  dots.forEach((dot, i) => dot.addEventListener('click', () => { currentIdx = i; }));
 }
 
 function buildActivityHeroCard(allAscents, yearAscents) {
   buildActivityHeroMilestone(allAscents);
-  initHeroSlides();
   const rockAscents = allAscents.filter(a => !isGymAscent(a));
   const rockYear = yearAscents.filter(a => !isGymAscent(a));
 

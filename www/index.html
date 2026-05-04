@@ -430,40 +430,28 @@
           <div id="content-roca">
 
             <!-- Hero Card -->
-            <div class="act-hero act-hero-slider">
-              <div class="act-hero-slides-wrap">
-                <div class="act-hero-slides" id="hero-slides">
-                  <div class="act-hero-slide">
-                    <div class="act-hero-left">
-                      <div class="act-hero-label">Proyecto activo</div>
-                      <div class="act-hero-grade" id="hero-project-grade">-</div>
-                      <div class="act-hero-sub" id="hero-project-name">Sin proyecto activo</div>
-                      <div class="act-hero-badges" id="hero-badges-roca"></div>
-                    </div>
-                    <div class="act-hero-right">
-                      <div class="act-hero-compare" id="hero-compare-roca">Cargando datos...</div>
-                      <svg class="act-sparkline" id="hero-sparkline-roca" viewBox="0 0 200 48" preserveAspectRatio="none"></svg>
-                    </div>
-                  </div>
-                  <div class="act-hero-slide">
-                    <div class="act-hero-left">
-                      <div class="act-hero-label">Distancia escalada</div>
-                      <div class="act-hero-grade" id="hero-meters">0 m</div>
-                      <div class="act-hero-sub" id="hero-milestone-name">Sin ascensiones registradas</div>
-                    </div>
-                    <div class="act-hero-right">
-                      <div class="act-hero-milestone-info" id="hero-milestone-info">Cada vía suma. ¡Sigue escalando!</div>
-                      <div class="act-hero-progress-track">
-                        <div class="act-hero-progress-fill" id="hero-progress-fill"></div>
-                      </div>
-                      <div class="act-hero-milestone-next" id="hero-milestone-next"></div>
-                    </div>
-                  </div>
-                </div>
+            <div class="act-hero">
+              <div class="act-hero-left">
+                <div class="act-hero-label">Proyecto activo</div>
+                <div class="act-hero-grade" id="hero-project-grade">-</div>
+                <div class="act-hero-sub" id="hero-project-name">Sin proyecto activo</div>
+                <div class="act-hero-badges" id="hero-badges-roca"></div>
               </div>
-              <div class="act-hero-dots">
-                <button class="act-hero-dot active" data-hero-slide="0" aria-label="Proyecto activo"></button>
-                <button class="act-hero-dot" data-hero-slide="1" aria-label="Distancia escalada"></button>
+              <div class="act-hero-right">
+                <div class="act-hero-compare" id="hero-compare-roca">Cargando datos...</div>
+                <svg class="act-sparkline" id="hero-sparkline-roca" viewBox="0 0 200 48" preserveAspectRatio="none"></svg>
+              </div>
+              <div class="act-hero-milestone" id="hero-milestone">
+                <div class="act-hero-milestone-row">
+                  <span class="act-hero-milestone-current">
+                    <strong id="hero-meters">0 m</strong>
+                    <span id="hero-milestone-name"></span>
+                  </span>
+                  <span class="act-hero-milestone-next" id="hero-milestone-next"></span>
+                </div>
+                <div class="act-hero-progress-track">
+                  <div class="act-hero-progress-fill" id="hero-progress-fill"></div>
+                </div>
               </div>
             </div>
 
