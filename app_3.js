@@ -11212,6 +11212,7 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
       if (d === 0 && !beforeYear && !afterToday && date.getMonth() !== lastMonth) {
         lastMonth = date.getMonth();
         monthLabels[w] = months[lastMonth];
+        if (w > 0) weekDiv.classList.add('hm-month-start');
       }
     }
     weeksEl.appendChild(weekDiv);
