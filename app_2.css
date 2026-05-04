@@ -5188,18 +5188,32 @@ button.secondary:hover {
   flex: 1;
   max-width: 38px;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
+  align-items: flex-end;
   height: 100%;
 }
 
+.histogram-bar-labels-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.histogram-bar-labels {
+  flex: 1;
+  display: flex;
+  justify-content: space-around;
+  padding: 0 6px;
+  gap: 3px;
+}
+
 .histogram-bar-count {
+  flex: 1;
+  max-width: 38px;
+  text-align: center;
   font-size: 10px;
   font-weight: 600;
   color: rgba(99, 102, 241, 0.85);
   line-height: 1;
-  margin-bottom: 3px;
   pointer-events: none;
   user-select: none;
 }

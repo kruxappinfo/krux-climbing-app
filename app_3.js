@@ -10346,6 +10346,7 @@ function updateCombinedHistogram(ascents) {
 
   const barsContainer = document.getElementById('histogram-bars');
   const xAxisContainer = document.getElementById('histogram-x-axis');
+  const barLabelsContainer = document.getElementById('histogram-bar-labels');
   const svgLines = document.getElementById('histogram-lines');
   const gradeAxis = document.getElementById('histogram-grade-axis');
   const ascentAxis = document.getElementById('histogram-ascent-axis');
@@ -10381,14 +10382,16 @@ function updateCombinedHistogram(ascents) {
 
   barsContainer.innerHTML = histogramData.map(item => {
     const height = ascentAxisMax > 0 ? (item.ascents / ascentAxisMax) * 100 : 0;
-    const countLabel = item.ascents > 0
-      ? `<span class="histogram-bar-count">${item.ascents}</span>`
-      : '';
     return `<div class="histogram-bar-wrapper">
-      ${countLabel}
       <div class="histogram-bar" style="height: ${height}%;"></div>
     </div>`;
   }).join('');
+
+  if (barLabelsContainer) {
+    barLabelsContainer.innerHTML = histogramData.map(item =>
+      `<span class="histogram-bar-count">${item.ascents > 0 ? item.ascents : ''}</span>`
+    ).join('');
+  }
 
   xAxisContainer.innerHTML = histogramData.map(item =>
     `<span class="histogram-x-label">${item.label}</span>`
