@@ -12106,6 +12106,13 @@ function initProgressCards() {
       }
     }, { passive: true });
   }
+
+  document.getElementById('pc-arrow-prev')?.addEventListener('click', () => {
+    if (_pcCurrentSlide > 0) goPcSlide(_pcCurrentSlide - 1);
+  });
+  document.getElementById('pc-arrow-next')?.addEventListener('click', () => {
+    if (_pcCurrentSlide < _pcPageCount - 1) goPcSlide(_pcCurrentSlide + 1);
+  });
 }
 
 function openProgressCardCustom() {
@@ -12226,6 +12233,9 @@ function goPcSlide(index, animate = true) {
   document.querySelectorAll('.pc-carousel-dot').forEach((d, i) =>
     d.classList.toggle('active', i === index)
   );
+  const onlyOne = _pcPageCount <= 1;
+  document.getElementById('pc-arrow-prev')?.classList.toggle('pc-arrow-hidden', onlyOne || index === 0);
+  document.getElementById('pc-arrow-next')?.classList.toggle('pc-arrow-hidden', onlyOne || index >= _pcPageCount - 1);
 }
 
 

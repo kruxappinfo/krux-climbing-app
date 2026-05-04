@@ -19497,28 +19497,64 @@ body.map-active #btn-dev-editor {
   flex: 0 0 100%;
   min-width: 0;
 }
+.pc-nav {
+  position: relative;
+}
+.pc-nav-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 0.5px solid var(--border-color);
+  background: var(--bg-primary);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 3;
+  color: var(--text-secondary);
+  padding: 0;
+  transition: opacity 0.2s, box-shadow 0.2s;
+}
+.pc-nav-arrow:hover {
+  box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+}
+.pc-nav-arrow-prev { left: -14px; }
+.pc-nav-arrow-next { right: -14px; }
+.pc-nav-arrow.pc-arrow-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+@media (max-width: 640px) {
+  .pc-nav-arrow { display: none; }
+}
 .pc-carousel-dots {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
   margin-top: 12px;
-  height: 10px;
+  height: 14px;
 }
 .pc-carousel-dot {
   display: block;
-  height: 3px;
-  width: 18px;
-  border-radius: 2px;
-  background: rgba(0,0,0,0.1);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.12);
   border: none;
   padding: 0;
   cursor: pointer;
   flex-shrink: 0;
-  transition: width 0.25s ease, background 0.25s ease;
+  box-sizing: border-box;
+  transition: width 0.2s ease, height 0.2s ease, background 0.2s ease;
 }
 .pc-carousel-dot.active {
-  width: 28px;
+  width: 9px;
+  height: 9px;
   background: #1D9E75;
 }
 
