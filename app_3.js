@@ -10378,7 +10378,13 @@ function updateCombinedHistogram(ascents) {
 
   barsContainer.innerHTML = histogramData.map(item => {
     const height = (item.ascents / maxAscents) * 100;
-    return `<div class="histogram-bar" style="height: ${height}%;" data-value="${item.ascents}"></div>`;
+    const countLabel = item.ascents > 0
+      ? `<span class="histogram-bar-count">${item.ascents}</span>`
+      : '';
+    return `<div class="histogram-bar-wrapper">
+      ${countLabel}
+      <div class="histogram-bar" style="height: ${height}%;"></div>
+    </div>`;
   }).join('');
 
   xAxisContainer.innerHTML = histogramData.map(item =>
@@ -10386,7 +10392,17 @@ function updateCombinedHistogram(ascents) {
   ).join('');
 
   renderHistogramGrid(document.getElementById('histogram-grid'), minGradeIdx, maxGradeIdx);
-  renderHistogramLines(svgLines, histogramData, minGradeIdx, gradeRange);
+
+  // Medir posiciones reales de barras tras el render para alinear las líneas
+  requestAnimationFrame(() => {
+    const barEls = barsContainer.querySelectorAll('.histogram-bar');
+    const svgRect = svgLines.getBoundingClientRect();
+    const xPositions = Array.from(barEls).map(el => {
+      const r = el.getBoundingClientRect();
+      return r.left + r.width / 2 - svgRect.left;
+    });
+    renderHistogramLines(svgLines, histogramData, minGradeIdx, gradeRange, xPositions);
+  });
 }
 
 function renderHistogramGrid(svg, minGradeIdx, maxGradeIdx) {
@@ -10509,39 +10525,22 @@ function updateAscentAxis(container, maxValue) {
   container.innerHTML = labels.map(l => `<span class="y-label">${l}</span>`).join('');
 }
 
-function renderHistogramLines(svg, data, minGradeIdx, gradeRange) {
+function renderHistogramLines(svg, data, minGradeIdx, gradeRange, xPositions) {
   if (!svg || !data || data.length === 0) return;
 
-  // Get dimensions from parent container
   const parent = svg.parentElement;
-  let width = parent?.clientWidth || svg.clientWidth;
   let height = parent?.clientHeight || svg.clientHeight;
-
-  // If dimensions are still 0, defer rendering to next frame
-  if (!width || !height) {
-    requestAnimationFrame(() => renderHistogramLines(svg, data, minGradeIdx, gradeRange));
+  if (!height) {
+    requestAnimationFrame(() => renderHistogramLines(svg, data, minGradeIdx, gradeRange, xPositions));
     return;
   }
   const effectiveHeight = height - 20;
+  const topPadding = 10;
 
-  // Match CSS: padding 8px, gap 4px, space-around distribution
-  const cssPadding = 8;
-  const cssGap = 4;
-  const n = data.length;
-  // With space-around: each bar gets equal space, with half-space at edges
-  // Total available width for bars = width - 2*cssPadding - (n-1)*gap
-  // Each bar occupies: (availableWidth) / n, centered in its slot
-  const availableWidth = width - 2 * cssPadding;
-  // space-around: space = availableWidth / n, first bar center at cssPadding + space/2
-  const slotWidth = availableWidth / n;
-
-  const topPadding = 10; // Padding for Y axis at top
-
-  // Collect points for each line
   const maxPts = [], avgPts = [], minPts = [];
 
   data.forEach((item, index) => {
-    const x = cssPadding + slotWidth * index + slotWidth / 2;
+    const x = xPositions ? xPositions[index] : 0;
     if (item.maxGrade) {
       const y = effectiveHeight - ((getGradeIndex(item.maxGrade) - minGradeIdx) / gradeRange) * effectiveHeight + topPadding;
       maxPts.push({ x, y });
@@ -10626,7 +10625,7 @@ function renderEmptyHistogram() {
   updateAscentAxis(ascentAxis, 10);
 
   barsContainer.innerHTML = slots.map(() =>
-    `<div class="histogram-bar" style="height: 0%;"></div>`
+    `<div class="histogram-bar-wrapper"><div class="histogram-bar" style="height: 0%;"></div></div>`
   ).join('');
 
   if (xAxisContainer) {
@@ -10669,19 +10668,7 @@ function initHistogramTooltips() {
     tooltip.classList.add('hidden');
   }
 
-  // Bars — delegated on the chart area
-  const barsContainer = document.getElementById('histogram-bars');
-  if (barsContainer) {
-    container.addEventListener('mousemove', e => {
-      if (e.target.closest('.histogram-point')) return; // los puntos tienen su propio listener
-      const bar = e.target.closest('.histogram-bar');
-      if (!bar) { hideTooltip(); return; }
-      const val = bar.dataset.value;
-      if (val === undefined || val === '0') { hideTooltip(); return; }
-      showTooltip(val + (val === '1' ? ' vía' : ' vías'), e);
-    });
-    container.addEventListener('mouseleave', hideTooltip);
-  }
+  container.addEventListener('mouseleave', hideTooltip);
 
   // SVG points — delegated on the SVG
   const svgLines = document.getElementById('histogram-lines');
