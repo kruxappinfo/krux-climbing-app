@@ -10673,6 +10673,7 @@ function initHistogramTooltips() {
   const barsContainer = document.getElementById('histogram-bars');
   if (barsContainer) {
     container.addEventListener('mousemove', e => {
+      if (e.target.closest('.histogram-point')) return; // los puntos tienen su propio listener
       const bar = e.target.closest('.histogram-bar');
       if (!bar) { hideTooltip(); return; }
       const val = bar.dataset.value;
