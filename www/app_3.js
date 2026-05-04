@@ -11114,10 +11114,8 @@ function buildActivityPyramid(allAscents) {
     if (GRADE_ORDER.includes(g)) gradeCounts[g] = (gradeCounts[g] || 0) + 1;
   });
 
-  // Sort by grade descending and take top 6 grades with data
   const sorted = GRADE_ORDER
     .filter(g => gradeCounts[g] > 0)
-    .slice(-6)
     .reverse();
 
   if (sorted.length === 0) {
@@ -11128,7 +11126,12 @@ function buildActivityPyramid(allAscents) {
   }
 
   const maxCount = Math.max(...sorted.map(g => gradeCounts[g]));
-  const colors = ['#3730a3', '#4f46e5', '#6366f1', '#818cf8', '#a5b4fc', '#c7d2fe'];
+  const n = sorted.length;
+  const cStart = [55, 48, 163], cEnd = [199, 210, 254];
+  const color = i => {
+    const t = n > 1 ? i / (n - 1) : 0;
+    return `rgb(${Math.round(cStart[0]+t*(cEnd[0]-cStart[0]))},${Math.round(cStart[1]+t*(cEnd[1]-cStart[1]))},${Math.round(cStart[2]+t*(cEnd[2]-cStart[2]))})`;
+  };
 
   el.innerHTML = sorted.map((grade, i) => {
     const count = gradeCounts[grade];
@@ -11136,7 +11139,7 @@ function buildActivityPyramid(allAscents) {
     return `<div class="act-pyramid-row">
       <div class="act-pyramid-label">${grade}</div>
       <div class="act-pyramid-bar-wrap">
-        <div class="act-pyramid-bar" style="width:${pct}%;background:${colors[i] || colors[colors.length-1]};"></div>
+        <div class="act-pyramid-bar" style="width:${pct}%;background:${color(i)};"></div>
         <div class="act-pyramid-count">${count}</div>
       </div>
     </div>`;
