@@ -11160,7 +11160,7 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
   weeksEl.innerHTML = '';
   monthsEl.innerHTML = '';
 
-  // Build date → count map for last 52 weeks
+  // Build date → count map
   const dayCount = {};
   ascents.forEach(a => {
     const d = parseAscentDate(a.date);
@@ -11169,35 +11169,47 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
     dayCount[key] = (dayCount[key] || 0) + 1;
   });
 
-  // Start from 52 weeks ago, aligned to Sunday
+  // Start from Jan 1 of current year, aligned to previous Monday
+  // JS getDay(): 0=Sun,1=Mon,...,6=Sat
   const today = new Date();
-  const start = new Date(today);
-  start.setDate(start.getDate() - 363); // ~52 weeks
-  // Align to previous Sunday
-  start.setDate(start.getDate() - start.getDay());
+  const year = today.getFullYear();
+  const jan1 = new Date(year, 0, 1);
+  const dow = jan1.getDay(); // day of week of Jan 1
+  const offsetToMonday = dow === 0 ? -6 : 1 - dow; // shift back to Monday
+  const start = new Date(jan1);
+  start.setDate(jan1.getDate() + offsetToMonday);
 
-  // Month labels
+  // Weeks needed to cover Jan 1 → today
+  const totalWeeks = Math.ceil(((today - start) / 86400000 + 1) / 7) + 1;
+
+  // Month labels (first letter)
   const months = ['E','F','M','A','M','J','J','A','S','O','N','D'];
   let lastMonth = -1;
   const monthLabels = [];
 
-  for (let w = 0; w < 52; w++) {
+  for (let w = 0; w < totalWeeks; w++) {
     const weekDiv = document.createElement('div');
     weekDiv.className = 'act-heatmap-week';
 
     for (let d = 0; d < 7; d++) {
       const date = new Date(start);
       date.setDate(start.getDate() + w * 7 + d);
+
+      const beforeYear = date.getFullYear() < year;
+      const afterToday = date > today;
       const key = `${date.getFullYear()}-${String(date.getMonth()).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-      const count = dayCount[key] || 0;
+      const count = (beforeYear || afterToday) ? 0 : (dayCount[key] || 0);
       const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 4 ? 2 : count <= 7 ? 3 : 4;
 
       const cell = document.createElement('div');
-      cell.className = `act-heatmap-cell ${level === 0 ? 'hm-0' : colorPrefix + level}`;
+      cell.className = beforeYear || afterToday
+        ? 'act-heatmap-cell hm-empty'
+        : `act-heatmap-cell ${level === 0 ? 'hm-0' : colorPrefix + level}`;
       if (count > 0) cell.title = `${date.toLocaleDateString('es-ES', { day:'numeric', month:'short' })}: ${count} vías`;
       weekDiv.appendChild(cell);
 
-      if (d === 0 && date.getMonth() !== lastMonth) {
+      // Mark month label on the Monday (d=0) of the first week containing a date of that month
+      if (d === 0 && !beforeYear && !afterToday && date.getMonth() !== lastMonth) {
         lastMonth = date.getMonth();
         monthLabels[w] = months[lastMonth];
       }
@@ -11206,7 +11218,7 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
   }
 
   // Render month labels
-  for (let w = 0; w < 52; w++) {
+  for (let w = 0; w < totalWeeks; w++) {
     const span = document.createElement('div');
     span.className = 'act-heatmap-month';
     span.textContent = monthLabels[w] || '';
