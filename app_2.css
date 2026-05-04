@@ -19500,22 +19500,26 @@ body.map-active #btn-dev-editor {
 .pc-carousel-dots {
   display: flex;
   justify-content: center;
-  gap: 6px;
-  margin-top: 10px;
+  align-items: center;
+  gap: 5px;
+  margin-top: 12px;
+  height: 10px;
 }
 .pc-carousel-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.13);
+  display: block;
+  height: 3px;
+  width: 18px;
+  border-radius: 2px;
+  background: rgba(0,0,0,0.1);
   border: none;
   padding: 0;
   cursor: pointer;
-  transition: background 0.2s, transform 0.2s;
+  flex-shrink: 0;
+  transition: width 0.25s ease, background 0.25s ease;
 }
 .pc-carousel-dot.active {
+  width: 28px;
   background: #1D9E75;
-  transform: scale(1.25);
 }
 
 /* Custom banner */
