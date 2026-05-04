@@ -2598,8 +2598,10 @@ async function updateSpotterUIForProfile(profileUserId, isOwnProfile) {
 
     if (!isOwnProfile) {
         // VIEWING OTHER USER'S PROFILE
-        // Hide the "Conviértete en Spotter" button - only show on own profile
+        // Hide own-profile-only elements
         if (becomeSpotterBtn) becomeSpotterBtn.classList.add('hidden');
+        const spotterPoints = document.getElementById('spotter-points');
+        if (spotterPoints) spotterPoints.classList.add('hidden');
 
         // Check if the profile owner is a verified spotter
         const profileUserSpotterStatus = await checkSpotterStatusForUser(profileUserId);
