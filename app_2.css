@@ -5269,10 +5269,21 @@ button.secondary:hover {
 .histogram-point-avg { fill: var(--hist-line-avg, #10b981); }
 .histogram-point-min { fill: var(--hist-line-min, #3b82f6); }
 
+.histogram-x-axis-row {
+  display: flex;
+  gap: 6px; /* igual que .histogram-wrapper */
+}
+
+.histogram-x-axis-spacer {
+  min-width: 28px;
+  flex-shrink: 0;
+}
+
 .histogram-x-axis {
+  flex: 1;
   display: flex;
   justify-content: space-around;
-  padding: 6px 28px 0;
+  padding: 6px 6px 0;
   gap: 3px;
 }
 

@@ -10395,11 +10395,12 @@ function updateCombinedHistogram(ascents) {
 
   // Medir posiciones reales de barras tras el render para alinear las líneas
   requestAnimationFrame(() => {
+    const chartArea = document.getElementById('histogram-chart-area');
     const barEls = barsContainer.querySelectorAll('.histogram-bar');
-    const svgRect = svgLines.getBoundingClientRect();
+    const areaRect = chartArea.getBoundingClientRect();
     const xPositions = Array.from(barEls).map(el => {
       const r = el.getBoundingClientRect();
-      return r.left + r.width / 2 - svgRect.left;
+      return r.left + r.width / 2 - areaRect.left;
     });
     renderHistogramLines(svgLines, histogramData, minGradeIdx, gradeRange, xPositions);
   });
