@@ -11186,12 +11186,16 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
   const months = ['E','F','M','A','M','J','J','A','S','O','N','D'];
   let lastMonth = -1;
   const monthLabels = [];
+  // When day 1 falls Fri–Sun (<4 days of the new month in that week), defer
+  // the label to the next week where the month is the majority.
+  let pendingLabelMonth = null;
 
   for (let w = 0; w < totalWeeks; w++) {
     const weekDiv = document.createElement('div');
     weekDiv.className = 'act-heatmap-week';
 
-    let weekLabelMonth = null;
+    let weekLabelMonth = pendingLabelMonth;
+    pendingLabelMonth = null;
 
     for (let d = 0; d < 7; d++) {
       const date = new Date(start);
@@ -11210,12 +11214,19 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
       if (count > 0) cell.title = `${date.toLocaleDateString('es-ES', { day:'numeric', month:'short' })}: ${count} vías`;
       weekDiv.appendChild(cell);
 
-      // Label the week that contains day 1 of a new month
+      // Place the label on the week where the new month is the majority (≥4 days).
+      // gridDay 0=Mon…6=Sun. Day 1 on Mon–Thu → label this week; Fri–Sun → next week.
       if (date.getDate() === 1 && date.getMonth() !== lastMonth) {
-        weekLabelMonth = date.getMonth();
+        const dow = date.getDay(); // 0=Sun…6=Sat
+        const gridDay = dow === 0 ? 6 : dow - 1;
+        if (gridDay <= 3) {
+          weekLabelMonth = date.getMonth();
+        } else {
+          pendingLabelMonth = date.getMonth();
+        }
       }
       // Bootstrap: label first column with the month of its middle day (Wed)
-      if (w === 0 && d === 3 && lastMonth === -1 && weekLabelMonth === null) {
+      if (w === 0 && d === 3 && lastMonth === -1 && weekLabelMonth === null && pendingLabelMonth === null) {
         weekLabelMonth = date.getMonth();
       }
     }
@@ -11223,6 +11234,7 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
     if (weekLabelMonth !== null) {
       lastMonth = weekLabelMonth;
       monthLabels[w] = months[weekLabelMonth];
+      if (w > 0) weekDiv.classList.add('hm-month-start');
     }
     weeksEl.appendChild(weekDiv);
   }
