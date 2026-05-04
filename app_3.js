@@ -10977,6 +10977,7 @@ async function loadActivityData() {
       buildGymStats(allAscents);
       updateActivityRecords(allAscents);
       updateCombinedHistogram(allAscents);
+      renderProgressCards('month', allAscents);
       const activeChartTab = document.querySelector('.chart-tab.active');
       updateActivityChart(activeChartTab ? activeChartTab.dataset.chart : 'week');
     });
@@ -11997,6 +11998,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initViewPostModal();
   initActivityView();
   initLogbook();
+  initProgressCards();
 });
 
 // Re-initialize activity when user logs in
@@ -12005,3 +12007,219 @@ firebase.auth().onAuthStateChanged(user => {
     setTimeout(() => loadActivityData(), 1000);
   }
 });
+
+// ========== PROGRESS CARDS ==========
+let _pcAscents = [];
+let _pcCurrentPeriod = 'month';
+
+function initProgressCards() {
+  const tabs = document.querySelectorAll('[data-pc]');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const period = tab.dataset.pc;
+      if (period === 'custom') {
+        openProgressCardCustom();
+        return;
+      }
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      _pcCurrentPeriod = period;
+      document.getElementById('pc-custom-banner')?.classList.add('hidden');
+      renderProgressCards(period, _pcAscents);
+    });
+  });
+
+  document.getElementById('pc-overlay')?.addEventListener('click', e => {
+    if (e.target === document.getElementById('pc-overlay')) closePcPopup();
+  });
+  document.getElementById('pc-btn-cancel')?.addEventListener('click', closePcPopup);
+  document.getElementById('pc-btn-apply')?.addEventListener('click', applyPcCustom);
+  document.getElementById('pc-banner-clear')?.addEventListener('click', clearPcCustom);
+
+  document.querySelectorAll('.pc-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const days = parseInt(btn.dataset.days);
+      const today = new Date();
+      const from = new Date();
+      from.setDate(from.getDate() - days);
+      document.getElementById('pc-date-from').value = from.toISOString().split('T')[0];
+      document.getElementById('pc-date-to').value = today.toISOString().split('T')[0];
+    });
+  });
+}
+
+function openProgressCardCustom() {
+  const today = new Date().toISOString().split('T')[0];
+  const from = new Date(); from.setMonth(from.getMonth() - 1);
+  document.getElementById('pc-date-from').value = from.toISOString().split('T')[0];
+  document.getElementById('pc-date-to').value = today;
+  document.getElementById('pc-overlay').classList.remove('hidden');
+}
+
+function closePcPopup() {
+  document.getElementById('pc-overlay')?.classList.add('hidden');
+}
+
+function applyPcCustom() {
+  const from = document.getElementById('pc-date-from').value;
+  const to = document.getElementById('pc-date-to').value;
+  if (!from || !to || from > to) return;
+  closePcPopup();
+
+  document.querySelectorAll('[data-pc]').forEach(t => t.classList.remove('active'));
+  const banner = document.getElementById('pc-custom-banner');
+  if (banner) {
+    banner.classList.remove('hidden');
+    document.getElementById('pc-banner-text').textContent = `${fmtPcDate(from)} – ${fmtPcDate(to)}`;
+  }
+  renderProgressCards('custom', _pcAscents, from, to);
+}
+
+function clearPcCustom() {
+  document.getElementById('pc-custom-banner')?.classList.add('hidden');
+  const monthTab = document.querySelector('[data-pc="month"]');
+  if (monthTab) {
+    document.querySelectorAll('[data-pc]').forEach(t => t.classList.remove('active'));
+    monthTab.classList.add('active');
+  }
+  _pcCurrentPeriod = 'month';
+  renderProgressCards('month', _pcAscents);
+}
+
+function fmtPcDate(s) {
+  const [y, m, d] = s.split('-');
+  const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${parseInt(d)} ${months[parseInt(m) - 1]}`;
+}
+
+function renderProgressCards(period, ascents, customFrom, customTo) {
+  if (ascents) _pcAscents = ascents;
+  const grid = document.getElementById('pc-cards-grid');
+  if (!grid) return;
+
+  const cards = buildPcCardData(_pcAscents, period, customFrom, customTo);
+
+  if (!cards.length) {
+    grid.innerHTML = `<div class="pc-empty-card" style="grid-column:1/-1">Sin ascensiones en este periodo</div>`;
+    return;
+  }
+
+  // La card "top" es la que tiene el grado máximo más alto
+  const maxIdx = Math.max(...cards.map(c => getGradeIndex(c.max)).filter(i => i >= 0));
+  grid.innerHTML = cards.map(c => {
+    const isTop = getGradeIndex(c.max) === maxIdx && c.count > 0;
+    return makePcCard(c, isTop);
+  }).join('');
+}
+
+function buildPcCardData(ascents, period, customFrom, customTo) {
+  const now = new Date();
+  const monthLabels = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const dayLabels = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  let groups = [];
+
+  if (period === 'week') {
+    const dow = now.getDay();
+    const mondayOffset = dow === 0 ? -6 : 1 - dow;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + mondayOffset);
+    monday.setHours(0,0,0,0);
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(monday);
+      day.setDate(monday.getDate() + i);
+      const dY = day.getFullYear(), dM = day.getMonth(), dD = day.getDate();
+      const dayAscents = ascents.filter(a => {
+        const d = parseAscentDate(a.date);
+        return d && d.getFullYear() === dY && d.getMonth() === dM && d.getDate() === dD;
+      });
+      if (dayAscents.length) groups.push({ label: `${dayLabels[i]} ${dD}`, ascents: dayAscents });
+    }
+
+  } else if (period === 'month') {
+    for (let m = 0; m < 12; m++) {
+      const monthAscents = ascents.filter(a => {
+        const d = parseAscentDate(a.date);
+        return d && d.getFullYear() === now.getFullYear() && d.getMonth() === m;
+      });
+      if (monthAscents.length) groups.push({ label: monthLabels[m], ascents: monthAscents });
+    }
+
+  } else if (period === 'year') {
+    const years = [...new Set(ascents.map(a => {
+      const d = parseAscentDate(a.date);
+      return d ? d.getFullYear() : null;
+    }).filter(Boolean))].sort();
+    years.forEach(y => {
+      const yAscents = ascents.filter(a => {
+        const d = parseAscentDate(a.date);
+        return d && d.getFullYear() === y;
+      });
+      if (yAscents.length) groups.push({ label: String(y), ascents: yAscents });
+    });
+
+  } else if (period === 'custom' && customFrom && customTo) {
+    const from = new Date(customFrom);
+    const to = new Date(customTo);
+    to.setHours(23,59,59,999);
+    // Agrupar por mes dentro del rango
+    const rangeAscents = ascents.filter(a => {
+      const d = parseAscentDate(a.date);
+      return d && d >= from && d <= to;
+    });
+    // Si el rango es ≤ 31 días, una sola card; si no, por mes
+    const diffDays = (to - from) / 86400000;
+    if (diffDays <= 31) {
+      if (rangeAscents.length) groups.push({ label: `${fmtPcDate(customFrom)} – ${fmtPcDate(customTo)}`, ascents: rangeAscents });
+    } else {
+      const monthSet = {};
+      rangeAscents.forEach(a => {
+        const d = parseAscentDate(a.date);
+        if (!d) return;
+        const key = `${d.getFullYear()}-${d.getMonth()}`;
+        if (!monthSet[key]) monthSet[key] = { label: `${monthLabels[d.getMonth()]} ${d.getFullYear()}`, ascents: [] };
+        monthSet[key].ascents.push(a);
+      });
+      groups = Object.values(monthSet);
+    }
+  }
+
+  return groups.map(g => {
+    const grades = g.ascents.map(a => getGradeIndex(a.grade)).filter(i => i >= 0);
+    if (!grades.length) return null;
+    const maxGrade = getGradeFromIndex(Math.max(...grades));
+    const minGrade = getGradeFromIndex(Math.min(...grades));
+    const avgGrade = getGradeFromIndex(Math.round(grades.reduce((a,b) => a+b,0) / grades.length));
+    return { label: g.label, count: g.ascents.length, max: maxGrade, min: minGrade, avg: avgGrade };
+  }).filter(Boolean);
+}
+
+function makePcCard(d, isTop) {
+  const total = HISTOGRAM_GRADE_ORDER.length - 1;
+  const maxI = getGradeIndex(d.max);
+  const minI = getGradeIndex(d.min);
+  const avgI = getGradeIndex(d.avg);
+  const isPoint = maxI === minI;
+  const leftPct = Math.round((minI / total) * 100);
+  const widthPct = isPoint ? 0 : Math.max(4, Math.round(((maxI - minI) / total) * 100));
+  const avgPct = Math.round((avgI / total) * 100);
+
+  return `<div class="pc-card${isTop ? ' pc-card-top' : ''}">
+    <div class="pc-card-head">
+      <span class="pc-card-period">${d.label}</span>
+      <span class="pc-card-count${isTop ? ' pc-card-count-top' : ''}">${d.count} ${d.count === 1 ? 'vía' : 'vías'}</span>
+    </div>
+    <div class="pc-grade-labels">
+      <span class="pc-grade-min">${d.min}</span>
+      <span class="pc-grade-max">${d.max}</span>
+    </div>
+    <div class="pc-prog-track">
+      ${!isPoint ? `<div class="pc-prog-range" style="left:${leftPct}%;width:${widthPct}%"></div>` : ''}
+      <div class="pc-prog-avg" style="left:${avgPct}%"></div>
+    </div>
+    <div class="pc-card-footer">
+      <span class="pc-avg-label">Grado medio</span>
+      <span class="pc-avg-val">${d.avg}</span>
+    </div>
+  </div>`;
+}
+// ========== END PROGRESS CARDS ==========
