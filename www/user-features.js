@@ -585,7 +585,10 @@ function openAscentModal(schoolId, schoolName, routeId, routeName, grade, sector
 
     // Set display fields
     document.getElementById('display-route-name').textContent = `${routeName} (${grade})`;
-    document.getElementById('ascent-date').valueAsDate = new Date();
+    const todayStr = new Date().toISOString().split('T')[0];
+    const dateInput = document.getElementById('ascent-date');
+    dateInput.max = todayStr;
+    dateInput.valueAsDate = new Date();
 
     modal.classList.remove('hidden');
 }
@@ -653,7 +656,9 @@ function openEditAscentModal(ascent) {
         ? ascent.date.toISOString().split('T')[0]
         : new Date(ascent.date).toISOString().split('T')[0];
 
-    document.getElementById('ascent-date').value = dateStr;
+    const dateInputEdit = document.getElementById('ascent-date');
+    dateInputEdit.max = new Date().toISOString().split('T')[0];
+    dateInputEdit.value = dateStr;
     document.getElementById('ascent-sector').value = ascent.sector || '';
     document.getElementById('ascent-style').value = ascent.style;
     document.querySelectorAll('.style-dropdown-menu .style-option').forEach(o => {
@@ -2259,6 +2264,14 @@ document.addEventListener('DOMContentLoaded', () => {
             submitBtn.textContent = 'Guardando...';
 
             try {
+                const selectedDate = document.getElementById('ascent-date').value;
+                if (selectedDate && selectedDate > new Date().toISOString().split('T')[0]) {
+                    showToast('No puedes registrar vías con fecha futura', 'error');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                    return;
+                }
+
                 const ascentData = {
                     userId: currentUser.uid,
                     schoolId: document.getElementById('ascent-school-id').value,
