@@ -19094,6 +19094,12 @@ body.map-active #btn-dev-editor {
   flex: 1;
 }
 
+.act-heatmap-week.hm-month-start {
+  border-left: 1.5px solid rgba(99, 102, 241, 0.25);
+  padding-left: 2px;
+  margin-left: -2px;
+}
+
 .act-heatmap-cell {
   height: 11px;
   border-radius: 2px;
