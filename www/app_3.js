@@ -11016,7 +11016,119 @@ function isGymAscent(ascent) {
   return type === 'indoor' || school.includes('rocódromo') || school.includes('rocodromo') || school.includes('gym') || school.includes('indoor');
 }
 
+const HERO_MILESTONES = [
+  { m: 50,    name: 'Coloso de Rodas',         emoji: '🗿' },
+  { m: 93,    name: 'Estatua de la Libertad',  emoji: '🗽' },
+  { m: 138,   name: 'Pirámide de Guiza',       emoji: '🔺' },
+  { m: 240,   name: 'Sagrada Familia',         emoji: '⛪' },
+  { m: 324,   name: 'Torre Eiffel',            emoji: '🗼' },
+  { m: 555,   name: 'Empire State',            emoji: '🏙️' },
+  { m: 828,   name: 'Burj Khalifa',            emoji: '🏗️' },
+  { m: 1085,  name: 'El Capitán',              emoji: '🧗' },
+  { m: 1769,  name: 'Naranjo de Bulnes',       emoji: '⛰️' },
+  { m: 2648,  name: 'Peñalara',                emoji: '🗻' },
+  { m: 3478,  name: 'Mulhacén',                emoji: '🏔️' },
+  { m: 3718,  name: 'Teide',                   emoji: '🌋' },
+  { m: 4810,  name: 'Mont Blanc',              emoji: '🏔️' },
+  { m: 5895,  name: 'Kilimanjaro',             emoji: '🌍' },
+  { m: 6962,  name: 'Aconcagua',               emoji: '🏔️' },
+  { m: 8848,  name: 'Everest',                 emoji: '🏔️' },
+  { m: 14848, name: 'Los 14 ochomiles',        emoji: '👑' },
+];
+
+function estimateRouteMeters(grade) {
+  if (!grade) return 20;
+  const g = String(grade).toLowerCase();
+  if (g.startsWith('3') || g.startsWith('4')) return 15;
+  if (g.startsWith('5')) return 18;
+  if (g.startsWith('6')) return 22;
+  if (g.startsWith('7')) return 25;
+  return 28;
+}
+
+function buildActivityHeroMilestone(allAscents) {
+  const rockAscents = allAscents.filter(a => !isGymAscent(a) && a.grade && a.style !== 'project');
+  const totalMeters = rockAscents.reduce((sum, a) => {
+    const fromRoute = parseFloat(a.routeLength || a.long1);
+    const m = !isNaN(fromRoute) && fromRoute > 0 ? fromRoute : estimateRouteMeters(a.grade);
+    return sum + m;
+  }, 0);
+
+  const metersEl = document.getElementById('hero-meters');
+  if (metersEl) metersEl.textContent = `${Math.round(totalMeters).toLocaleString('es-ES')} m`;
+
+  let currentIdx = -1;
+  for (let i = HERO_MILESTONES.length - 1; i >= 0; i--) {
+    if (totalMeters >= HERO_MILESTONES[i].m) { currentIdx = i; break; }
+  }
+  const current = currentIdx >= 0 ? HERO_MILESTONES[currentIdx] : null;
+  const next = HERO_MILESTONES[currentIdx + 1] || null;
+
+  const nameEl = document.getElementById('hero-milestone-name');
+  const infoEl = document.getElementById('hero-milestone-info');
+  const fillEl = document.getElementById('hero-progress-fill');
+  const nextEl = document.getElementById('hero-milestone-next');
+
+  if (totalMeters === 0) {
+    if (nameEl) nameEl.textContent = 'Sin ascensiones registradas';
+    if (infoEl) infoEl.textContent = 'Registra vías para ver tu progreso';
+    if (fillEl) fillEl.style.width = '0%';
+    if (nextEl) nextEl.textContent = '';
+    return;
+  }
+
+  if (nameEl) {
+    nameEl.innerHTML = current
+      ? `Equivalente a ${current.emoji} <strong>${current.name}</strong>`
+      : `Camino a tu primer hito`;
+  }
+  if (infoEl) {
+    infoEl.innerHTML = current
+      ? `Has subido <strong>${current.m.toLocaleString('es-ES')} m</strong> y más.`
+      : `¡Sigue escalando para alcanzar tu primer hito!`;
+  }
+
+  if (next) {
+    const baseM = current ? current.m : 0;
+    const pct = Math.max(0, Math.min(100, ((totalMeters - baseM) / (next.m - baseM)) * 100));
+    if (fillEl) fillEl.style.width = `${pct}%`;
+    const remaining = Math.max(0, Math.round(next.m - totalMeters));
+    if (nextEl) nextEl.innerHTML = `Próximo: ${next.emoji} <strong>${next.name}</strong> · faltan <strong>${remaining.toLocaleString('es-ES')} m</strong>`;
+  } else {
+    if (fillEl) fillEl.style.width = '100%';
+    if (nextEl) nextEl.innerHTML = '🎉 Has alcanzado todos los hitos. ¡Increíble!';
+  }
+}
+
+let _heroSlidesInit = false;
+function initHeroSlides() {
+  if (_heroSlidesInit) return;
+  const slides = document.getElementById('hero-slides');
+  if (!slides) return;
+  _heroSlidesInit = true;
+  const dots = document.querySelectorAll('.act-hero-dot');
+  const goTo = idx => {
+    slides.style.transform = `translateX(-${idx * 100}%)`;
+    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+  };
+  dots.forEach(dot => dot.addEventListener('click', () => goTo(parseInt(dot.dataset.heroSlide))));
+
+  // Swipe
+  let startX = 0, currentIdx = 0;
+  slides.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
+  slides.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    if (Math.abs(dx) > 40) {
+      currentIdx = Math.max(0, Math.min(dots.length - 1, currentIdx + (dx < 0 ? 1 : -1)));
+      goTo(currentIdx);
+    }
+  }, { passive: true });
+  dots.forEach((dot, i) => dot.addEventListener('click', () => { currentIdx = i; }));
+}
+
 function buildActivityHeroCard(allAscents, yearAscents) {
+  buildActivityHeroMilestone(allAscents);
+  initHeroSlides();
   const rockAscents = allAscents.filter(a => !isGymAscent(a));
   const rockYear = yearAscents.filter(a => !isGymAscent(a));
 
