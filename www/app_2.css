@@ -19484,6 +19484,40 @@ body.map-active #btn-dev-editor {
   font-size: 12px;
 }
 
+.pc-carousel-outer {
+  overflow: hidden;
+  position: relative;
+}
+.pc-carousel {
+  display: flex;
+  transition: transform 0.32s cubic-bezier(0.4,0,0.2,1);
+  will-change: transform;
+}
+.pc-carousel-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+}
+.pc-carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.pc-carousel-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.13);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+.pc-carousel-dot.active {
+  background: #1D9E75;
+  transform: scale(1.25);
+}
+
 /* Custom banner */
 .pc-custom-banner {
   display: flex;
