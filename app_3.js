@@ -11126,20 +11126,15 @@ function buildActivityPyramid(allAscents) {
   }
 
   const maxCount = Math.max(...sorted.map(g => gradeCounts[g]));
-  const n = sorted.length;
-  const cStart = [55, 48, 163], cEnd = [199, 210, 254];
-  const color = i => {
-    const t = n > 1 ? i / (n - 1) : 0;
-    return `rgb(${Math.round(cStart[0]+t*(cEnd[0]-cStart[0]))},${Math.round(cStart[1]+t*(cEnd[1]-cStart[1]))},${Math.round(cStart[2]+t*(cEnd[2]-cStart[2]))})`;
-  };
 
-  el.innerHTML = sorted.map((grade, i) => {
+  el.innerHTML = sorted.map(grade => {
     const count = gradeCounts[grade];
     const pct = Math.max(8, Math.round((count / maxCount) * 100));
+    const bg = typeof getGradeColor === 'function' ? getGradeColor(grade) : '#818cf8';
     return `<div class="act-pyramid-row">
       <div class="act-pyramid-label">${grade}</div>
       <div class="act-pyramid-bar-wrap">
-        <div class="act-pyramid-bar" style="width:${pct}%;background:${color(i)};"></div>
+        <div class="act-pyramid-bar" style="width:${pct}%;background:${bg};"></div>
         <div class="act-pyramid-count">${count}</div>
       </div>
     </div>`;
