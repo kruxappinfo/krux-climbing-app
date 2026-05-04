@@ -10376,8 +10376,11 @@ function updateCombinedHistogram(ascents) {
   updateGradeAxis(gradeAxis, minGradeIdx, maxGradeIdx);
   updateAscentAxis(ascentAxis, maxAscents);
 
+  // Escalar las barras al mismo máximo redondeado que usa el eje Y derecho
+  const { adjustedMax: ascentAxisMax } = computeAscentAxisMax(maxAscents);
+
   barsContainer.innerHTML = histogramData.map(item => {
-    const height = (item.ascents / maxAscents) * 100;
+    const height = ascentAxisMax > 0 ? (item.ascents / ascentAxisMax) * 100 : 0;
     const countLabel = item.ascents > 0
       ? `<span class="histogram-bar-count">${item.ascents}</span>`
       : '';
@@ -10505,10 +10508,7 @@ function updateGradeAxis(container, minIdx, maxIdx) {
   container.innerHTML = labels.map(l => `<span class="y-label">${l}</span>`).join('');
 }
 
-function updateAscentAxis(container, maxValue) {
-  if (!container) return;
-  const labels = [];
-
+function computeAscentAxisMax(maxValue) {
   // Calcular step "bonito" basado en el máximo
   let step;
   if (maxValue <= 5) step = 1;
@@ -10520,6 +10520,13 @@ function updateAscentAxis(container, maxValue) {
   else step = Math.ceil(maxValue / 5 / 10) * 10; // Múltiplos de 10
 
   const adjustedMax = Math.ceil(maxValue / step) * step;
+  return { adjustedMax, step };
+}
+
+function updateAscentAxis(container, maxValue) {
+  if (!container) return;
+  const { adjustedMax, step } = computeAscentAxisMax(maxValue);
+  const labels = [];
   for (let i = adjustedMax; i >= 0; i -= step) {
     labels.push(i);
   }
