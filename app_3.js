@@ -11191,6 +11191,8 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
     const weekDiv = document.createElement('div');
     weekDiv.className = 'act-heatmap-week';
 
+    let weekLabelMonth = null;
+
     for (let d = 0; d < 7; d++) {
       const date = new Date(start);
       date.setDate(start.getDate() + w * 7 + d);
@@ -11208,12 +11210,19 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
       if (count > 0) cell.title = `${date.toLocaleDateString('es-ES', { day:'numeric', month:'short' })}: ${count} vías`;
       weekDiv.appendChild(cell);
 
-      // Mark month label on the Monday (d=0) of the first week containing a date of that month
-      if (d === 0 && !beforeYear && !afterToday && date.getMonth() !== lastMonth) {
-        lastMonth = date.getMonth();
-        monthLabels[w] = months[lastMonth];
-        if (w > 0) weekDiv.classList.add('hm-month-start');
+      // Label the week that contains day 1 of a new month
+      if (date.getDate() === 1 && date.getMonth() !== lastMonth) {
+        weekLabelMonth = date.getMonth();
       }
+      // Bootstrap: label first column with the month of its middle day (Wed)
+      if (w === 0 && d === 3 && lastMonth === -1 && weekLabelMonth === null) {
+        weekLabelMonth = date.getMonth();
+      }
+    }
+
+    if (weekLabelMonth !== null) {
+      lastMonth = weekLabelMonth;
+      monthLabels[w] = months[weekLabelMonth];
     }
     weeksEl.appendChild(weekDiv);
   }
