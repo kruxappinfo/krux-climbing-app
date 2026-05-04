@@ -505,6 +505,50 @@
             <span id="stat-sectors-count">0</span>
           </div>
 
+          <!-- Progress Cards -->
+          <div class="pc-wrap" style="padding: 0 16px;">
+            <div class="pc-header">
+              <div class="act-histogram-tabs" id="pc-tabs">
+                <button class="act-htab" data-pc="week">Semana</button>
+                <button class="act-htab active" data-pc="month">Mes</button>
+                <button class="act-htab" data-pc="year">Año</button>
+                <button class="act-htab" data-pc="custom">Personalizado</button>
+              </div>
+            </div>
+            <div class="pc-custom-banner hidden" id="pc-custom-banner">
+              <span id="pc-banner-text"></span>
+              <span class="pc-banner-clear" id="pc-banner-clear">Limpiar</span>
+            </div>
+            <div class="pc-cards-grid" id="pc-cards-grid"></div>
+          </div>
+
+          <!-- Custom date popup -->
+          <div class="pc-overlay hidden" id="pc-overlay">
+            <div class="pc-popup">
+              <div class="pc-popup-title">Rango personalizado</div>
+              <div class="pc-popup-sub">Selecciona el periodo a analizar</div>
+              <div class="pc-preset-row">
+                <button class="pc-preset" data-days="7">Últimos 7 días</button>
+                <button class="pc-preset" data-days="30">Últimos 30 días</button>
+                <button class="pc-preset" data-days="90">Últimos 3 meses</button>
+              </div>
+              <div class="pc-date-row">
+                <div class="pc-date-field">
+                  <label>Desde</label>
+                  <input type="date" id="pc-date-from" />
+                </div>
+                <div class="pc-date-field">
+                  <label>Hasta</label>
+                  <input type="date" id="pc-date-to" />
+                </div>
+              </div>
+              <div class="pc-popup-actions">
+                <button class="pc-btn-cancel" id="pc-btn-cancel">Cancelar</button>
+                <button class="pc-btn-apply" id="pc-btn-apply">Aplicar</button>
+              </div>
+            </div>
+          </div>
+
           <!-- Heatmap de actividad anual -->
           <div class="activity-section">
             <div class="section-header">

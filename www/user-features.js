@@ -40,7 +40,7 @@ function showToast(message, type = 'info') {
 }
 
 // Custom confirmation dialog
-function showConfirm(message, title = 'Confirmar') {
+function showConfirm(message, title = 'Confirmar', okLabel = 'Eliminar') {
     return new Promise((resolve) => {
         const modal = document.getElementById('confirm-modal');
         const titleEl = document.getElementById('confirm-title');
@@ -65,6 +65,7 @@ function showConfirm(message, title = 'Confirmar') {
 
         titleEl.textContent = title;
         messageEl.textContent = message;
+        newOkBtn.textContent = okLabel;
 
         let resolved = false;
 
