@@ -11158,7 +11158,6 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
   weeksEl.innerHTML = '';
   monthsEl.innerHTML = '';
 
-  // Build date → count map
   const dayCount = {};
   ascents.forEach(a => {
     const d = parseAscentDate(a.date);
@@ -11167,82 +11166,55 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
     dayCount[key] = (dayCount[key] || 0) + 1;
   });
 
-  // Start from Jan 1 of current year, aligned to previous Monday
-  // JS getDay(): 0=Sun,1=Mon,...,6=Sat
   const today = new Date();
   const year = today.getFullYear();
-  const jan1 = new Date(year, 0, 1);
-  const dow = jan1.getDay(); // day of week of Jan 1
-  const offsetToMonday = dow === 0 ? -6 : 1 - dow; // shift back to Monday
-  const start = new Date(jan1);
-  start.setDate(jan1.getDate() + offsetToMonday);
-
-  // Weeks needed to cover Jan 1 → today
-  const totalWeeks = Math.ceil(((today - start) / 86400000 + 1) / 7) + 1;
-
-  // Month labels (first letter)
   const months = ['E','F','M','A','M','J','J','A','S','O','N','D'];
-  let lastMonth = -1;
-  const monthLabels = [];
-  // When day 1 falls Fri–Sun (<4 days of the new month in that week), defer
-  // the label to the next week where the month is the majority.
-  let pendingLabelMonth = null;
+  const currentMonth = today.getMonth();
 
-  for (let w = 0; w < totalWeeks; w++) {
-    const weekDiv = document.createElement('div');
-    weekDiv.className = 'act-heatmap-week';
+  // Render each month as its own block of week-columns, with empty cells
+  // padding the start/end so each month shows EXACTLY its real days.
+  for (let m = 0; m <= currentMonth; m++) {
+    const firstDay = new Date(year, m, 1);
+    const daysInMonth = new Date(year, m + 1, 0).getDate();
+    const fdDow = firstDay.getDay();
+    const fdGridDay = fdDow === 0 ? 6 : fdDow - 1; // 0=Mon..6=Sun
+    const totalCells = fdGridDay + daysInMonth;
+    const weeksInMonth = Math.ceil(totalCells / 7);
 
-    let weekLabelMonth = pendingLabelMonth;
-    pendingLabelMonth = null;
+    for (let w = 0; w < weeksInMonth; w++) {
+      const weekDiv = document.createElement('div');
+      weekDiv.className = 'act-heatmap-week';
+      if (w === 0 && m > 0) weekDiv.classList.add('hm-month-start');
 
-    for (let d = 0; d < 7; d++) {
-      const date = new Date(start);
-      date.setDate(start.getDate() + w * 7 + d);
+      for (let d = 0; d < 7; d++) {
+        const dayOfMonth = w * 7 + d - fdGridDay + 1;
+        const inMonth = dayOfMonth >= 1 && dayOfMonth <= daysInMonth;
+        const cell = document.createElement('div');
 
-      const beforeYear = date.getFullYear() < year;
-      const afterToday = date > today;
-      const key = `${date.getFullYear()}-${String(date.getMonth()).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-      const count = (beforeYear || afterToday) ? 0 : (dayCount[key] || 0);
-      const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 4 ? 2 : count <= 7 ? 3 : 4;
-
-      const cell = document.createElement('div');
-      cell.className = beforeYear || afterToday
-        ? 'act-heatmap-cell hm-empty'
-        : `act-heatmap-cell ${level === 0 ? 'hm-0' : colorPrefix + level}`;
-      if (count > 0) cell.title = `${date.toLocaleDateString('es-ES', { day:'numeric', month:'short' })}: ${count} vías`;
-      weekDiv.appendChild(cell);
-
-      // Place the label on the week where the new month is the majority (≥4 days).
-      // gridDay 0=Mon…6=Sun. Day 1 on Mon–Thu → label this week; Fri–Sun → next week.
-      if (date.getDate() === 1 && date.getMonth() !== lastMonth) {
-        const dow = date.getDay(); // 0=Sun…6=Sat
-        const gridDay = dow === 0 ? 6 : dow - 1;
-        if (gridDay <= 3) {
-          weekLabelMonth = date.getMonth();
+        if (!inMonth) {
+          cell.className = 'act-heatmap-cell hm-empty';
         } else {
-          pendingLabelMonth = date.getMonth();
+          const date = new Date(year, m, dayOfMonth);
+          const afterToday = date > today;
+          if (afterToday) {
+            cell.className = 'act-heatmap-cell hm-empty';
+          } else {
+            const key = `${year}-${String(m).padStart(2,'0')}-${String(dayOfMonth).padStart(2,'0')}`;
+            const count = dayCount[key] || 0;
+            const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 4 ? 2 : count <= 7 ? 3 : 4;
+            cell.className = `act-heatmap-cell ${level === 0 ? 'hm-0' : colorPrefix + level}`;
+            if (count > 0) cell.title = `${date.toLocaleDateString('es-ES', { day:'numeric', month:'short' })}: ${count} vías`;
+          }
         }
+        weekDiv.appendChild(cell);
       }
-      // Bootstrap: label first column with the month of its middle day (Wed)
-      if (w === 0 && d === 3 && lastMonth === -1 && weekLabelMonth === null && pendingLabelMonth === null) {
-        weekLabelMonth = date.getMonth();
-      }
-    }
+      weeksEl.appendChild(weekDiv);
 
-    if (weekLabelMonth !== null) {
-      lastMonth = weekLabelMonth;
-      monthLabels[w] = months[weekLabelMonth];
-      if (w > 0) weekDiv.classList.add('hm-month-start');
+      const span = document.createElement('div');
+      span.className = 'act-heatmap-month';
+      span.textContent = (w === 0) ? months[m] : '';
+      monthsEl.appendChild(span);
     }
-    weeksEl.appendChild(weekDiv);
-  }
-
-  // Render month labels
-  for (let w = 0; w < totalWeeks; w++) {
-    const span = document.createElement('div');
-    span.className = 'act-heatmap-month';
-    span.textContent = monthLabels[w] || '';
-    monthsEl.appendChild(span);
   }
 }
 
