@@ -10674,7 +10674,7 @@ function initHistogramTooltips() {
   if (barsContainer) {
     container.addEventListener('mousemove', e => {
       const bar = e.target.closest('.histogram-bar');
-      if (!bar) return;
+      if (!bar) { hideTooltip(); return; }
       const val = bar.dataset.value;
       if (val === undefined || val === '0') { hideTooltip(); return; }
       showTooltip(val + (val === '1' ? ' vía' : ' vías'), e);

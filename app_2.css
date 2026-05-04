@@ -5192,16 +5192,11 @@ button.secondary:hover {
   border-bottom: none;
   border-radius: 4px 4px 0 0;
   min-height: 2px;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
   position: relative;
-  transform-origin: bottom center;
 }
 
 .histogram-bar:hover {
-  background: var(--hist-bar-hover, rgba(99, 102, 241, 0.45));
-  border-color: rgba(99, 102, 241, 0.9);
   cursor: pointer;
-  transform: scaleX(1.15);
 }
 
 .histogram-point {
