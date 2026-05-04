@@ -19100,6 +19100,8 @@ body.map-active #btn-dev-editor {
   min-width: 0;
 }
 
+.hm-empty { background: transparent; }
+
 /* Colores roca (azul-índigo) */
 .hm-0  { background: #f1f5f9; }
 .hm-r1 { background: #c7d2fe; }
