@@ -5196,7 +5196,38 @@ button.secondary:hover {
 }
 
 .histogram-bar:hover {
-  filter: brightness(1.05);
+  filter: brightness(1.12);
+  cursor: pointer;
+}
+
+.histogram-point {
+  stroke-width: 0;
+  cursor: pointer;
+  pointer-events: all;
+  transition: r 0.1s;
+}
+
+.histogram-point:hover {
+  r: 6;
+}
+
+.histogram-tooltip {
+  position: absolute;
+  background: rgba(30, 30, 40, 0.92);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 8px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 100;
+  transition: opacity 0.1s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+
+.histogram-tooltip.hidden {
+  opacity: 0;
 }
 
 .histogram-lines {
@@ -5204,8 +5235,8 @@ button.secondary:hover {
   inset: 0;
   width: 100%;
   height: 100%;
-  pointer-events: none;
   overflow: visible;
+  pointer-events: none; /* paths don't block clicks, circles override with pointer-events:all */
 }
 
 .histogram-line {
@@ -5213,15 +5244,12 @@ button.secondary:hover {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+  pointer-events: none;
 }
 
 .histogram-line-max { stroke: var(--hist-line-max, #ef6c4d); }
 .histogram-line-avg { stroke: var(--hist-line-avg, #10b981); }
 .histogram-line-min { stroke: var(--hist-line-min, #3b82f6); }
-
-.histogram-point {
-  stroke-width: 0;
-}
 
 .histogram-point-max { fill: var(--hist-line-max, #ef6c4d); }
 .histogram-point-avg { fill: var(--hist-line-avg, #10b981); }

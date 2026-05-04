@@ -10386,6 +10386,7 @@ function updateCombinedHistogram(ascents) {
 
   renderHistogramGrid(document.getElementById('histogram-grid'), minGradeIdx, maxGradeIdx);
   renderHistogramLines(svgLines, histogramData, minGradeIdx, gradeRange);
+  initHistogramTooltips();
 }
 
 function renderHistogramGrid(svg, minGradeIdx, maxGradeIdx) {
@@ -10560,9 +10561,9 @@ function renderHistogramLines(svg, data, minGradeIdx, gradeRange) {
   const avgPath = smoothSplinePath(avgPts);
   const minPath = smoothSplinePath(minPts);
 
-  const maxPoints = maxPts.map(p => `<circle class="histogram-point histogram-point-max" cx="${p.x}" cy="${p.y}" r="4"/>`).join('');
-  const avgPoints = avgPts.map(p => `<circle class="histogram-point histogram-point-avg" cx="${p.x}" cy="${p.y}" r="4"/>`).join('');
-  const minPoints = minPts.map(p => `<circle class="histogram-point histogram-point-min" cx="${p.x}" cy="${p.y}" r="4"/>`).join('');
+  const maxPoints = maxPts.map((p, i) => `<circle class="histogram-point histogram-point-max" cx="${p.x}" cy="${p.y}" r="4" data-grade="${data.filter(d => d.maxGrade)[i]?.maxGrade || ''}" data-type="max"/>`).join('');
+  const avgPoints = avgPts.map((p, i) => `<circle class="histogram-point histogram-point-avg" cx="${p.x}" cy="${p.y}" r="4" data-grade="${data.filter(d => d.avgGrade)[i]?.avgGrade || ''}" data-type="avg"/>`).join('');
+  const minPoints = minPts.map((p, i) => `<circle class="histogram-point histogram-point-min" cx="${p.x}" cy="${p.y}" r="4" data-grade="${data.filter(d => d.minGrade)[i]?.minGrade || ''}" data-type="min"/>`).join('');
 
   svg.innerHTML = `
     <path class="histogram-line histogram-line-max" d="${maxPath}"/>
@@ -10637,6 +10638,62 @@ function renderEmptyHistogram() {
   if (svgLines) svgLines.innerHTML = '';
 
   renderHistogramGrid(document.getElementById('histogram-grid'), getGradeIndex('5c'), getGradeIndex('7a'));
+}
+
+// ========== HISTOGRAM TOOLTIPS ==========
+function initHistogramTooltips() {
+  const container = document.getElementById('combined-histogram-container');
+  const tooltip = document.getElementById('histogram-tooltip');
+  if (!container || !tooltip) return;
+
+  // Remove previous listeners by replacing nodes
+  const barsContainer = document.getElementById('histogram-bars');
+  const svgLines = document.getElementById('histogram-lines');
+
+  function showTooltip(text, x, y) {
+    tooltip.textContent = text;
+    tooltip.classList.remove('hidden');
+    const rect = container.getBoundingClientRect();
+    let left = x - rect.left;
+    let top = y - rect.top - 36;
+    const tw = tooltip.offsetWidth || 80;
+    if (left + tw > container.offsetWidth - 4) left = container.offsetWidth - tw - 4;
+    if (left < 4) left = 4;
+    if (top < 4) top = y - rect.top + 10;
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+  }
+
+  function hideTooltip() {
+    tooltip.classList.add('hidden');
+  }
+
+  if (barsContainer) {
+    barsContainer.addEventListener('mouseover', e => {
+      const bar = e.target.closest('.histogram-bar');
+      if (!bar) return;
+      const val = bar.dataset.value;
+      if (val === undefined) return;
+      const rect = bar.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top;
+      showTooltip(val + (val === '1' ? ' vía' : ' vías'), cx, cy);
+    });
+    barsContainer.addEventListener('mouseleave', hideTooltip);
+  }
+
+  if (svgLines) {
+    svgLines.addEventListener('mouseover', e => {
+      const pt = e.target.closest('.histogram-point');
+      if (!pt) return;
+      const grade = pt.dataset.grade;
+      const type = pt.dataset.type;
+      if (!grade) return;
+      const labels = { max: 'Grado máximo', avg: 'Grado medio', min: 'Grado mínimo' };
+      showTooltip((labels[type] || 'Grado') + ': ' + grade, e.clientX, e.clientY);
+    });
+    svgLines.addEventListener('mouseleave', hideTooltip);
+  }
 }
 
 // ========== HISTOGRAM CAROUSEL ==========
