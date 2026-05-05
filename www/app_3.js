@@ -11037,7 +11037,6 @@ const HERO_MILESTONES = [
   { m: 8611,  name: 'K2',                      emoji: '⛏️' },
   { m: 8848,  name: 'Everest',                 emoji: '🏔️' },
   { m: 12000, name: 'Troposfera',              emoji: '☁️' },
-  { m: 14848, name: 'Los 14 ochomiles',        emoji: '👑' },
   { m: 50000, name: 'Estratosfera',            emoji: '🌌' },
   { m: 85000, name: 'Mesoesfera',              emoji: '🌠' },
   { m: 408000,name: 'ISS',                     emoji: '🛰️' },
