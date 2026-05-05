@@ -12151,25 +12151,6 @@ function updatePcTimeNav(period) {
     const [y, m] = sel.value.split('-').map(Number);
     _pcNavContext = { year: y, month: m };
 
-  } else if (period === 'year') {
-    const optAll = document.createElement('option');
-    optAll.value = '';
-    optAll.textContent = 'Todos los años';
-    if (!_pcNavContext?.year) optAll.selected = true;
-    sel.appendChild(optAll);
-    const years = [...new Set(_pcAscents.map(a => {
-      const d = parseAscentDate(a.date);
-      return d ? d.getFullYear() : null;
-    }).filter(Boolean))].sort((a,b) => b - a);
-    years.forEach(y => {
-      const opt = document.createElement('option');
-      opt.value = y;
-      opt.textContent = y;
-      if (y === _pcNavContext?.year) opt.selected = true;
-      sel.appendChild(opt);
-    });
-    sel.style.display = '';
-
   } else {
     sel.style.display = 'none';
     _pcNavContext = null;
@@ -12202,8 +12183,6 @@ function initProgressCards() {
     } else if (_pcCurrentPeriod === 'week') {
       if (val) { const [y, m] = val.split('-').map(Number); _pcNavContext = { year: y, month: m }; }
       else _pcNavContext = null;
-    } else if (_pcCurrentPeriod === 'year') {
-      _pcNavContext = val ? { year: parseInt(val) } : null;
     }
     renderProgressCards(_pcCurrentPeriod, _pcAscents);
   });
