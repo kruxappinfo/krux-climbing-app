@@ -2008,46 +2008,48 @@ function createSVGPinImage(poiType, size = 50) {
   const color = poiData.color;
   const svgContent = poiData.svg;
 
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, size, size);
-
-  const svgString = `
-    <svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <filter id="shadow">
-          <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.4"/>
-        </filter>
-      </defs>
-      <g filter="url(#shadow)">
-        <!-- Pin circle -->
-        <circle cx="25" cy="22" r="18" fill="${color}"/>
-        <!-- Pin tail -->
-        <path d="M25 40L18 28C18 28 22 20 25 20C28 20 32 28 32 28L25 40Z" fill="${color}"/>
-        <!-- Icon container -->
-        <g transform="translate(25, 22) scale(0.9)">
-          <svg viewBox="0 0 20 20" width="18" height="18" x="-9" y="-9">
-            ${svgContent}
-          </svg>
+  return new Promise((resolve, reject) => {
+    const svgString = `
+      <svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="shadow">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.4"/>
+          </filter>
+        </defs>
+        <g filter="url(#shadow)">
+          <!-- Pin circle -->
+          <circle cx="25" cy="22" r="18" fill="${color}"/>
+          <!-- Pin tail -->
+          <path d="M25 40L18 28C18 28 22 20 25 20C28 20 32 28 32 28L25 40Z" fill="${color}"/>
+          <!-- Icon container -->
+          <g transform="translate(25, 22) scale(0.9)">
+            <svg viewBox="0 0 20 20" width="18" height="18" x="-9" y="-9">
+              ${svgContent}
+            </svg>
+          </g>
         </g>
-      </g>
-    </svg>
-  `;
+      </svg>
+    `;
 
-  const img = new Image();
-  img.onload = () => {
-    ctx.drawImage(img, 0, 0, size, size);
-  };
-  img.src = 'data:image/svg+xml;base64,' + btoa(svgString);
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, size, size);
 
-  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onerror = () => reject(new Error(`Failed to load SVG for POI type "${poiType}"`));
     img.onload = () => {
-      ctx.drawImage(img, 0, 0, size, size);
-      const imageData = ctx.getImageData(0, 0, size, size);
-      resolve({ data: imageData.data, width: size, height: size });
+      try {
+        ctx.drawImage(img, 0, 0, size, size);
+        const imageData = ctx.getImageData(0, 0, size, size);
+        resolve({ data: imageData.data, width: size, height: size });
+      } catch (e) {
+        reject(e);
+      }
     };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
   });
 }
 
