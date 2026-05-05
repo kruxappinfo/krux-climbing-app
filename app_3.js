@@ -10985,7 +10985,8 @@ async function loadActivityData() {
       buildGymStats(allAscents);
       updateActivityRecords(allAscents);
       updateCombinedHistogram(allAscents);
-      renderProgressCards('month', allAscents);
+      renderProgressCards(_pcCurrentPeriod || 'month', allAscents);
+      updatePcTimeNav(_pcCurrentPeriod || 'month');
       const activeChartTab = document.querySelector('.chart-tab.active');
       updateActivityChart(activeChartTab ? activeChartTab.dataset.chart : 'week');
     });
@@ -12103,6 +12104,77 @@ let _pcAscents = [];
 let _pcCurrentPeriod = 'month';
 let _pcCurrentSlide = 0;
 let _pcPageCount = 1;
+let _pcNavContext = null; // {year} for month, {year, month} for week, {year} for year
+
+function updatePcTimeNav(period) {
+  const sel = document.getElementById('pc-time-nav');
+  if (!sel) return;
+  sel.innerHTML = '';
+
+  const now = new Date();
+  const monthLabels = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+  if (period === 'month') {
+    const years = [...new Set(_pcAscents.map(a => {
+      const d = parseAscentDate(a.date);
+      return d ? d.getFullYear() : null;
+    }).filter(Boolean))].sort((a,b) => b - a);
+    if (!years.length) years.push(now.getFullYear());
+    years.forEach(y => {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      if (y === (_pcNavContext?.year ?? now.getFullYear())) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.style.display = '';
+    _pcNavContext = { year: parseInt(sel.value) };
+
+  } else if (period === 'week') {
+    const monthsSet = new Set();
+    _pcAscents.forEach(a => {
+      const d = parseAscentDate(a.date);
+      if (d) monthsSet.add(`${d.getFullYear()}-${String(d.getMonth()).padStart(2,'0')}`);
+    });
+    const sortedMonths = [...monthsSet].sort().reverse();
+    if (!sortedMonths.length) sortedMonths.push(`${now.getFullYear()}-${String(now.getMonth()).padStart(2,'0')}`);
+    sortedMonths.forEach(key => {
+      const [y, m] = key.split('-').map(Number);
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = `${monthLabels[m]} ${y}`;
+      const curKey = `${_pcNavContext?.year ?? now.getFullYear()}-${String(_pcNavContext?.month ?? now.getMonth()).padStart(2,'0')}`;
+      if (key === curKey) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.style.display = '';
+    const [y, m] = sel.value.split('-').map(Number);
+    _pcNavContext = { year: y, month: m };
+
+  } else if (period === 'year') {
+    const optAll = document.createElement('option');
+    optAll.value = '';
+    optAll.textContent = 'Todos los años';
+    if (!_pcNavContext?.year) optAll.selected = true;
+    sel.appendChild(optAll);
+    const years = [...new Set(_pcAscents.map(a => {
+      const d = parseAscentDate(a.date);
+      return d ? d.getFullYear() : null;
+    }).filter(Boolean))].sort((a,b) => b - a);
+    years.forEach(y => {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      if (y === _pcNavContext?.year) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.style.display = '';
+
+  } else {
+    sel.style.display = 'none';
+    _pcNavContext = null;
+  }
+}
 
 function initProgressCards() {
   const tabs = document.querySelectorAll('[data-pc]');
@@ -12116,9 +12188,24 @@ function initProgressCards() {
       tabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       _pcCurrentPeriod = period;
+      _pcNavContext = null;
       document.getElementById('pc-custom-banner')?.classList.add('hidden');
+      updatePcTimeNav(period);
       renderProgressCards(period, _pcAscents);
     });
+  });
+
+  document.getElementById('pc-time-nav')?.addEventListener('change', e => {
+    const val = e.target.value;
+    if (_pcCurrentPeriod === 'month') {
+      _pcNavContext = val ? { year: parseInt(val) } : null;
+    } else if (_pcCurrentPeriod === 'week') {
+      if (val) { const [y, m] = val.split('-').map(Number); _pcNavContext = { year: y, month: m }; }
+      else _pcNavContext = null;
+    } else if (_pcCurrentPeriod === 'year') {
+      _pcNavContext = val ? { year: parseInt(val) } : null;
+    }
+    renderProgressCards(_pcCurrentPeriod, _pcAscents);
   });
 
   document.getElementById('pc-overlay')?.addEventListener('click', e => {
@@ -12210,7 +12297,7 @@ function renderProgressCards(period, ascents, customFrom, customTo) {
   const dotsEl = document.getElementById('pc-carousel-dots');
   if (!carouselEl) return;
 
-  const cards = buildPcCardData(_pcAscents, period, customFrom, customTo);
+  const cards = buildPcCardData(_pcAscents, period, customFrom, customTo, _pcNavContext);
 
   if (!cards.length) {
     carouselEl.innerHTML = `<div class="pc-carousel-slide"><div class="pc-cards-grid"><div class="pc-empty-card" style="grid-column:1/-1">Sin ascensiones en este periodo</div></div></div>`;
@@ -12284,44 +12371,44 @@ function goPcSlide(index, animate = true) {
 }
 
 
-function buildPcCardData(ascents, period, customFrom, customTo) {
+function buildPcCardData(ascents, period, customFrom, customTo, navContext) {
   const now = new Date();
   const monthLabels = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const dayLabels = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   let groups = [];
 
   if (period === 'week') {
-    const dow = now.getDay();
-    const mondayOffset = dow === 0 ? -6 : 1 - dow;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + mondayOffset);
-    monday.setHours(0,0,0,0);
-    for (let i = 0; i < 7; i++) {
-      const day = new Date(monday);
-      day.setDate(monday.getDate() + i);
-      const dY = day.getFullYear(), dM = day.getMonth(), dD = day.getDate();
-      const dayAscents = ascents.filter(a => {
+    const selYear = navContext?.year ?? now.getFullYear();
+    const selMonth = navContext?.month ?? now.getMonth();
+    const daysInMonth = new Date(selYear, selMonth + 1, 0).getDate();
+    for (let startDay = 1; startDay <= daysInMonth; startDay += 7) {
+      const endDay = Math.min(startDay + 6, daysInMonth);
+      const from = new Date(selYear, selMonth, startDay, 0, 0, 0, 0);
+      const to = new Date(selYear, selMonth, endDay, 23, 59, 59, 999);
+      const weekAscents = ascents.filter(a => {
         const d = parseAscentDate(a.date);
-        return d && d.getFullYear() === dY && d.getMonth() === dM && d.getDate() === dD;
+        return d && d >= from && d <= to;
       });
-      if (dayAscents.length) groups.push({ label: `${dayLabels[i]} ${dD}`, ascents: dayAscents });
+      if (weekAscents.length) groups.push({ label: `${startDay}–${endDay} ${monthLabels[selMonth]}`, ascents: weekAscents });
     }
 
   } else if (period === 'month') {
+    const selYear = navContext?.year ?? now.getFullYear();
     for (let m = 0; m < 12; m++) {
       const monthAscents = ascents.filter(a => {
         const d = parseAscentDate(a.date);
-        return d && d.getFullYear() === now.getFullYear() && d.getMonth() === m;
+        return d && d.getFullYear() === selYear && d.getMonth() === m;
       });
       if (monthAscents.length) groups.push({ label: monthLabels[m], ascents: monthAscents });
     }
 
   } else if (period === 'year') {
-    const years = [...new Set(ascents.map(a => {
+    const allYears = [...new Set(ascents.map(a => {
       const d = parseAscentDate(a.date);
       return d ? d.getFullYear() : null;
     }).filter(Boolean))].sort();
-    years.forEach(y => {
+    const filteredYears = navContext?.year ? allYears.filter(y => y === navContext.year) : allYears;
+    filteredYears.forEach(y => {
       const yAscents = ascents.filter(a => {
         const d = parseAscentDate(a.date);
         return d && d.getFullYear() === y;
