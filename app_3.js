@@ -12333,26 +12333,11 @@ function buildPcCardData(ascents, period, customFrom, customTo) {
     const from = new Date(customFrom);
     const to = new Date(customTo);
     to.setHours(23,59,59,999);
-    // Agrupar por mes dentro del rango
     const rangeAscents = ascents.filter(a => {
       const d = parseAscentDate(a.date);
       return d && d >= from && d <= to;
     });
-    // Si el rango es ≤ 31 días, una sola card; si no, por mes
-    const diffDays = (to - from) / 86400000;
-    if (diffDays <= 31) {
-      if (rangeAscents.length) groups.push({ label: `${fmtPcDate(customFrom)} – ${fmtPcDate(customTo)}`, ascents: rangeAscents });
-    } else {
-      const monthSet = {};
-      rangeAscents.forEach(a => {
-        const d = parseAscentDate(a.date);
-        if (!d) return;
-        const key = `${d.getFullYear()}-${d.getMonth()}`;
-        if (!monthSet[key]) monthSet[key] = { label: `${monthLabels[d.getMonth()]} ${d.getFullYear()}`, ascents: [] };
-        monthSet[key].ascents.push(a);
-      });
-      groups = Object.values(monthSet);
-    }
+    if (rangeAscents.length) groups.push({ label: `${fmtPcDate(customFrom)} – ${fmtPcDate(customTo)}`, ascents: rangeAscents });
   }
 
   return groups.map(g => {
