@@ -1289,7 +1289,7 @@ function renderAscentsList(ascents) {
                             <span class="expand-icon">▶</span>
                             <h4>📍 ${sector}</h4>
                         </div>
-                        <span class="sector-count">${Object.keys(routesByName).length} vía${Object.keys(routesByName).length !== 1 ? 's' : ''}</span>
+                        <span class="sector-count">${routes.length} vía${routes.length !== 1 ? 's' : ''}</span>
                     </div>
                     <div class="sector-content">
             `;
