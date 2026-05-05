@@ -19173,6 +19173,36 @@ body.map-active #btn-dev-editor {
 .hm-g3 { background: #7c3aed; }
 .hm-g4 { background: #5b21b6; }
 
+.hm-tooltip {
+  position: fixed;
+  z-index: 9999;
+  background: #1e293b;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 9px;
+  border-radius: 6px;
+  pointer-events: none;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.12s;
+  transform: translateX(-50%);
+}
+
+.hm-tooltip.visible {
+  opacity: 1;
+}
+
+.hm-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1e293b;
+}
+
 .act-heatmap-legend {
   display: flex;
   align-items: center;
