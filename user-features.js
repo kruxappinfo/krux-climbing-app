@@ -2304,6 +2304,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     await logAscent(ascentData);
                     closeAscentModal();
                     showToast('¡Ascenso registrado correctamente!', 'success');
+                    if (typeof loadActivityData === 'function') loadActivityData();
                 }
 
             } catch (error) {
