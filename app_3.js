@@ -11236,6 +11236,17 @@ function buildActivityHeatmap(allAscents) {
   buildHeatmapFor(allAscents.filter(a => isGymAscent(a)), 'act-heatmap-weeks-gym', 'act-heatmap-months-gym', 'hm-g');
 }
 
+function getHmTooltip() {
+  let tip = document.getElementById('hm-tooltip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'hm-tooltip';
+    tip.className = 'hm-tooltip';
+    document.body.appendChild(tip);
+  }
+  return tip;
+}
+
 function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
   const weeksEl = document.getElementById(weeksId);
   const monthsEl = document.getElementById(monthsId);
@@ -11288,7 +11299,21 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
             const count = dayCount[key] || 0;
             const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 4 ? 2 : count <= 7 ? 3 : 4;
             cell.className = `act-heatmap-cell ${level === 0 ? 'hm-0' : colorPrefix + level}`;
-            if (count > 0) cell.title = `${date.toLocaleDateString('es-ES', { day:'numeric', month:'short' })}: ${count} vías`;
+            if (count > 0) {
+              const label = `${count} ${count === 1 ? 'vía' : 'vías'} · ${date.toLocaleDateString('es-ES', { day:'numeric', month:'short' })}`;
+              cell.addEventListener('mouseenter', e => {
+                const tip = getHmTooltip();
+                tip.textContent = label;
+                const r = cell.getBoundingClientRect();
+                tip.style.left = `${r.left + r.width / 2}px`;
+                tip.style.top = `${r.top - 8}px`;
+                tip.style.transform = 'translateX(-50%) translateY(-100%)';
+                tip.classList.add('visible');
+              });
+              cell.addEventListener('mouseleave', () => {
+                getHmTooltip().classList.remove('visible');
+              });
+            }
           }
         }
         weekDiv.appendChild(cell);
