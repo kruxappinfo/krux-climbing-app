@@ -11018,16 +11018,16 @@ function isGymAscent(ascent) {
 }
 
 const HERO_MILESTONES = [
-  { m: 50,    name: 'Coloso de Rodas',         emoji: '🗿' },
+  { m: 33,    name: 'Coloso de Rodas',         emoji: '🗿' },
   { m: 93,    name: 'Estatua de la Libertad',  emoji: '🗽' },
   { m: 138,   name: 'Pirámide de Guiza',       emoji: '🔺' },
-  { m: 240,   name: 'Sagrada Familia',         emoji: '⛪' },
+  { m: 172,   name: 'Sagrada Familia',         emoji: '⛪' },
   { m: 324,   name: 'Torre Eiffel',            emoji: '🗼' },
-  { m: 555,   name: 'Empire State',            emoji: '🏙️' },
+  { m: 443,   name: 'Empire State',            emoji: '🏙️' },
   { m: 828,   name: 'Burj Khalifa',            emoji: '🏗️' },
-  { m: 1085,  name: 'El Capitán',              emoji: '🧗' },
-  { m: 1769,  name: 'Naranjo de Bulnes',       emoji: '⛰️' },
-  { m: 2648,  name: 'Peñalara',                emoji: '🗻' },
+  { m: 914,   name: 'El Capitán',              emoji: '🧗' },
+  { m: 2428,  name: 'Peñalara',                emoji: '🗻' },
+  { m: 2519,  name: 'Naranjo de Bulnes',       emoji: '⛰️' },
   { m: 3478,  name: 'Mulhacén',                emoji: '🏔️' },
   { m: 3718,  name: 'Teide',                   emoji: '🌋' },
   { m: 4810,  name: 'Mont Blanc',              emoji: '🏔️' },
