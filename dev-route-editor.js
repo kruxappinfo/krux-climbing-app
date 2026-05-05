@@ -259,6 +259,8 @@ function toggleSpotterMenu() {
     { key: 'camping', label: 'Camping', emoji: '⛺' },
     { key: 'wc', label: 'WC', emoji: '🚻' },
     { key: 'refugio', label: 'Refugio', emoji: '🏠' },
+    { key: 'vivac', label: 'Vivac', emoji: '🏕️' },
+    { key: 'cumbre', label: 'Cumbre', emoji: '🏔️' },
     { key: 'mirador', label: 'Mirador', emoji: '👁️' },
     { key: 'supermercado', label: 'Supermercado', emoji: '🛒' },
     { key: 'hotel', label: 'Hotel', emoji: '🏨' },

@@ -1958,6 +1958,8 @@ const POI_EMOJI_MAP = {
   'hospital': '🏥',
   'parking': '🅿️',
   'refugio': '🏠',
+  'vivac': '🏕️',
+  'cumbre': '🏔️',
   'mirador': '👁️',
   'cueva': '🕳️',
   'bar': '🍺',
