@@ -11024,6 +11024,7 @@ const HERO_MILESTONES = [
   { m: 172,   name: 'Sagrada Familia',         emoji: '⛪' },
   { m: 324,   name: 'Torre Eiffel',            emoji: '🗼' },
   { m: 443,   name: 'Empire State',            emoji: '🏙️' },
+  { m: 508,   name: 'Taipei 101',              emoji: '🏢' },
   { m: 828,   name: 'Burj Khalifa',            emoji: '🏗️' },
   { m: 914,   name: 'El Capitán',              emoji: '🧗' },
   { m: 2428,  name: 'Peñalara',                emoji: '🗻' },
@@ -11033,8 +11034,14 @@ const HERO_MILESTONES = [
   { m: 4810,  name: 'Mont Blanc',              emoji: '🏔️' },
   { m: 5895,  name: 'Kilimanjaro',             emoji: '🌍' },
   { m: 6962,  name: 'Aconcagua',               emoji: '🏔️' },
+  { m: 8091,  name: 'Annapurna',               emoji: '❄️' },
+  { m: 8611,  name: 'K2',                      emoji: '⛏️' },
   { m: 8848,  name: 'Everest',                 emoji: '🏔️' },
+  { m: 12000, name: 'Troposfera',              emoji: '☁️' },
   { m: 14848, name: 'Los 14 ochomiles',        emoji: '👑' },
+  { m: 50000, name: 'Estratosfera',            emoji: '🌌' },
+  { m: 85000, name: 'Mesoesfera',              emoji: '🌠' },
+  { m: 408000,name: 'ISS',                     emoji: '🛰️' },
 ];
 
 function estimateRouteMeters(grade) {
