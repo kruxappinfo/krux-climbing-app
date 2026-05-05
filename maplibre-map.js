@@ -1950,76 +1950,109 @@ async function mlLoadRutasAcceso(url) {
 }
 
 // ============================================
-// MAPA DE EMOJIS PARA PUNTOS DE INTERÉS
+// MAPA DE SVGs PARA PUNTOS DE INTERÉS
 // ============================================
-const POI_EMOJI_MAP = {
-  'fuente': '🚰',
-  'ducha': '🚿',
-  'hospital': '🏥',
-  'parking': '🅿️',
-  'refugio': '🏠',
-  'vivac': '🏕️',
-  'cumbre': '🏔️',
-  'mirador': '👁️',
-  'cueva': '🕳️',
-  'bar': '🍺',
-  'restaurante': '🍽️',
-  'tienda': '🛒',
-  'farmacia': '💊',
-  'gasolinera': '⛽',
-  'camping': '⛺',
-  'wc': '🚻',
-  'baño': '🚻',
-  'escalera': '🪜',
-  'puente': '🌉',
-  'peligro': '⚠️',
-  'informacion': 'ℹ️',
-  'telefono': '📞',
-  'iglesia': '⛪',
-  'ermita': '⛪',
-  'ruina': '🏚️',
-  'agua': '💧',
-  'rio': '🏞️',
-  'arroyo': '🏞️',
-  'piscina': '🏊',
-  'bomberos': '🚒',
-  'policia': '🚔',
-  'supermercado': '🛒',
-  'albergue': '🛏️',
-  'hotel': '🏨',
-  'correos': '📮',
-  'merendero': '🧺'
+const POI_SVG_MAP = {
+  'albergue': { color: '#1565c0', svg: '<path d="M3 17V8L10 3L17 8V17"/><rect x="7" y="12" width="6" height="5"/>' },
+  'hotel': { color: '#1565c0', svg: '<rect x="4" y="4" width="12" height="14" stroke="white" stroke-width="1.4"/><rect x="6" y="6" width="2" height="2" fill="white" stroke="none"/><rect x="10" y="6" width="2" height="2" fill="white" stroke="none"/><rect x="6" y="10" width="2" height="2" fill="white" stroke="none"/><rect x="10" y="10" width="2" height="2" fill="white" stroke="none"/><rect x="8" y="14" width="4" height="4" fill="white" stroke="none"/>' },
+  'refugio': { color: '#1565c0', svg: '<path d="M3 17V10L10 5L17 10V17"/><rect x="7" y="13" width="6" height="4"/><circle cx="10" cy="9" r="1.5" fill="white" stroke="none"/>' },
+  'vivac': { color: '#1565c0', svg: '<path d="M3 17V12L10 6L17 12V17"/><path d="M10 6V3"/><rect x="7" y="12" width="6" height="5"/>' },
+  'camping': { color: '#1565c0', svg: '<path d="M10 4L3 16H17L10 4Z"/><path d="M10 4L3 16H17L10 4Z" fill="white" fill-opacity="0.15" stroke="white" stroke-width="1.4"/><path d="M8 16V12C8 10.9 8.9 10 10 10C11.1 10 12 10.9 12 12V16" stroke="white" stroke-width="1.4" fill="none"/>' },
+  'peligro': { color: '#cc2200', svg: '<path d="M10 3L2 17H18L10 3Z"/><line x1="10" y1="9" x2="10" y2="13"/><circle cx="10" cy="15.5" r="0.9" fill="white" stroke="none"/>' },
+  'hospital': { color: '#cc2200', svg: '<rect x="8" y="3" width="4" height="14" fill="white" stroke="none"/><rect x="3" y="8" width="14" height="4" fill="white" stroke="none"/>' },
+  'bomberos': { color: '#cc2200', svg: '<path d="M10 17C10 17 5 14 5 9C5 9 7 11 8 10C8 10 7 7 10 4C10 4 10 7 12 8C12 8 11 5 13 5C13 5 16 8 15 12C15 14 13 16 10 17Z" fill="white" stroke="white" stroke-width="0.8"/><path d="M10 17C10 17 8 15 8 12C8 11 9 12 10 12C11 12 12 11 12 12C12 15 10 17 10 17Z" fill="#cc2200" stroke="none"/>' },
+  'farmacia': { color: '#cc2200', svg: '<rect x="9" y="4" width="2" height="12" fill="white" stroke="none"/><rect x="4" y="9" width="12" height="2" fill="white" stroke="none"/>' },
+  'policia': { color: '#cc2200', svg: '<circle cx="10" cy="10" r="6"/><circle cx="10" cy="10" r="2.5"/><line x1="10" y1="4" x2="10" y2="6"/><line x1="10" y1="14" x2="10" y2="16"/><line x1="4" y1="10" x2="6" y2="10"/><line x1="14" y1="10" x2="16" y2="10"/>' },
+  'cumbre': { color: '#2e7d32', svg: '<path d="M10 3L3 16H17L10 3Z"/><path d="M7 16L10 10L13 16"/><circle cx="10" cy="6" r="0.8" fill="white" stroke="none"/>' },
+  'rio': { color: '#2e7d32', svg: '<path d="M3 12C6 12 6 7 10 7C14 7 14 12 17 12"/><path d="M3 15C6 15 6 10 10 10C14 10 14 15 17 15"/>' },
+  'arroyo': { color: '#2e7d32', svg: '<path d="M3 13C6 13 6 9 10 9C14 9 14 13 17 13"/><line x1="3" y1="16" x2="17" y2="16"/>' },
+  'agua': { color: '#2e7d32', svg: '<path d="M10 3C10 3 6 8 6 12C6 15 8 17 10 17C12 17 14 15 14 12C14 8 10 3 10 3Z"/><path d="M8 13C9 14 11 14 12 13"/>' },
+  'fuente': { color: '#2e7d32', svg: '<path d="M10 4C10 4 7 7 7 10H13C13 7 10 4 10 4Z"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="7" y1="14" x2="13" y2="14"/><path d="M7 14C7 16 9 17 10 17C11 17 13 16 13 14"/>' },
+  'cueva': { color: '#2e7d32', svg: '<path d="M3 16C3 16 3 9 10 9C17 9 17 16 17 16"/><path d="M3 16H17"/><path d="M10 9V6"/><path d="M8 7L12 5M8 9L12 7" stroke-dasharray="0"/>' },
+  'restaurante': { color: '#e65100', svg: '<path d="M6 3V9C6 12 8 13 10 13C12 13 14 12 14 9V3"/><line x1="10" y1="13" x2="10" y2="17"/><line x1="7" y1="17" x2="13" y2="17"/><line x1="6" y1="7" x2="14" y2="7" stroke-dasharray="2 1"/>' },
+  'supermercado': { color: '#e65100', svg: '<rect x="3" y="6" width="14" height="11" rx="0.5"/><path d="M7 6V4H13V6"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="6" y1="13" x2="14" y2="13"/>' },
+  'gasolinera': { color: '#e65100', svg: '<rect x="3" y="7" width="10" height="10"/><line x1="3" y1="11" x2="13" y2="11"/><path d="M13 9H15C16 9 17 10 17 11V14C17 15 16 15 16 15"/><line x1="16" y1="15" x2="16" y2="17"/><rect x="5" y="13" width="6" height="4" fill="white" stroke="none"/>' },
+  'bar': { color: '#e65100', svg: '<rect x="5" y="9" width="10" height="8" rx="1"/><path d="M5 13H15"/><path d="M7 9V7C7 5 9 4 10 4C11 4 13 5 13 7V9"/>' },
+  'merendero': { color: '#e65100', svg: '<rect x="3" y="6" width="14" height="10" rx="0.5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="10" y1="4" x2="10" y2="6"/><rect x="7" y="12" width="6" height="4" rx="0.5"/>' },
+  'tienda': { color: '#e65100', svg: '<rect x="3" y="7" width="14" height="10" rx="0.5"/><path d="M3 7L5 3H15L17 7"/><line x1="3" y1="11" x2="17" y2="11"/><rect x="8" y="13" width="4" height="4"/>' },
+  'puente': { color: '#37474f', svg: '<line x1="3" y1="9" x2="17" y2="9"/><line x1="3" y1="14" x2="17" y2="14"/><line x1="5" y1="9" x2="5" y2="14"/><line x1="10" y1="9" x2="10" y2="14"/><line x1="15" y1="9" x2="15" y2="14"/><path d="M3 9C5 9 5 5 10 5C15 5 15 9 17 9"/>' },
+  'escalera': { color: '#37474f', svg: '<path d="M4 17L4 13L8 13L8 9L12 9L12 5L17 5"/><line x1="4" y1="17" x2="17" y2="17"/>' },
+  'mirador': { color: '#37474f', svg: '<path d="M3 10C3 10 6 5 10 5C14 5 17 10 17 10C17 10 14 15 10 15C6 15 3 10 3 10Z"/><circle cx="10" cy="10" r="2.5" fill="white" stroke="white" stroke-width="0.5"/><circle cx="10" cy="10" r="1.2" fill="#37474f" stroke="none"/>' },
+  'parking': { color: '#37474f', svg: '<text x="6" y="15" font-size="13" font-weight="bold" fill="white" font-family="Arial, sans-serif" stroke="none">P</text>' },
+  'correos': { color: '#37474f', svg: '<rect x="3" y="6" width="14" height="10" rx="0.5"/><path d="M3 6L10 12L17 6" fill="none"/>' },
+  'informacion': { color: '#37474f', svg: '<circle cx="10" cy="10" r="7"/><line x1="10" y1="9" x2="10" y2="14"/><circle cx="10" cy="6.5" r="0.9" fill="white" stroke="none"/>' },
+  'iglesia': { color: '#6a1b9a', svg: '<path d="M4 17V9L10 6L16 9V17"/><rect x="8" y="12" width="4" height="5"/><line x1="10" y1="2" x2="10" y2="7"/><line x1="7.5" y1="4" x2="12.5" y2="4"/>' },
+  'ermita': { color: '#6a1b9a', svg: '<path d="M5 17V10L10 7L15 10V17"/><rect x="8" y="13" width="4" height="4"/><line x1="10" y1="3" x2="10" y2="8"/><line x1="8" y1="5" x2="12" y2="5"/>' },
+  'ruina': { color: '#6a1b9a', svg: '<rect x="4" y="5" width="12" height="12" rx="0.5"/><line x1="4" y1="9" x2="16" y2="9"/><line x1="4" y1="13" x2="16" y2="13"/><line x1="8" y1="5" x2="8" y2="17"/><line x1="12" y1="5" x2="12" y2="17"/>' },
+  'baño': { color: '#00695c', svg: '<circle cx="6.5" cy="5" r="1.5" fill="white" stroke="none"/><line x1="6.5" y1="6.5" x2="6.5" y2="12"/><line x1="4" y1="9" x2="9" y2="9"/><line x1="6.5" y1="12" x2="4.5" y2="16"/><line x1="6.5" y1="12" x2="8.5" y2="16"/><circle cx="13.5" cy="5" r="1.5" fill="white" stroke="none"/><path d="M11 9L13.5 6.5L16 9L14.5 16H12.5L11 9Z" fill="white" stroke="none"/>' },
+  'wc': { color: '#00695c', svg: '<circle cx="6.5" cy="5" r="1.5" fill="white" stroke="none"/><line x1="6.5" y1="6.5" x2="6.5" y2="12"/><line x1="4" y1="9" x2="9" y2="9"/><line x1="6.5" y1="12" x2="4.5" y2="16"/><line x1="6.5" y1="12" x2="8.5" y2="16"/><circle cx="13.5" cy="5" r="1.5" fill="white" stroke="none"/><path d="M11 9L13.5 6.5L16 9L14.5 16H12.5L11 9Z" fill="white" stroke="none"/>' },
+  'ducha': { color: '#00695c', svg: '<path d="M5 5C5 5 7 5 9 7" stroke-width="1.8" fill="none"/><ellipse cx="11" cy="8.5" rx="3.5" ry="2" transform="rotate(-45 11 8.5)" fill="none" stroke="white" stroke-width="1.4"/><line x1="8" y1="12" x2="8" y2="15"/><line x1="11" y1="13" x2="11" y2="16"/><line x1="14" y1="12" x2="14" y2="15"/>' },
+  'piscina': { color: '#00695c', svg: '<rect x="3" y="6" width="14" height="10" rx="0.5"/><path d="M3 11C5 11 5 9 7.5 9C10 9 10 11 12.5 11C15 11 15 9 17 9" fill="none" stroke="white" stroke-width="1.4"/><path d="M3 14C5 14 5 12 7.5 12C10 12 10 14 12.5 14C15 14 15 12 17 12" fill="none" stroke="white" stroke-width="1.4"/>' },
+  'telefono': { color: '#00695c', svg: '<path d="M6 4H9L10 7L8.5 8.5C9.5 10.5 11.5 12 13.5 13L15 11.5L18 12.5V15.5C18 16.5 17 17 16 17C9 17 3 11 3 4C3 3 3.5 2 4.5 2H7.5L6 4Z" stroke-width="1.3"/>' }
 };
 
 /**
- * Obtiene el emoji correspondiente a un tipo de punto de interés
+ * Obtiene el color y SVG correspondiente a un tipo de punto de interés
  */
-function getPOIEmoji(descripcion) {
-  if (!descripcion) return '📍';
+function getPOISVG(descripcion) {
+  if (!descripcion) return { color: '#37474f', svg: '<circle cx="10" cy="10" r="3" fill="white"/>' };
   const desc = descripcion.toLowerCase().trim();
-  return POI_EMOJI_MAP[desc] || '📍';
+  return POI_SVG_MAP[desc] || { color: '#37474f', svg: '<circle cx="10" cy="10" r="3" fill="white"/>' };
 }
 
 /**
- * Genera una imagen de emoji en un canvas para usar como icono en MapLibre.
- * MapLibre SDF fonts no soportan emojis, así que los renderizamos como imágenes.
+ * Genera una imagen de pin SVG con color y icono para usar como icono en MapLibre
  */
-function createEmojiImage(emoji, size = 48) {
+function createSVGPinImage(poiType, size = 50) {
+  const poiData = getPOISVG(poiType);
+  const color = poiData.color;
+  const svgContent = poiData.svg;
+
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, size, size);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = `${Math.round(size * 0.75)}px sans-serif`;
-  ctx.fillText(emoji, size / 2, size / 2);
-  return { data: ctx.getImageData(0, 0, size, size).data, width: size, height: size };
+
+  const svgString = `
+    <svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="shadow">
+          <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.4"/>
+        </filter>
+      </defs>
+      <g filter="url(#shadow)">
+        <!-- Pin circle -->
+        <circle cx="25" cy="22" r="18" fill="${color}"/>
+        <!-- Pin tail -->
+        <path d="M25 40L18 28C18 28 22 20 25 20C28 20 32 28 32 28L25 40Z" fill="${color}"/>
+        <!-- Icon container -->
+        <g transform="translate(25, 22) scale(0.9)">
+          <svg viewBox="0 0 20 20" width="18" height="18" x="-9" y="-9">
+            ${svgContent}
+          </svg>
+        </g>
+      </g>
+    </svg>
+  `;
+
+  const img = new Image();
+  img.onload = () => {
+    ctx.drawImage(img, 0, 0, size, size);
+  };
+  img.src = 'data:image/svg+xml;base64,' + btoa(svgString);
+
+  return new Promise((resolve) => {
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, size, size);
+      const imageData = ctx.getImageData(0, 0, size, size);
+      resolve({ data: imageData.data, width: size, height: size });
+    };
+  });
 }
 
 /**
- * Carga los puntos de interés con emojis diferenciados por tipo.
- * Usa icon-image con imágenes generadas por canvas (los SDF glyphs no soportan emoji).
+ * Carga los puntos de interés con pins SVG diferenciados por tipo y color.
  */
 async function mlLoadPuntosInteres(url) {
   const sourceId = 'puntos-interes-source';
@@ -2038,35 +2071,37 @@ async function mlLoadPuntosInteres(url) {
       return;
     }
 
-    // Recoger emojis únicos y registrar como imágenes en el mapa
-    const usedEmojis = new Set();
+    // Recoger tipos únicos de POI y registrar como imágenes en el mapa
+    const usedPOITypes = new Set();
     geojson.features.forEach(f => {
       const desc = f.properties.descripcio || f.properties.descripcion || f.properties.Descripcion || f.properties.tipo || '';
-      const emoji = getPOIEmoji(desc);
-      f.properties._emoji = emoji;
       f.properties._poiType = desc;
-      f.properties._emojiIcon = 'poi-emoji-' + desc.toLowerCase().trim();
-      usedEmojis.add(emoji);
+      f.properties._svgIcon = 'poi-svg-' + desc.toLowerCase().trim();
+      usedPOITypes.add(desc.toLowerCase().trim());
     });
 
-    // Registrar cada emoji único como imagen en el mapa
-    for (const emoji of usedEmojis) {
-      const imgId = 'poi-emoji-' + emoji;
+    // Registrar cada tipo de POI único como imagen SVG en el mapa
+    for (const poiType of usedPOITypes) {
+      const imgId = 'poi-svg-' + poiType;
       if (!mlMap.hasImage(imgId)) {
-        const img = createEmojiImage(emoji, 48);
-        mlMap.addImage(imgId, img, { sdf: false });
+        try {
+          const img = await createSVGPinImage(poiType, 50);
+          mlMap.addImage(imgId, img, { sdf: false });
+        } catch (err) {
+          console.warn(`Error creating SVG for POI type "${poiType}":`, err);
+        }
       }
     }
-    // Registrar el fallback
-    if (!mlMap.hasImage('poi-emoji-📍')) {
-      const fallbackImg = createEmojiImage('📍', 48);
-      mlMap.addImage('poi-emoji-📍', fallbackImg, { sdf: false });
-    }
 
-    // Asignar el id de imagen a cada feature
-    geojson.features.forEach(f => {
-      f.properties._emojiIcon = 'poi-emoji-' + f.properties._emoji;
-    });
+    // Registrar el fallback
+    if (!mlMap.hasImage('poi-svg-default')) {
+      try {
+        const fallbackImg = await createSVGPinImage('', 50);
+        mlMap.addImage('poi-svg-default', fallbackImg, { sdf: false });
+      } catch (err) {
+        console.warn('Error creating fallback SVG:', err);
+      }
+    }
 
     // Remover si ya existe
     if (mlMap.getLayer(layerId)) {
@@ -2082,24 +2117,24 @@ async function mlLoadPuntosInteres(url) {
     });
     mlLoadedSources.add(sourceId);
 
-    // Capa de iconos con emojis renderizados como imágenes
+    // Capa de iconos con pins SVG
     mlMap.addLayer({
       id: layerId,
       type: 'symbol',
       source: sourceId,
       minzoom: 14,
       layout: {
-        'icon-image': ['get', '_emojiIcon'],
+        'icon-image': ['get', '_svgIcon'],
         'icon-size': [
           'interpolate', ['linear'], ['zoom'],
-          14, 0.45,
-          16, 0.65,
-          18, 0.85,
-          20, 1.0
+          14, 0.7,
+          16, 0.9,
+          18, 1.1,
+          20, 1.3
         ],
         'icon-allow-overlap': true,
         'icon-ignore-placement': true,
-        'icon-anchor': 'center'
+        'icon-anchor': 'bottom'
       }
     });
 
@@ -2134,7 +2169,6 @@ async function mlLoadPuntosInteres(url) {
       const coords = e.features[0].geometry.coordinates.slice();
       const desc = props._poiType || 'Punto de interés';
       const nombre = props.Nombre || props.nombre || '';
-      const emoji = props._emoji || '📍';
 
       // Ajustar coordenadas si es MultiPoint
       while (Math.abs(e.lngLat.lng - coords[0]) > 180) {
@@ -2157,7 +2191,6 @@ async function mlLoadPuntosInteres(url) {
         .setLngLat(coords)
         .setHTML(`
           <div class="poi-popup-content">
-            <div class="poi-popup-icon">${emoji}</div>
             <div class="poi-popup-info">
               <div class="poi-popup-type">${descCapitalized}</div>
               ${nombre ? `<div class="poi-popup-name">${nombre}</div>` : ''}
