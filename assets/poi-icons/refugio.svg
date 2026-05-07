@@ -1,30 +1,22 @@
-<?xml version="1.0" standalone="no"?>
-<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 20010904//EN"
- "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">
-<svg version="1.0" xmlns="http://www.w3.org/2000/svg"
- width="669.000000pt" height="373.000000pt" viewBox="0 0 669.000000 373.000000"
- preserveAspectRatio="xMidYMid meet">
-<metadata>
-Created by potrace 1.16, written by Peter Selinger 2001-2019
-</metadata>
-<g transform="translate(0.000000,373.000000) scale(0.100000,-0.100000)"
-fill="#E7B902" fill-rule="evenodd" stroke="none">
-<path fill-rule="evenodd" d="M3260 3524 c-285 -33 -467 -96 -664 -229 -399 -269 -634 -763 -587
--1232 39 -391 181 -646 660 -1183 248 -277 643 -670 675 -670 15 0 215 183
-325 298 40 42 115 120 165 172 221 230 486 544 594 703 198 291 284 597 253
-905 -34 346 -164 621 -409 860 -239 234 -533 360 -882 376 -52 2 -111 2 -130
-0z m345 -424 c178 -56 323 -147 442 -277 92 -102 138 -174 186 -294 107 -266
-96 -526 -34 -794 -36 -74 -197 -285 -217 -285 -5 0 -42 -26 -83 -58 -87 -66
--176 -109 -304 -148 -80 -24 -107 -27 -240 -28 -134 0 -161 3 -250 27 -142 39
--226 81 -336 167 -227 177 -349 396 -381 680 -17 162 14 327 96 505 135 292
-455 513 771 533 133 9 264 -2 350 -28z"/>
-<path fill-rule="evenodd" d="M3172 2691 c-449 -453 -512 -520 -506 -534 12 -33 36 -26 90 25 l54
-51 0 -300 c0 -224 3 -303 13 -316 11 -16 32 -17 202 -15 l190 3 5 245 5 245
-123 3 122 3 0 -238 c0 -131 4 -244 8 -251 7 -9 54 -12 203 -10 l194 3 3 313
-c1 171 5 312 9 312 4 0 30 -23 58 -50 52 -51 85 -59 85 -21 0 16 -139 161
--513 539 -88 89 -165 162 -169 162 -4 0 -83 -76 -176 -169z m656 -716 l-3
--320 -147 -3 -148 -3 0 236 c0 144 -4 244 -10 256 -10 17 -23 19 -165 19 -84
-0 -160 -3 -169 -6 -14 -5 -16 -37 -16 -254 l0 -248 -150 -1 -150 -2 0 326 0
-326 214 217 c117 119 224 230 237 245 l24 28 243 -248 242 -247 -2 -321z"/>
-</g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80">
+  <defs>
+    <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2"/>
+      <feOffset dy="1.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#s)">
+    <path d="M32 2 C17 2 6 13 6 28 C6 42 18 56 32 76 C46 56 58 42 58 28 C58 13 47 2 32 2 Z" fill="#1976D2"/>
+    <circle cx="32" cy="28" r="17" fill="#FFFFFF"/>
+  </g>
+  <g transform="translate(32 28)" fill="#1976D2" stroke="#1976D2" stroke-width="2"
+     stroke-linecap="round" stroke-linejoin="round">
+    
+        <path d="M-10 9 L-10 0 L0 -9 L10 0 L10 9 Z" fill="none"/>
+        <path d="M-4 9 L-4 2 L4 2 L4 9 Z" fill="#1976D2" stroke="none"/>
+        <circle cx="0" cy="-2" r="1.5" fill="#1976D2" stroke="none"/>
+    
+  </g>
 </svg>

@@ -14,9 +14,7 @@
   <g transform="translate(32 28)" fill="#388E3C" stroke="#388E3C" stroke-width="2"
      stroke-linecap="round" stroke-linejoin="round">
     
-        <path d="M-10 -5 Q-5 -8 0 -5 T10 -5" fill="none" stroke-width="2.2"/>
-        <path d="M-10 1 Q-5 -2 0 1 T10 1" fill="none" stroke-width="2.2"/>
-        <path d="M-10 7 Q-5 4 0 7 T10 7" fill="none" stroke-width="2.2"/>
+        <path d="M0 -10 C-6 -2 -7 4 -7 6 C-7 9 -3 11 0 11 C3 11 7 9 7 6 C7 4 6 -2 0 -10 Z" fill="#388E3C" stroke="none"/>
     
   </g>
 </svg>

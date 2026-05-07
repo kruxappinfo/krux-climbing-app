@@ -8,15 +8,15 @@
     </filter>
   </defs>
   <g filter="url(#s)">
-    <path d="M32 2 C17 2 6 13 6 28 C6 42 18 56 32 76 C46 56 58 42 58 28 C58 13 47 2 32 2 Z" fill="#388E3C"/>
+    <path d="M32 2 C17 2 6 13 6 28 C6 42 18 56 32 76 C46 56 58 42 58 28 C58 13 47 2 32 2 Z" fill="#D32F2F"/>
     <circle cx="32" cy="28" r="17" fill="#FFFFFF"/>
   </g>
-  <g transform="translate(32 28)" fill="#388E3C" stroke="#388E3C" stroke-width="2"
+  <g transform="translate(32 28)" fill="#D32F2F" stroke="#D32F2F" stroke-width="2"
      stroke-linecap="round" stroke-linejoin="round">
     
-        <path d="M-10 -5 Q-5 -8 0 -5 T10 -5" fill="none" stroke-width="2.2"/>
-        <path d="M-10 1 Q-5 -2 0 1 T10 1" fill="none" stroke-width="2.2"/>
-        <path d="M-10 7 Q-5 4 0 7 T10 7" fill="none" stroke-width="2.2"/>
+        <path d="M0 -10 L10 9 L-10 9 Z" fill="none"/>
+        <rect x="-1.2" y="-4" width="2.4" height="7" fill="#D32F2F" stroke="none"/>
+        <circle cx="0" cy="6" r="1.4" fill="#D32F2F" stroke="none"/>
     
   </g>
 </svg>
