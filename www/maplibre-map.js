@@ -1988,7 +1988,38 @@ const POI_SVG_MAP = {
   'wc': { color: '#00695c', svg: '<circle cx="6.5" cy="5" r="1.5" fill="white" stroke="none"/><line x1="6.5" y1="6.5" x2="6.5" y2="12"/><line x1="4" y1="9" x2="9" y2="9"/><line x1="6.5" y1="12" x2="4.5" y2="16"/><line x1="6.5" y1="12" x2="8.5" y2="16"/><circle cx="13.5" cy="5" r="1.5" fill="white" stroke="none"/><path d="M11 9L13.5 6.5L16 9L14.5 16H12.5L11 9Z" fill="white" stroke="none"/>' },
   'ducha': { color: '#00695c', svg: '<path d="M5 5C5 5 7 5 9 7" stroke-width="1.8" fill="none"/><ellipse cx="11" cy="8.5" rx="3.5" ry="2" transform="rotate(-45 11 8.5)" fill="none" stroke="white" stroke-width="1.4"/><line x1="8" y1="12" x2="8" y2="15"/><line x1="11" y1="13" x2="11" y2="16"/><line x1="14" y1="12" x2="14" y2="15"/>' },
   'piscina': { color: '#00695c', svg: '<rect x="3" y="6" width="14" height="10" rx="0.5"/><path d="M3 11C5 11 5 9 7.5 9C10 9 10 11 12.5 11C15 11 15 9 17 9" fill="none" stroke="white" stroke-width="1.4"/><path d="M3 14C5 14 5 12 7.5 12C10 12 10 14 12.5 14C15 14 15 12 17 12" fill="none" stroke="white" stroke-width="1.4"/>' },
-  'telefono': { color: '#00695c', svg: '<path d="M6 4H9L10 7L8.5 8.5C9.5 10.5 11.5 12 13.5 13L15 11.5L18 12.5V15.5C18 16.5 17 17 16 17C9 17 3 11 3 4C3 3 3.5 2 4.5 2H7.5L6 4Z" stroke-width="1.3"/>' }
+  'telefono': { color: '#00695c', svg: '<path d="M6 4H9L10 7L8.5 8.5C9.5 10.5 11.5 12 13.5 13L15 11.5L18 12.5V15.5C18 16.5 17 17 16 17C9 17 3 11 3 4C3 3 3.5 2 4.5 2H7.5L6 4Z" stroke-width="1.3"/>' },
+  'banco': { color: '#F99D04', svg: '<rect x="3" y="14" width="14" height="2" fill="white" stroke="none"/><rect x="3" y="5" width="14" height="2" fill="white" stroke="none"/><rect x="5" y="7" width="2" height="7" fill="white" stroke="none"/><rect x="9" y="7" width="2" height="7" fill="white" stroke="none"/><rect x="13" y="7" width="2" height="7" fill="white" stroke="none"/>' }
+};
+
+// Mapa de POIs que tienen icono SVG externo disponible
+const POI_SVG_FILES = {
+  'camping': 'assets/poi-icons/camping.svg',
+  'hotel': 'assets/poi-icons/hotel.svg',
+  'refugio': 'assets/poi-icons/refugio.svg',
+  'bomberos': 'assets/poi-icons/bomberos.svg',
+  'farmacia': 'assets/poi-icons/farmacia.svg',
+  'hospital': 'assets/poi-icons/hospital.svg',
+  'policia': 'assets/poi-icons/policia.svg',
+  'escalera': 'assets/poi-icons/escalera.svg',
+  'puente': 'assets/poi-icons/puente.svg',
+  'baño': 'assets/poi-icons/bano.svg',
+  'wc': 'assets/poi-icons/bano.svg',
+  'ducha': 'assets/poi-icons/ducha.svg',
+  'fuente': 'assets/poi-icons/fuente.svg',
+  'merendero': 'assets/poi-icons/merendero.svg',
+  'piscina': 'assets/poi-icons/piscina.svg',
+  'arroyo': 'assets/poi-icons/arroyo.svg',
+  'cueva': 'assets/poi-icons/cueva.svg',
+  'cumbre': 'assets/poi-icons/cumbre.svg',
+  'rio': 'assets/poi-icons/rio.svg',
+  'iglesia': 'assets/poi-icons/iglesia.svg',
+  'ruina': 'assets/poi-icons/ruina.svg',
+  'banco': 'assets/poi-icons/banco.svg',
+  'bar': 'assets/poi-icons/bar.svg',
+  'correos': 'assets/poi-icons/correos.svg',
+  'gasolinera': 'assets/poi-icons/gasolinera.svg',
+  'restaurante': 'assets/poi-icons/restaurante.svg',
 };
 
 /**
@@ -2001,55 +2032,58 @@ function getPOISVG(descripcion) {
 }
 
 /**
- * Genera una imagen de pin SVG con color y icono para usar como icono en MapLibre
+ * Genera una imagen de pin SVG con color y icono para usar como icono en MapLibre.
+ * Si hay SVG externo disponible en POI_SVG_FILES, lo usa directamente.
  */
 function createSVGPinImage(poiType, size = 50) {
-  const poiData = getPOISVG(poiType);
-  const color = poiData.color;
-  const svgContent = poiData.svg;
+  const desc = (poiType || '').toLowerCase().trim();
+  const externalSvg = POI_SVG_FILES[desc];
 
   return new Promise((resolve, reject) => {
-    const svgString = `
-      <svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <filter id="shadow">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.4"/>
-          </filter>
-        </defs>
-        <g filter="url(#shadow)">
-          <!-- Pin circle -->
-          <circle cx="25" cy="22" r="18" fill="${color}"/>
-          <!-- Pin tail -->
-          <path d="M25 40L18 28C18 28 22 20 25 20C28 20 32 28 32 28L25 40Z" fill="${color}"/>
-          <!-- Icon container -->
-          <g transform="translate(25, 22) scale(0.9)">
-            <svg viewBox="0 0 20 20" width="18" height="18" x="-9" y="-9">
-              ${svgContent}
-            </svg>
-          </g>
-        </g>
-      </svg>
-    `;
-
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, size, size);
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onerror = () => reject(new Error(`Failed to load SVG for POI type "${poiType}"`));
-    img.onload = () => {
-      try {
-        ctx.drawImage(img, 0, 0, size, size);
-        const imageData = ctx.getImageData(0, 0, size, size);
-        resolve({ data: imageData.data, width: size, height: size });
-      } catch (e) {
-        reject(e);
-      }
+    const renderImg = (src) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onerror = () => reject(new Error(`Failed to load SVG for POI type "${poiType}"`));
+      img.onload = () => {
+        try {
+          ctx.drawImage(img, 0, 0, size, size);
+          resolve({ data: ctx.getImageData(0, 0, size, size).data, width: size, height: size });
+        } catch (e) { reject(e); }
+      };
+      img.src = src;
     };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
+
+    if (externalSvg) {
+      // Usar SVG externo directamente
+      renderImg(externalSvg);
+    } else {
+      // Generar pin programáticamente con icono inline
+      const poiData = getPOISVG(poiType);
+      const svgString = `
+        <svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="shadow">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.4"/>
+            </filter>
+          </defs>
+          <g filter="url(#shadow)">
+            <circle cx="25" cy="22" r="18" fill="${poiData.color}"/>
+            <path d="M25 40L18 28C18 28 22 20 25 20C28 20 32 28 32 28L25 40Z" fill="${poiData.color}"/>
+            <g transform="translate(25, 22) scale(0.9)">
+              <svg viewBox="0 0 20 20" width="18" height="18" x="-9" y="-9">
+                ${poiData.svg}
+              </svg>
+            </g>
+          </g>
+        </svg>`;
+      renderImg('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString));
+    }
   });
 }
 
