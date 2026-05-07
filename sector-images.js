@@ -15,7 +15,7 @@
 // ============================================
 const SECTOR_GALLERY_CONFIG = {
   maxImages: Infinity,       // Sin límite de fotos por sector
-  maxFileSize: 10 * 1024 * 1024, // 10MB
+  maxFileSize: 30 * 1024 * 1024, // 30MB
   allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
   compressThreshold: 2 * 1024 * 1024, // Comprimir si > 2MB
   maxDimension: 2000         // Máx dimensión en px
@@ -1089,7 +1089,7 @@ function showSectorUploadModal(schoolId, encodedSectorName) {
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
             <p>Arrastra una imagen aquí o haz clic para seleccionar</p>
-            <span class="dropzone-hint">JPG, PNG, HEIC - Máx 10MB</span>
+            <span class="dropzone-hint">JPG, PNG, HEIC - Máx 30MB</span>
           </div>
         </div>
 
@@ -1181,8 +1181,8 @@ async function handleSectorFile(file) {
   }
 
   // Validar tamaño (10MB máx)
-  if (file.size > 10 * 1024 * 1024) {
-    showSectorToast('La imagen es demasiado grande (máx 10MB)', 'error');
+  if (file.size > 30 * 1024 * 1024) {
+    showSectorToast('La imagen es demasiado grande (máx 30MB)', 'error');
     return;
   }
 
