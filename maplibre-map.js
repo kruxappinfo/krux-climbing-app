@@ -2022,6 +2022,7 @@ const POI_SVG_FILES = {
   'restaurante': 'assets/poi-icons/restaurante.svg',
   'merendero': 'assets/poi-icons/merendero.svg',
   // Infraestructura
+  'parking': 'assets/poi-icons/parking.svg',
   'escalera': 'assets/poi-icons/escalera.svg',
   'puente': 'assets/poi-icons/puente.svg',
   // Patrimonio
