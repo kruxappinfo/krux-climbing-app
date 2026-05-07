@@ -2092,6 +2092,14 @@ function createSVGPinImage(poiType, size = 50) {
             const dx = (size - drawW) / 2;
             const dy = (size - drawH) / 2;
             ctx.drawImage(img, minX, minY, cw, ch, dx, dy, drawW, drawH);
+            // Normalizar alpha: pixels semi-opacos (alpha 30-200) pasan a 255
+            // para evitar que PNGs con transparencia parcial se vean lavados en el mapa
+            const id = ctx.getImageData(0, 0, size, size);
+            const d = id.data;
+            for (let i = 3; i < d.length; i += 4) {
+              if (d[i] > 30 && d[i] < 240) d[i] = 255;
+            }
+            ctx.putImageData(id, 0, 0);
           } else {
             ctx.drawImage(img, 0, 0, size, size);
           }
