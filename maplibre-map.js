@@ -2117,19 +2117,7 @@ function createSVGPinImage(poiType, size = 50) {
 
     if (externalSvg) {
       if (externalSvg.endsWith('.svg')) {
-        // Normalizar SVG a contenedor cuadrado 500x500 para tamaño uniforme en el mapa
-        fetch(externalSvg + '?v=' + POI_ICONS_VERSION)
-          .then(r => r.text())
-          .then(svgText => {
-            const vbMatch = svgText.match(/viewBox=["']([^"']+)["']/);
-            const inner = svgText.replace(/<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
-            const normalized = vbMatch
-              ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><svg viewBox="${vbMatch[1]}" x="0" y="0" width="500" height="500" preserveAspectRatio="xMidYMid meet">${inner}</svg></svg>`
-              : svgText;
-            const blob = new Blob([normalized], { type: 'image/svg+xml' });
-            renderImg(URL.createObjectURL(blob), false);
-          })
-          .catch(() => renderImg(externalSvg + '?v=' + POI_ICONS_VERSION, false));
+        renderImg(externalSvg + '?v=' + POI_ICONS_VERSION, false);
       } else {
         // PNGs: recortar al bbox del contenido para centrar el pin
         renderImg(externalSvg + '?v=' + POI_ICONS_VERSION, true);
