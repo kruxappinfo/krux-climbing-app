@@ -2092,20 +2092,6 @@ function createSVGPinImage(poiType, size = 50) {
             const dx = (size - drawW) / 2;
             const dy = (size - drawH) / 2;
             ctx.drawImage(img, minX, minY, cw, ch, dx, dy, drawW, drawH);
-            // Normalizar alpha: píxeles semi-opacos con color (no blanco/transparente)
-            // pasan a 255 para evitar que pines semi-transparentes se vean lavados.
-            // Se excluyen píxeles near-white (fondos blancos con alpha bajo).
-            const id = ctx.getImageData(0, 0, size, size);
-            const d = id.data;
-            for (let i = 3; i < d.length; i += 4) {
-              if (d[i] > 30 && d[i] < 240) {
-                // Excluir solo near-white con alpha MUY bajo (fondo blanco mal exportado).
-                // Near-white con alpha >= 80 es parte real del pin (círculo interior, etc.)
-                const isNearWhite = d[i-3] > 200 && d[i-2] > 200 && d[i-1] > 200;
-                if (!isNearWhite || d[i] >= 80) d[i] = 255;
-              }
-            }
-            ctx.putImageData(id, 0, 0);
           } else {
             ctx.drawImage(img, 0, 0, size, size);
           }
