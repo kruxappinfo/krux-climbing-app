@@ -2008,13 +2008,13 @@ const POI_SVG_FILES = {
   'hospital': 'assets/poi-icons/hospital.svg',
   'policia': 'assets/poi-icons/policia.svg',
   // Naturaleza
-  'arroyo': 'assets/poi-icons-png/arroyo.png',
-  'cueva': 'assets/poi-icons-png/cueva.png',
-  'cumbre': 'assets/poi-icons-png/cumbre.png',
-  'rio': 'assets/poi-icons-png/rio.png',
+  'arroyo': 'assets/poi-icons/arroyo.svg',
+  'cueva': 'assets/poi-icons/cueva.svg',
+  'cumbre': 'assets/poi-icons/cumbre.svg',
+  'rio': 'assets/poi-icons/rio.svg',
   'fuente': 'assets/poi-icons/fuente.svg',
   // Servicios
-  'banco': 'assets/poi-icons-png/banco.png',
+  'banco': 'assets/poi-icons/banco.svg',
   'bar': 'assets/poi-icons/bar.svg',
   'correos': 'assets/poi-icons/correos.svg',
   'gasolinera': 'assets/poi-icons/gasolinera.svg',
