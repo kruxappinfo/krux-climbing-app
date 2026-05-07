@@ -1999,7 +1999,7 @@ const POI_ICONS_VERSION = '4';
 const POI_SVG_FILES = {
   // Alojamientos
   'camping': 'assets/poi-icons-png/camping.png',
-  'hotel': 'assets/poi-icons-png/hotel.png',
+  'hotel': 'assets/poi-icons/hotel.svg',
   'refugio': 'assets/poi-icons-png/refugio.png',
   // Estado / urgencias
   'bomberos': 'assets/poi-icons-png/bomberos.png',
