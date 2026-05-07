@@ -15857,40 +15857,74 @@ body.map-active #btn-dev-editor {
 
 /* Preview */
 .sector-upload-preview {
-  position: relative;
-  border-radius: 12px;
-  overflow: hidden;
   margin-top: 16px;
 }
 
-.sector-upload-preview img {
-  width: 100%;
-  max-height: 300px;
-  object-fit: contain;
+.sector-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.sector-preview-thumb {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 1;
   background: #f0f0f0;
 }
 
-.sector-remove-preview {
+.sector-preview-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sector-remove-thumb {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 32px;
-  height: 32px;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   background: rgba(0,0,0,0.6);
   border: none;
   border-radius: 50%;
   color: white;
   cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s;
   box-shadow: none;
+  transition: background 0.2s;
 }
 
-.sector-remove-preview:hover {
-  background: rgba(0,0,0,0.8);
+.sector-remove-thumb:hover {
+  background: rgba(0,0,0,0.85);
+  transform: none;
+}
+
+.sector-add-more {
+  margin-top: 10px;
+  width: 100%;
+  padding: 8px;
+  background: none;
+  border: 1px dashed #9ca3af;
+  border-radius: 8px;
+  color: #6b7280;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: none;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.sector-add-more:hover {
+  border-color: #4f46e5;
+  color: #4f46e5;
   transform: none;
 }
 
