@@ -336,13 +336,18 @@ function toggleSpotterMenu() {
     },
   ];
 
-  const poiItemsHTML = poiSections.map(section => `
-    <div class="dev-poi-section-header" style="color:${section.color}">${section.label}</div>
-    ${section.items.map(t =>
-      `<button class="dev-spotter-poi-type" onclick="selectPOIType('${t.key}')">
-        <span class="dev-spotter-poi-emoji">${t.emoji}</span>${t.label}
-      </button>`
-    ).join('')}
+  const poiItemsHTML = poiSections.map((section, i) => `
+    <button class="dev-poi-section-header" style="--section-color:${section.color}" onclick="togglePOISection(${i})">
+      <span style="color:${section.color}">${section.label}</span>
+      <span class="dev-poi-section-chevron" id="dev-poi-sec-chevron-${i}">›</span>
+    </button>
+    <div class="dev-poi-section-items" id="dev-poi-sec-${i}">
+      ${section.items.map(t =>
+        `<button class="dev-spotter-poi-type" onclick="selectPOIType('${t.key}')">
+          <span class="dev-spotter-poi-emoji">${t.emoji}</span>${t.label}
+        </button>`
+      ).join('')}
+    </div>
   `).join('');
 
   const menu = document.createElement('div');
@@ -399,6 +404,15 @@ function togglePOIAccordion(e) {
   const chevron = document.getElementById('dev-poi-chevron');
   if (submenu) {
     const isOpen = submenu.classList.toggle('open');
+    if (chevron) chevron.textContent = isOpen ? '⌄' : '›';
+  }
+}
+
+function togglePOISection(index) {
+  const items = document.getElementById(`dev-poi-sec-${index}`);
+  const chevron = document.getElementById(`dev-poi-sec-chevron-${index}`);
+  if (items) {
+    const isOpen = items.classList.toggle('open');
     if (chevron) chevron.textContent = isOpen ? '⌄' : '›';
   }
 }
@@ -2099,6 +2113,7 @@ window.loadPendingRoutesFromFirestore = loadPendingRoutesFromFirestore;
 window.toggleSpotterMenu = toggleSpotterMenu;
 window.selectSpotterOption = selectSpotterOption;
 window.togglePOIAccordion = togglePOIAccordion;
+window.togglePOISection = togglePOISection;
 window.selectPOIType = selectPOIType;
 
 // Modo POI
