@@ -1999,6 +1999,7 @@ const POI_ICONS_VERSION = '5';
 const POI_SVG_FILES = {
   // Alojamientos
   'camping': 'assets/poi-icons/camping.svg',
+  'vivac': 'assets/poi-icons/camping.svg',
   'hotel': 'assets/poi-icons/hotel.svg',
   'refugio': 'assets/poi-icons/refugio.svg',
   'albergue': 'assets/poi-icons/refugio.svg',
@@ -2009,7 +2010,6 @@ const POI_SVG_FILES = {
   'hospital': 'assets/poi-icons/hospital.svg',
   'policia': 'assets/poi-icons/policia.svg',
   // Naturaleza
-  'arroyo': 'assets/poi-icons/arroyo.svg',
   'cueva': 'assets/poi-icons/cueva.svg',
   'cumbre': 'assets/poi-icons/cumbre.svg',
   'rio': 'assets/poi-icons/rio.svg',
@@ -2021,12 +2021,15 @@ const POI_SVG_FILES = {
   'gasolinera': 'assets/poi-icons/gasolinera.svg',
   'restaurante': 'assets/poi-icons/restaurante.svg',
   'merendero': 'assets/poi-icons/merendero.svg',
+  'tienda': 'assets/poi-icons/tienda.svg',
+  'supermercado': 'assets/poi-icons/tienda.svg',
   // Infraestructura
   'parking': 'assets/poi-icons/parking.svg',
   'escalera': 'assets/poi-icons/escalera.svg',
   'puente': 'assets/poi-icons/puente.svg',
   // Patrimonio
   'iglesia': 'assets/poi-icons/iglesia.svg',
+  'ermita': 'assets/poi-icons/iglesia.svg',
   'ruina': 'assets/poi-icons/ruina.svg',
   // Instalaciones
   'baño': 'assets/poi-icons/bano.svg',
@@ -2035,7 +2038,6 @@ const POI_SVG_FILES = {
   'piscina': 'assets/poi-icons/zona-de-bano.svg',
   // Otros
   'mirador': 'assets/poi-icons/mirador.svg',
-  'tienda': 'assets/poi-icons/tienda.svg',
   'informacion': 'assets/poi-icons/info.svg',
 };
 

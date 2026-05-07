@@ -278,8 +278,6 @@ function toggleSpotterMenu() {
       items: [
         { key: 'cumbre',  label: 'Cumbre',  emoji: '🏔️' },
         { key: 'rio',     label: 'Río',     emoji: '🌊' },
-        { key: 'arroyo',  label: 'Arroyo',  emoji: '💧' },
-        { key: 'agua',    label: 'Agua',    emoji: '🫗' },
         { key: 'fuente',  label: 'Fuente',  emoji: '🚰' },
         { key: 'cueva',   label: 'Cueva',   emoji: '🕳️' },
       ]
@@ -322,7 +320,6 @@ function toggleSpotterMenu() {
         { key: 'puente',     label: 'Puente',     emoji: '🌉' },
         { key: 'escalera',   label: 'Escalera',   emoji: '🪜' },
         { key: 'mirador',    label: 'Mirador',    emoji: '👁️' },
-        { key: 'telefono',   label: 'Teléfono',   emoji: '📞' },
       ]
     },
     {
