@@ -8883,7 +8883,6 @@ async function loadApprovedPOIFromFirestore(schoolId) {
             }
 
             const desc = data.descripcio || '';
-            const emoji = getPOIEmoji(desc);
 
             features.push({
               type: 'Feature',
@@ -8892,9 +8891,8 @@ async function loadApprovedPOIFromFirestore(schoolId) {
                 descripcio: desc,
                 nombre: data.nombre || '',
                 link: data.link || '',
-                _emoji: emoji,
                 _poiType: desc,
-                _emojiIcon: 'poi-emoji-' + emoji,
+                _svgIcon: 'poi-svg-' + desc.toLowerCase().trim(),
                 isUserPOI: true,
                 createdByEmail: data.createdByEmail || '',
                 lng: data.coordinates[0],
@@ -8906,14 +8904,24 @@ async function loadApprovedPOIFromFirestore(schoolId) {
 
           console.log(`%c[ApprovedPOI] Realtime: ${features.length} POI para ${schoolId} (skippedCoords=${skippedCoords}, skippedSchool=${skippedSchool})`, 'color: #4CAF50; font-weight: bold');
 
-          // Registrar emojis necesarios
-          const usedEmojis = new Set(features.map(f => f.properties._emoji));
-          for (const emoji of usedEmojis) {
-            const imgId = 'poi-emoji-' + emoji;
+          // Registrar iconos SVG necesarios (igual que mlLoadPuntosInteres)
+          const usedTypes = new Set(features.map(f => f.properties._poiType.toLowerCase().trim()));
+          for (const poiType of usedTypes) {
+            const imgId = 'poi-svg-' + poiType;
             if (!mlMap.hasImage(imgId)) {
-              const img = createEmojiImage(emoji, 48);
-              mlMap.addImage(imgId, img, { sdf: false });
+              try {
+                const img = await createSVGPinImage(poiType, 50);
+                mlMap.addImage(imgId, img, { sdf: false });
+              } catch (e) {
+                console.warn('[ApprovedPOI] Error creando icono para', poiType, e);
+              }
             }
+          }
+          if (!mlMap.hasImage('poi-svg-default')) {
+            try {
+              const fallbackImg = await createSVGPinImage('', 50);
+              mlMap.addImage('poi-svg-default', fallbackImg, { sdf: false });
+            } catch (e) {}
           }
 
           const geojson = { type: 'FeatureCollection', features };
@@ -8928,18 +8936,18 @@ async function loadApprovedPOIFromFirestore(schoolId) {
               source: sourceId,
               minzoom: 13,
               layout: {
-                'icon-image': ['get', '_emojiIcon'],
+                'icon-image': ['coalesce', ['image', ['get', '_svgIcon']], ['image', 'poi-svg-default']],
                 'icon-size': [
                   'interpolate', ['linear'], ['zoom'],
-                  13, 0.35,
-                  14, 0.45,
-                  16, 0.65,
-                  18, 0.85,
-                  20, 1.0
+                  13, 0.5,
+                  14, 0.7,
+                  16, 0.9,
+                  18, 1.1,
+                  20, 1.3
                 ],
                 'icon-allow-overlap': true,
                 'icon-ignore-placement': true,
-                'icon-anchor': 'center'
+                'icon-anchor': 'bottom'
               }
             });
             if (!mlUserPOIInteractionAttached) {
@@ -9273,25 +9281,26 @@ async function loadMyPendingPOIFromFirestore(schoolId) {
             if (data.schoolId && data.schoolId !== schoolId) return;
 
             const desc = data.descripcio || '';
-            const emoji = getPOIEmoji(desc);
 
             features.push({
               type: 'Feature',
               properties: {
                 descripcio: desc, nombre: data.nombre || '',
-                _emoji: emoji, _poiType: desc,
-                _emojiIcon: 'poi-emoji-' + emoji,
+                _poiType: desc,
+                _svgIcon: 'poi-svg-' + desc.toLowerCase().trim(),
                 isPending: true
               },
               geometry: { type: 'Point', coordinates: data.coordinates }
             });
           });
 
-          // Registrar emojis
-          const usedEmojis = new Set(features.map(f => f.properties._emoji));
-          for (const emoji of usedEmojis) {
-            const imgId = 'poi-emoji-' + emoji;
-            if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, createEmojiImage(emoji, 48), { sdf: false });
+          // Registrar iconos SVG
+          const usedTypes2 = new Set(features.map(f => f.properties._poiType.toLowerCase().trim()));
+          for (const poiType of usedTypes2) {
+            const imgId = 'poi-svg-' + poiType;
+            if (!mlMap.hasImage(imgId)) {
+              try { mlMap.addImage(imgId, await createSVGPinImage(poiType, 50), { sdf: false }); } catch (e) {}
+            }
           }
 
           const geojson = { type: 'FeatureCollection', features };
@@ -9308,9 +9317,9 @@ async function loadMyPendingPOIFromFirestore(schoolId) {
               minzoom: 13,
               paint: { 'icon-opacity': 0.6 },
               layout: {
-                'icon-image': ['get', '_emojiIcon'],
-                'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.35, 16, 0.65, 20, 1.0],
-                'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-anchor': 'center'
+                'icon-image': ['coalesce', ['image', ['get', '_svgIcon']], ['image', 'poi-svg-default']],
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.5, 16, 0.9, 20, 1.3],
+                'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-anchor': 'bottom'
               }
             });
             mlMap.on('click', layerId, (e) => {
@@ -9688,14 +9697,13 @@ async function loadAllPendingForAdmin(schoolId, minZoom = 14) {
         if (data.schoolId && data.schoolId !== schoolId) return;
         if (!data.coordinates || !Array.isArray(data.coordinates)) return;
         const desc = data.descripcio || '';
-        const emoji = getPOIEmoji(desc);
-        const imgId = 'poi-emoji-' + emoji;
-        if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, createEmojiImage(emoji, 48), { sdf: false });
+        const svgImgId = 'poi-svg-' + desc.toLowerCase().trim();
         features.push({
           type: 'Feature',
           properties: {
             docId: doc.id,
-            _emoji: emoji, _emojiIcon: imgId, _poiType: desc,
+            _poiType: desc,
+            _svgIcon: svgImgId,
             nombre: data.nombre || '',
             createdBy: data.createdBy || '',
             lng: data.coordinates[0],
@@ -9704,6 +9712,14 @@ async function loadAllPendingForAdmin(schoolId, minZoom = 14) {
           geometry: { type: 'Point', coordinates: data.coordinates }
         });
       });
+      // Registrar iconos SVG para admin panel
+      const usedTypesAdmin = new Set(features.map(f => f.properties._poiType.toLowerCase().trim()));
+      for (const poiType of usedTypesAdmin) {
+        const imgId = 'poi-svg-' + poiType;
+        if (!mlMap.hasImage(imgId)) {
+          try { mlMap.addImage(imgId, await createSVGPinImage(poiType, 50), { sdf: false }); } catch (e) {}
+        }
+      }
       const geojson = { type: 'FeatureCollection', features };
       if (mlMap.getSource(poiSourceId)) {
         mlMap.getSource(poiSourceId).setData(geojson);
@@ -9716,9 +9732,9 @@ async function loadAllPendingForAdmin(schoolId, minZoom = 14) {
           minzoom: 13,
           paint: { 'icon-opacity': 0.8 },
           layout: {
-            'icon-image': ['get', '_emojiIcon'],
-            'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.35, 16, 0.65, 20, 1.0],
-            'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-anchor': 'center'
+            'icon-image': ['coalesce', ['image', ['get', '_svgIcon']], ['image', 'poi-svg-default']],
+            'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.5, 16, 0.9, 20, 1.3],
+            'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-anchor': 'bottom'
           }
         });
         if (!mlAdminPendingPOIInteractionAttached) {
@@ -9730,7 +9746,7 @@ async function loadAllPendingForAdmin(schoolId, minZoom = 14) {
             new maplibregl.Popup({ closeButton: true, maxWidth: '290px' })
               .setLngLat(coords)
               .setHTML(`<div style="padding:10px;font-size:13px;">
-                <strong style="color:#DC2626;">${props._emoji || '📍'} ${props._poiType}</strong>
+                <strong style="color:#DC2626;">📍 ${props._poiType}</strong>
                 ${props.nombre ? `<br>${props.nombre}` : ''}
                 <br><small style="color:#9ca3af;">Por: ${props.createdBy}</small><br><br>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
