@@ -78,6 +78,22 @@ async function isDevAdminOrSpotter() {
   }
 }
 
+/**
+ * Devuelve 'approved' si el usuario actual tiene rol 'admin', 'pending' en caso contrario.
+ * Los admins no necesitan pasar por el flujo de aprobación.
+ */
+async function getInitialStatus() {
+  try {
+    const user = auth.currentUser;
+    if (!user) return 'pending';
+    const adminDoc = await db.collection('admins').doc(user.uid).get();
+    if (!adminDoc.exists) return 'pending';
+    return adminDoc.data().role === 'admin' ? 'approved' : 'pending';
+  } catch (e) {
+    return 'pending';
+  }
+}
+
 // ============================================
 // INICIALIZACIÓN DEL BOTÓN
 // ============================================
@@ -839,6 +855,7 @@ async function saveDevRoute() {
     const user = auth.currentUser;
     const schoolId = mlCurrentSchool;
     const schoolName = MAPLIBRE_SCHOOLS[schoolId]?.name || schoolId;
+    const initialStatus = await getInitialStatus();
 
     // Crear documento en Firestore
     const routeData = {
@@ -861,7 +878,7 @@ async function saveDevRoute() {
       createdBy: user.uid,
       createdByEmail: user.email,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      status: 'pending', // pending, approved, rejected
+      status: initialStatus,
 
       // GeoJSON Feature data para exportar (sin arrays anidados para Firestore)
       geojsonFeature: {
@@ -1320,6 +1337,7 @@ async function savePOI() {
     const user = auth.currentUser;
     const nombre = document.getElementById('dev-poi-name')?.value?.trim() || null;
     const link = document.getElementById('dev-poi-link')?.value?.trim() || null;
+    const initialStatus = await getInitialStatus();
 
     const poiData = {
       descripcio: devPOIType,
@@ -1330,7 +1348,7 @@ async function savePOI() {
       createdBy: user.uid,
       createdByEmail: user.email,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      status: 'pending'
+      status: initialStatus
     };
 
     await db.collection('pending_poi').add(poiData);
@@ -1486,6 +1504,7 @@ async function saveSchool() {
   try {
     const user = auth.currentUser;
     const descripcion = document.getElementById('dev-school-desc')?.value?.trim() || null;
+    const initialStatus = await getInitialStatus();
 
     const schoolData = {
       nombre: name,
@@ -1494,7 +1513,7 @@ async function saveSchool() {
       createdBy: user.uid,
       createdByEmail: user.email,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      status: 'pending'
+      status: initialStatus
     };
 
     await db.collection('pending_schools').add(schoolData);
@@ -1804,6 +1823,7 @@ async function saveSector() {
     const expo = document.getElementById('dev-sector-expo')?.value || null;
     const dateStart = document.getElementById('dev-sector-date-start')?.value?.trim() || null;
     const dateEnd = document.getElementById('dev-sector-date-end')?.value?.trim() || null;
+    const initialStatus = await getInitialStatus();
 
     // Guardar vértices como array de objetos {lng, lat}
     // (Firestore no soporta arrays anidados como [[[lng,lat],...]])
@@ -1822,7 +1842,7 @@ async function saveSector() {
       createdBy: user.uid,
       createdByEmail: user.email,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      status: 'pending'
+      status: initialStatus
     };
 
     await db.collection('pending_sectors').add(sectorData);
