@@ -2098,7 +2098,13 @@ function createSVGPinImage(poiType, size = 50) {
             const dy = (size - drawH) / 2;
             ctx.drawImage(img, minX, minY, cw, ch, dx, dy, drawW, drawH);
           } else {
-            ctx.drawImage(img, 0, 0, size, size);
+            // Contain: mantener proporción, centrar en el canvas
+            const scale = Math.min(size / img.width, size / img.height);
+            const drawW = img.width * scale;
+            const drawH = img.height * scale;
+            const dx = (size - drawW) / 2;
+            const dy = (size - drawH) / 2;
+            ctx.drawImage(img, dx, dy, drawW, drawH);
           }
           resolve({ data: ctx.getImageData(0, 0, size, size).data, width: size, height: size });
         } catch (e) { reject(e); }
