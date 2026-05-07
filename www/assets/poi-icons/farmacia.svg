@@ -1,26 +1,21 @@
-<?xml version="1.0" standalone="no"?>
-<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 20010904//EN"
- "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">
-<svg version="1.0" xmlns="http://www.w3.org/2000/svg"
- width="669.000000pt" height="373.000000pt" viewBox="0 0 669.000000 373.000000"
- preserveAspectRatio="xMidYMid meet">
-<metadata>
-Created by potrace 1.16, written by Peter Selinger 2001-2019
-</metadata>
-<g transform="translate(0.000000,373.000000) scale(0.100000,-0.100000)"
-fill="#CD0207" fill-rule="evenodd" stroke="none">
-<path fill-rule="evenodd" d="M3145 3265 c-121 -23 -199 -49 -315 -105 -379 -186 -627 -563 -647
--985 -10 -202 29 -382 123 -569 45 -87 54 -102 126 -208 57 -83 192 -241 308
--362 173 -180 575 -536 603 -536 35 0 498 418 658 592 248 272 351 419 427
-613 120 303 105 639 -40 930 -158 315 -418 521 -778 616 -102 27 -352 35 -465
-14z m409 -296 c193 -41 385 -174 506 -351 70 -101 123 -220 142 -316 17 -86
-14 -304 -6 -385 -32 -134 -117 -293 -211 -396 -102 -112 -293 -224 -435 -256
--195 -43 -416 -21 -572 57 -87 44 -214 135 -269 194 -125 134 -209 316 -230
-500 -28 252 40 479 205 675 143 170 339 271 591 303 52 7 187 -5 279 -25z"/>
-<path fill-rule="evenodd" d="M3182 2658 c-8 -8 -12 -63 -12 -190 l0 -178 -178 0 c-125 0 -182 -4
--190 -12 -8 -8 -12 -60 -12 -170 l0 -158 26 -10 c14 -6 99 -10 190 -10 l164 0
-0 -179 c0 -133 3 -182 13 -188 16 -11 316 -8 327 3 5 5 10 89 11 187 l1 177
-172 0 c131 0 177 3 191 14 17 12 19 29 19 169 1 85 -3 159 -7 164 -5 4 -90 10
--190 13 l-182 5 -5 185 -5 185 -160 3 c-116 2 -164 -1 -173 -10z"/>
-</g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80">
+  <defs>
+    <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2"/>
+      <feOffset dy="1.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#s)">
+    <path d="M32 2 C17 2 6 13 6 28 C6 42 18 56 32 76 C46 56 58 42 58 28 C58 13 47 2 32 2 Z" fill="#D32F2F"/>
+    <circle cx="32" cy="28" r="17" fill="#FFFFFF"/>
+  </g>
+  <g transform="translate(32 28)" fill="#D32F2F" stroke="#D32F2F" stroke-width="2"
+     stroke-linecap="round" stroke-linejoin="round">
+    
+        <rect x="-2.5" y="-9" width="5" height="18" fill="#D32F2F" stroke="none"/>
+        <rect x="-9" y="-2.5" width="18" height="5" fill="#D32F2F" stroke="none"/>
+    
+  </g>
 </svg>
