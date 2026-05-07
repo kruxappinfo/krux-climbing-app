@@ -15,7 +15,7 @@
 // ============================================
 const SECTOR_GALLERY_CONFIG = {
   maxImages: Infinity,       // Sin límite de fotos por sector
-  maxFileSize: 10 * 1024 * 1024, // 10MB
+  maxFileSize: 30 * 1024 * 1024, // 30MB
   allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
   compressThreshold: 2 * 1024 * 1024, // Comprimir si > 2MB
   maxDimension: 2000         // Máx dimensión en px
@@ -1070,7 +1070,7 @@ function showSectorUploadModal(schoolId, encodedSectorName) {
   modal.innerHTML = `
     <div class="sector-upload-modal">
       <div class="sector-upload-header">
-        <h3>Subir imagen del sector</h3>
+        <h3>Subir fotos del sector</h3>
         <button class="sector-upload-close" onclick="closeSectorUploadModal()">&times;</button>
       </div>
 
@@ -1081,25 +1081,22 @@ function showSectorUploadModal(schoolId, encodedSectorName) {
         </p>
 
         <div class="sector-upload-dropzone" id="sector-dropzone">
-          <input type="file" id="sector-image-input" accept="image/*" style="display: none;">
+          <input type="file" id="sector-image-input" accept="image/*" multiple style="display: none;">
           <div class="dropzone-content">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="17 8 12 3 7 8"/>
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
-            <p>Arrastra una imagen aquí o haz clic para seleccionar</p>
-            <span class="dropzone-hint">JPG, PNG, HEIC - Máx 10MB</span>
+            <p>Arrastra fotos aquí o haz clic para seleccionar</p>
+            <span class="dropzone-hint">JPG, PNG, HEIC - Máx 30MB por foto</span>
           </div>
         </div>
 
         <div class="sector-upload-preview" id="sector-preview" style="display: none;">
-          <img id="sector-preview-img" alt="Preview">
-          <button class="sector-remove-preview" onclick="removeSectorPreview()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
+          <div class="sector-preview-grid" id="sector-preview-grid"></div>
+          <button class="sector-add-more" onclick="document.getElementById('sector-image-input').click()">
+            + Añadir más fotos
           </button>
         </div>
 
@@ -1114,7 +1111,7 @@ function showSectorUploadModal(schoolId, encodedSectorName) {
       <div class="sector-upload-footer">
         <button class="sector-btn-cancel" onclick="closeSectorUploadModal()">Cancelar</button>
         <button class="sector-btn-upload" id="sector-upload-btn" onclick="uploadSectorImage('${schoolId}', '${encodedSectorName}')" disabled>
-          Subir imagen
+          Subir fotos
         </button>
       </div>
     </div>
@@ -1140,8 +1137,8 @@ function setupUploadEvents() {
 
   // Cambio en input
   input.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleSectorFile(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      handleSectorFiles(Array.from(e.target.files));
     }
   });
 
@@ -1158,81 +1155,104 @@ function setupUploadEvents() {
   dropzone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropzone.classList.remove('dragover');
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleSectorFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleSectorFiles(Array.from(e.dataTransfer.files));
     }
   });
 }
 
 /**
- * Maneja el archivo seleccionado
+ * Maneja múltiples archivos seleccionados
  */
-let pendingSectorFile = null;
+let pendingSectorFiles = [];
 
-async function handleSectorFile(file) {
-  // Detectar HEIC por tipo MIME o extensión (algunos navegadores no reportan el MIME correcto)
+async function handleSectorFiles(files) {
+  for (const file of files) {
+    const processed = await processSectorFile(file);
+    if (processed) pendingSectorFiles.push(processed);
+  }
+  renderSectorPreviews();
+}
+
+async function processSectorFile(file) {
   const isHeic = file.type === 'image/heic' || file.type === 'image/heif' ||
     /\.heic$/i.test(file.name) || /\.heif$/i.test(file.name);
 
-  // Validar tipo
   if (!file.type.startsWith('image/') && !isHeic) {
-    showSectorToast('Solo se permiten imágenes', 'error');
-    return;
+    showSectorToast(`${file.name}: solo se permiten imágenes`, 'error');
+    return null;
   }
 
-  // Validar tamaño (10MB máx)
-  if (file.size > 10 * 1024 * 1024) {
-    showSectorToast('La imagen es demasiado grande (máx 10MB)', 'error');
-    return;
+  if (file.size > 30 * 1024 * 1024) {
+    showSectorToast(`${file.name}: demasiado grande (máx 30MB)`, 'error');
+    return null;
   }
 
-  // Convertir HEIC a JPEG si es necesario
   if (isHeic) {
     if (typeof heic2any === 'undefined') {
       showSectorToast('No se pudo cargar el conversor HEIC. Intenta con JPG o PNG.', 'error');
-      return;
+      return null;
     }
     try {
-      showSectorToast('Convirtiendo imagen HEIC...', 'info');
-      const blob = await heic2any({
-        blob: file,
-        toType: 'image/jpeg',
-        quality: 0.9
-      });
-      // heic2any puede devolver un array de blobs o un solo blob
+      showSectorToast(`Convirtiendo ${file.name}...`, 'info');
+      const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
       const resultBlob = Array.isArray(blob) ? blob[0] : blob;
-      file = new File([resultBlob], file.name.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg'), {
-        type: 'image/jpeg'
-      });
+      file = new File([resultBlob], file.name.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg'), { type: 'image/jpeg' });
     } catch (err) {
       console.error('Error convirtiendo HEIC:', err);
-      showSectorToast('Error al convertir imagen HEIC. Intenta con JPG o PNG.', 'error');
-      return;
+      showSectorToast(`Error al convertir ${file.name}`, 'error');
+      return null;
     }
   }
 
-  pendingSectorFile = file;
-
-  // Mostrar preview
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    document.getElementById('sector-preview-img').src = e.target.result;
-    document.getElementById('sector-preview').style.display = 'block';
-    document.getElementById('sector-dropzone').style.display = 'none';
-    document.getElementById('sector-upload-btn').disabled = false;
-  };
-  reader.readAsDataURL(file);
+  return file;
 }
 
-/**
- * Remueve el preview
- */
-function removeSectorPreview() {
-  pendingSectorFile = null;
-  document.getElementById('sector-preview').style.display = 'none';
-  document.getElementById('sector-dropzone').style.display = 'flex';
-  document.getElementById('sector-upload-btn').disabled = true;
+function renderSectorPreviews() {
+  const grid = document.getElementById('sector-preview-grid');
+  const preview = document.getElementById('sector-preview');
+  const dropzone = document.getElementById('sector-dropzone');
+  const btn = document.getElementById('sector-upload-btn');
+
+  if (pendingSectorFiles.length === 0) {
+    preview.style.display = 'none';
+    dropzone.style.display = 'flex';
+    btn.disabled = true;
+    btn.textContent = 'Subir fotos';
+    return;
+  }
+
+  grid.innerHTML = '';
+  pendingSectorFiles.forEach((file, idx) => {
+    const thumb = document.createElement('div');
+    thumb.className = 'sector-preview-thumb';
+
+    const img = document.createElement('img');
+    const reader = new FileReader();
+    reader.onload = (e) => { img.src = e.target.result; };
+    reader.readAsDataURL(file);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'sector-remove-thumb';
+    removeBtn.innerHTML = '&times;';
+    removeBtn.onclick = () => removeSectorFile(idx);
+
+    thumb.appendChild(img);
+    thumb.appendChild(removeBtn);
+    grid.appendChild(thumb);
+  });
+
+  preview.style.display = 'block';
+  dropzone.style.display = 'none';
+  btn.disabled = false;
+  const n = pendingSectorFiles.length;
+  btn.textContent = n === 1 ? 'Subir 1 foto' : `Subir ${n} fotos`;
+}
+
+function removeSectorFile(idx) {
+  pendingSectorFiles.splice(idx, 1);
   document.getElementById('sector-image-input').value = '';
+  renderSectorPreviews();
 }
 
 /**
@@ -1240,8 +1260,8 @@ function removeSectorPreview() {
  * Ahora soporta múltiples imágenes por sector
  */
 async function uploadSectorImage(schoolId, encodedSectorName) {
-  if (!pendingSectorFile) {
-    showSectorToast('No hay imagen seleccionada', 'error');
+  if (pendingSectorFiles.length === 0) {
+    showSectorToast('No hay imágenes seleccionadas', 'error');
     return;
   }
 
@@ -1249,122 +1269,114 @@ async function uploadSectorImage(schoolId, encodedSectorName) {
   const normalizedName = normalizeSectorName(sectorName);
   const docId = `${schoolId}_${normalizedName}`;
 
+  const progressEl = document.getElementById('sector-progress');
+  const progressFill = document.getElementById('progress-fill');
+  const progressText = document.getElementById('progress-text');
+  const btn = document.getElementById('sector-upload-btn');
+
+  progressEl.style.display = 'flex';
+  btn.disabled = true;
+
   const existingImages = await getSectorGalleryImages(schoolId, sectorName);
-
-  // Generar ID único para la imagen
-  const imageId = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  const imagePath = `sector-images/${schoolId}/${normalizedName}/${imageId}.jpg`;
-
-  // Mostrar progreso
-  document.getElementById('sector-progress').style.display = 'flex';
-  document.getElementById('sector-upload-btn').disabled = true;
+  const newImages = [];
+  const total = pendingSectorFiles.length;
 
   try {
-    const storageRef = firebase.storage().ref(imagePath);
+    for (let i = 0; i < total; i++) {
+      const file = pendingSectorFiles[i];
+      progressText.textContent = `Subiendo ${i + 1} de ${total}...`;
 
-    // Comprimir imagen si es muy grande
-    let fileToUpload = pendingSectorFile;
-    if (pendingSectorFile.size > SECTOR_GALLERY_CONFIG.compressThreshold) {
-      fileToUpload = await compressSectorImage(pendingSectorFile);
+      const imageId = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const imagePath = `sector-images/${schoolId}/${normalizedName}/${imageId}.jpg`;
+      const storageRef = firebase.storage().ref(imagePath);
+
+      let fileToUpload = file;
+      if (file.size > SECTOR_GALLERY_CONFIG.compressThreshold) {
+        fileToUpload = await compressSectorImage(file);
+      }
+
+      const uploadTask = storageRef.put(fileToUpload, {
+        contentType: 'image/jpeg',
+        customMetadata: {
+          schoolId,
+          sectorName,
+          imageId,
+          uploadedBy: auth.currentUser?.email || 'unknown',
+          uploadedAt: new Date().toISOString()
+        }
+      });
+
+      await new Promise((resolve, reject) => {
+        uploadTask.on('state_changed',
+          (snapshot) => {
+            const fileProgress = snapshot.bytesTransferred / snapshot.totalBytes;
+            const overall = Math.round(((i + fileProgress) / total) * 100);
+            progressFill.style.width = `${overall}%`;
+          },
+          reject,
+          resolve
+        );
+      });
+
+      const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+      newImages.push({
+        id: imageId,
+        url: downloadURL,
+        storagePath: imagePath,
+        order: existingImages.length + newImages.length,
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: auth.currentUser?.uid,
+        uploadedByEmail: auth.currentUser?.email
+      });
     }
 
-    const uploadTask = storageRef.put(fileToUpload, {
-      contentType: 'image/jpeg',
-      customMetadata: {
-        schoolId: schoolId,
-        sectorName: sectorName,
-        imageId: imageId,
-        uploadedBy: auth.currentUser?.email || 'unknown',
-        uploadedAt: new Date().toISOString()
+    // Guardar todas las imágenes nuevas en Firestore
+    const docRef = db.collection('sector_images').doc(docId);
+    const doc = await docRef.get();
+
+    if (doc.exists) {
+      const data = doc.data();
+      let images = [];
+      if (data.imageUrl && !data.images) {
+        images = [{
+          id: 'legacy_0',
+          url: data.imageUrl,
+          storagePath: data.storagePath || `sector-images/${schoolId}/${normalizedName}.jpg`,
+          order: 0,
+          uploadedAt: data.uploadedAt,
+          uploadedBy: data.uploadedBy
+        }];
+      } else if (data.images) {
+        images = data.images;
       }
-    });
+      await docRef.update({
+        images: [...images, ...newImages],
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } else {
+      await docRef.set({
+        schoolId,
+        sectorName,
+        normalizedName,
+        images: newImages,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
 
-    // Progreso
-    uploadTask.on('state_changed',
-      (snapshot) => {
-        const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-        document.getElementById('progress-fill').style.width = `${progress}%`;
-        document.getElementById('progress-text').textContent = `${progress}%`;
-      },
-      (error) => {
-        console.error('[SectorImages] Error subiendo:', error);
-        showSectorToast('Error al subir la imagen', 'error');
-        document.getElementById('sector-progress').style.display = 'none';
-        document.getElementById('sector-upload-btn').disabled = false;
-      },
-      async () => {
-        // Éxito - obtener URL
-        const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+    const msg = total === 1 ? 'Imagen añadida a la galería' : `${total} imágenes añadidas a la galería`;
+    showSectorToast(msg, 'success');
+    closeSectorUploadModal();
 
-        // Crear objeto de la nueva imagen
-        // Nota: No usar serverTimestamp() dentro de arrays - Firestore no lo permite
-        const newImage = {
-          id: imageId,
-          url: downloadURL,
-          storagePath: imagePath,
-          order: existingImages.length, // Añadir al final
-          uploadedAt: new Date().toISOString(),
-          uploadedBy: auth.currentUser?.uid,
-          uploadedByEmail: auth.currentUser?.email
-        };
-
-        // Obtener documento existente o crear nuevo
-        const docRef = db.collection('sector_images').doc(docId);
-        const doc = await docRef.get();
-
-        if (doc.exists) {
-          // Añadir a galería existente
-          const data = doc.data();
-          let images = [];
-
-          // Migrar formato antiguo si es necesario
-          if (data.imageUrl && !data.images) {
-            // Convertir imagen única a array
-            images = [{
-              id: 'legacy_0',
-              url: data.imageUrl,
-              storagePath: data.storagePath || `sector-images/${schoolId}/${normalizedName}.jpg`,
-              order: 0,
-              uploadedAt: data.uploadedAt,
-              uploadedBy: data.uploadedBy
-            }];
-          } else if (data.images) {
-            images = data.images;
-          }
-
-          images.push(newImage);
-
-          await docRef.update({
-            images: images,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-        } else {
-          // Crear nuevo documento con galería
-          await docRef.set({
-            schoolId: schoolId,
-            sectorName: sectorName,
-            normalizedName: normalizedName,
-            images: [newImage],
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-        }
-
-        showSectorToast('Imagen añadida a la galería', 'success');
-        closeSectorUploadModal();
-
-        // Abrir el visor mostrando la nueva imagen
-        setTimeout(() => {
-          openSectorImageViewer(schoolId, sectorName, existingImages.length);
-        }, 300);
-      }
-    );
+    setTimeout(() => {
+      openSectorImageViewer(schoolId, sectorName, existingImages.length);
+    }, 300);
 
   } catch (error) {
     console.error('[SectorImages] Error:', error);
     showSectorToast('Error: ' + error.message, 'error');
-    document.getElementById('sector-progress').style.display = 'none';
-    document.getElementById('sector-upload-btn').disabled = false;
+    progressEl.style.display = 'none';
+    btn.disabled = false;
   }
 }
 
@@ -1417,7 +1429,7 @@ function closeSectorUploadModal() {
   if (modal) {
     modal.remove();
   }
-  pendingSectorFile = null;
+  pendingSectorFiles = [];
 }
 
 // ============================================
@@ -4101,7 +4113,7 @@ window.closeSectorImageViewer = closeSectorImageViewer;
 window.showSectorUploadModal = showSectorUploadModal;
 window.closeSectorUploadModal = closeSectorUploadModal;
 window.uploadSectorImage = uploadSectorImage;
-window.removeSectorPreview = removeSectorPreview;
+window.removeSectorFile = removeSectorFile;
 window.getSectorViewButtonHTML = getSectorViewButtonHTML;
 window.openSectorImageViewerWithHighlight = openSectorImageViewerWithHighlight;
 window.hasRouteDrawing = hasRouteDrawing;
