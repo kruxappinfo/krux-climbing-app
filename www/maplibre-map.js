@@ -2032,6 +2032,10 @@ const POI_SVG_FILES = {
   'wc': 'assets/poi-icons/bano.svg',
   'ducha': 'assets/poi-icons/ducha.svg',
   'piscina': 'assets/poi-icons/zona-de-bano.svg',
+  // Otros
+  'mirador': 'assets/poi-icons/mirador.svg',
+  'tienda': 'assets/poi-icons/tienda.svg',
+  'informacion': 'assets/poi-icons/info.svg',
 };
 
 /**
