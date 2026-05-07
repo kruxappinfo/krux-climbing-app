@@ -15410,6 +15410,15 @@ body.map-active #btn-dev-editor {
   text-align: center;
 }
 
+.dev-poi-section-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 8px 12px 3px 12px;
+  margin-top: 4px;
+}
+
 /* Toolbar flotante para dibujo de sector */
 .dev-sector-toolbar {
   position: absolute;

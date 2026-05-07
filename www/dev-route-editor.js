@@ -262,35 +262,83 @@ function toggleSpotterMenu() {
 
   devSpotterMenuOpen = true;
 
-  // Tipos POI del POI_EMOJI_MAP (definido en maplibre-map.js)
-  const poiTypes = [
-    { key: 'fuente', label: 'Fuente', emoji: '🚰' },
-    { key: 'parking', label: 'Parking', emoji: '🅿️' },
-    { key: 'tienda', label: 'Tienda', emoji: '🛒' },
-    { key: 'gasolinera', label: 'Gasolinera', emoji: '⛽' },
-    { key: 'hospital', label: 'Hospital', emoji: '🏥' },
-    { key: 'farmacia', label: 'Farmacia', emoji: '💊' },
-    { key: 'bar', label: 'Bar', emoji: '🍺' },
-    { key: 'restaurante', label: 'Restaurante', emoji: '🍽️' },
-    { key: 'camping', label: 'Camping', emoji: '⛺' },
-    { key: 'wc', label: 'WC', emoji: '🚻' },
-    { key: 'refugio', label: 'Refugio', emoji: '🏠' },
-    { key: 'vivac', label: 'Vivac', emoji: '🏕️' },
-    { key: 'cumbre', label: 'Cumbre', emoji: '🏔️' },
-    { key: 'mirador', label: 'Mirador', emoji: '👁️' },
-    { key: 'supermercado', label: 'Supermercado', emoji: '🛒' },
-    { key: 'hotel', label: 'Hotel', emoji: '🏨' },
-    { key: 'albergue', label: 'Albergue', emoji: '🛏️' },
-    { key: 'informacion', label: 'Informacion', emoji: 'ℹ️' },
-    { key: 'ducha', label: 'Ducha', emoji: '🚿' },
-    { key: 'merendero', label: 'Merendero', emoji: '🧺' },
+  const poiSections = [
+    {
+      label: 'Alojamientos', color: '#F9A825',
+      items: [
+        { key: 'hotel',     label: 'Hotel',     emoji: '🏨' },
+        { key: 'camping',   label: 'Camping',   emoji: '⛺' },
+        { key: 'refugio',   label: 'Refugio',   emoji: '🏠' },
+        { key: 'albergue',  label: 'Albergue',  emoji: '🛏️' },
+        { key: 'vivac',     label: 'Vivac',     emoji: '🏕️' },
+      ]
+    },
+    {
+      label: 'Naturaleza', color: '#2e7d32',
+      items: [
+        { key: 'cumbre',  label: 'Cumbre',  emoji: '🏔️' },
+        { key: 'rio',     label: 'Río',     emoji: '🌊' },
+        { key: 'arroyo',  label: 'Arroyo',  emoji: '💧' },
+        { key: 'agua',    label: 'Agua',    emoji: '🫗' },
+        { key: 'fuente',  label: 'Fuente',  emoji: '🚰' },
+        { key: 'cueva',   label: 'Cueva',   emoji: '🕳️' },
+      ]
+    },
+    {
+      label: 'Patrimonio', color: '#795548',
+      items: [
+        { key: 'mirador', label: 'Mirador', emoji: '👁️' },
+        { key: 'iglesia', label: 'Iglesia', emoji: '⛪' },
+        { key: 'ermita',  label: 'Ermita',  emoji: '🛕' },
+        { key: 'ruina',   label: 'Ruina',   emoji: '🏚️' },
+      ]
+    },
+    {
+      label: 'Servicios', color: '#e65100',
+      items: [
+        { key: 'restaurante',  label: 'Restaurante',  emoji: '🍽️' },
+        { key: 'bar',          label: 'Bar',          emoji: '🍺' },
+        { key: 'gasolinera',   label: 'Gasolinera',   emoji: '⛽' },
+        { key: 'tienda',       label: 'Tienda',       emoji: '🛒' },
+        { key: 'supermercado', label: 'Supermercado', emoji: '🏪' },
+        { key: 'merendero',    label: 'Merendero',    emoji: '🧺' },
+        { key: 'farmacia',     label: 'Farmacia',     emoji: '💊' },
+        { key: 'hospital',     label: 'Hospital',     emoji: '🏥' },
+        { key: 'banco',        label: 'Banco',        emoji: '🏦' },
+        { key: 'informacion',  label: 'Información',  emoji: 'ℹ️' },
+      ]
+    },
+    {
+      label: 'Infraestructuras', color: '#6a1b9a',
+      items: [
+        { key: 'parking',    label: 'Parking',    emoji: '🅿️' },
+        { key: 'puente',     label: 'Puente',     emoji: '🌉' },
+        { key: 'escalera',   label: 'Escalera',   emoji: '🪜' },
+        { key: 'correos',    label: 'Correos',    emoji: '📮' },
+        { key: 'policia',    label: 'Policía',    emoji: '👮' },
+        { key: 'bomberos',   label: 'Bomberos',   emoji: '🚒' },
+        { key: 'telefono',   label: 'Teléfono',   emoji: '📞' },
+      ]
+    },
+    {
+      label: 'Instalaciones', color: '#0277BD',
+      items: [
+        { key: 'wc',      label: 'WC',      emoji: '🚻' },
+        { key: 'baño',    label: 'Baño',    emoji: '🛁' },
+        { key: 'ducha',   label: 'Ducha',   emoji: '🚿' },
+        { key: 'piscina', label: 'Piscina', emoji: '🏊' },
+      ]
+    },
   ];
 
-  const poiItemsHTML = poiTypes.map(t =>
-    `<button class="dev-spotter-poi-type" onclick="selectPOIType('${t.key}')">
-      <span class="dev-spotter-poi-emoji">${t.emoji}</span>${t.label}
-    </button>`
-  ).join('');
+  const poiItemsHTML = poiSections.map(section => `
+    <div class="dev-poi-section-header" style="color:${section.color}">${section.label}</div>
+    ${section.items.map(t =>
+      `<button class="dev-spotter-poi-type" onclick="selectPOIType('${t.key}')">
+        <span class="dev-spotter-poi-emoji">${t.emoji}</span>${t.label}
+      </button>`
+    ).join('')}
+  `).join('');
 
   const menu = document.createElement('div');
   menu.id = 'dev-spotter-menu';
