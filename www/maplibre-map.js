@@ -8860,7 +8860,7 @@ async function loadApprovedPOIFromFirestore(schoolId) {
 
     mlApprovedPOIUnsub = db.collection('pending_poi')
       .where('status', '==', 'approved')
-      .onSnapshot((snapshot) => {
+      .onSnapshot(async (snapshot) => {
         try {
           if (!mlMap || mlCurrentSchool !== schoolId) {
             if (mlApprovedPOIUnsub) { try { mlApprovedPOIUnsub(); } catch (e) {} mlApprovedPOIUnsub = null; }
@@ -9267,7 +9267,7 @@ async function loadMyPendingPOIFromFirestore(schoolId) {
     mlMyPendingPOIUnsub = db.collection('pending_poi')
       .where('createdBy', '==', user.uid)
       .where('status', '==', 'pending')
-      .onSnapshot((snapshot) => {
+      .onSnapshot(async (snapshot) => {
         try {
           if (!mlMap || mlCurrentSchool !== schoolId) {
             if (mlMyPendingPOIUnsub) { try { mlMyPendingPOIUnsub(); } catch (e) {} mlMyPendingPOIUnsub = null; }
@@ -9686,7 +9686,7 @@ async function loadAllPendingForAdmin(schoolId, minZoom = 14) {
 
   mlAdminPendingPOIUnsub = db.collection('pending_poi')
     .where('status', '==', 'pending')
-    .onSnapshot(snapshot => {
+    .onSnapshot(async snapshot => {
       if (!mlMap || mlCurrentSchool !== schoolId) {
         if (mlAdminPendingPOIUnsub) { try { mlAdminPendingPOIUnsub(); } catch (e) {} mlAdminPendingPOIUnsub = null; }
         return;
