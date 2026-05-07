@@ -2001,6 +2001,7 @@ const POI_SVG_FILES = {
   'camping': 'assets/poi-icons/camping.svg',
   'hotel': 'assets/poi-icons/hotel.svg',
   'refugio': 'assets/poi-icons/refugio.svg',
+  'albergue': 'assets/poi-icons/refugio.svg',
   // Estado / urgencias
   'bomberos': 'assets/poi-icons/bomberos.svg',
   'bombero': 'assets/poi-icons/bomberos.svg',
