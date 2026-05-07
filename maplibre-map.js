@@ -2102,8 +2102,9 @@ function createSVGPinImage(poiType, size = 50) {
     };
 
     if (externalSvg) {
-      // PNGs externos del diseñador: recortar al bbox del contenido para centrar el pin
-      renderImg(externalSvg + '?v=' + POI_ICONS_VERSION, true);
+      // SVGs: renderizar directo sin recorte; PNGs: recortar al bbox del contenido
+      const isSvg = externalSvg.endsWith('.svg');
+      renderImg(externalSvg + '?v=' + POI_ICONS_VERSION, !isSvg);
     } else {
       // Generar pin programáticamente con icono inline
       const poiData = getPOISVG(poiType);
