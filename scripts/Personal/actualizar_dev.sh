@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 1. Navegar a la carpeta del proyecto
-cd /Users/jaimelillo/krux/scripts/Personal || { echo "❌ Error: No se encuentra la carpeta"; exit 1; }
+cd /Users/jaimelillo/krux || { echo "❌ Error: No se encuentra la carpeta"; exit 1; }
 
 # 2. Asegurarse de estar en la rama dev
 CURRENT_BRANCH=$(git branch --show-current)
