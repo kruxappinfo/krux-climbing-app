@@ -1992,34 +1992,56 @@ const POI_SVG_MAP = {
   'banco': { color: '#F99D04', svg: '<rect x="3" y="14" width="14" height="2" fill="white" stroke="none"/><rect x="3" y="5" width="14" height="2" fill="white" stroke="none"/><rect x="5" y="7" width="2" height="7" fill="white" stroke="none"/><rect x="9" y="7" width="2" height="7" fill="white" stroke="none"/><rect x="13" y="7" width="2" height="7" fill="white" stroke="none"/>' }
 };
 
+// Versión de los iconos SVG (incrementar al actualizar para forzar recarga del cache)
+const POI_ICONS_VERSION = '3';
+
 // Mapa de POIs que tienen icono SVG externo disponible
 const POI_SVG_FILES = {
+  // Alojamientos
   'camping': 'assets/poi-icons/camping.svg',
   'hotel': 'assets/poi-icons/hotel.svg',
   'refugio': 'assets/poi-icons/refugio.svg',
+  'albergue': 'assets/poi-icons/albergue.svg',
+  'vivac': 'assets/poi-icons/vivac.svg',
+  // Estado / urgencias
   'bomberos': 'assets/poi-icons/bomberos.svg',
+  'bombero': 'assets/poi-icons/bomberos.svg',
   'farmacia': 'assets/poi-icons/farmacia.svg',
   'hospital': 'assets/poi-icons/hospital.svg',
   'policia': 'assets/poi-icons/policia.svg',
-  'escalera': 'assets/poi-icons/escalera.svg',
-  'puente': 'assets/poi-icons/puente.svg',
-  'baño': 'assets/poi-icons/bano.svg',
-  'wc': 'assets/poi-icons/bano.svg',
-  'ducha': 'assets/poi-icons/ducha.svg',
-  'fuente': 'assets/poi-icons/fuente.svg',
-  'merendero': 'assets/poi-icons/merendero.svg',
-  'piscina': 'assets/poi-icons/piscina.svg',
+  'peligro': 'assets/poi-icons/peligro.svg',
+  // Naturaleza
   'arroyo': 'assets/poi-icons/arroyo.svg',
   'cueva': 'assets/poi-icons/cueva.svg',
   'cumbre': 'assets/poi-icons/cumbre.svg',
   'rio': 'assets/poi-icons/rio.svg',
-  'iglesia': 'assets/poi-icons/iglesia.svg',
-  'ruina': 'assets/poi-icons/ruina.svg',
+  'agua': 'assets/poi-icons/agua.svg',
+  'fuente': 'assets/poi-icons/fuente.svg',
+  // Servicios
   'banco': 'assets/poi-icons/banco.svg',
   'bar': 'assets/poi-icons/bar.svg',
   'correos': 'assets/poi-icons/correos.svg',
   'gasolinera': 'assets/poi-icons/gasolinera.svg',
   'restaurante': 'assets/poi-icons/restaurante.svg',
+  'merendero': 'assets/poi-icons/merendero.svg',
+  'supermercado': 'assets/poi-icons/supermercado.svg',
+  'tienda': 'assets/poi-icons/tienda.svg',
+  // Infraestructura
+  'escalera': 'assets/poi-icons/escalera.svg',
+  'puente': 'assets/poi-icons/puente.svg',
+  'mirador': 'assets/poi-icons/mirador.svg',
+  'parking': 'assets/poi-icons/parking.svg',
+  'informacion': 'assets/poi-icons/informacion.svg',
+  // Patrimonio
+  'iglesia': 'assets/poi-icons/iglesia.svg',
+  'ermita': 'assets/poi-icons/ermita.svg',
+  'ruina': 'assets/poi-icons/ruina.svg',
+  // Instalaciones
+  'baño': 'assets/poi-icons/bano.svg',
+  'wc': 'assets/poi-icons/wc.svg',
+  'ducha': 'assets/poi-icons/ducha.svg',
+  'piscina': 'assets/poi-icons/piscina.svg',
+  'telefono': 'assets/poi-icons/telefono.svg',
 };
 
 /**
@@ -2060,8 +2082,8 @@ function createSVGPinImage(poiType, size = 50) {
     };
 
     if (externalSvg) {
-      // Usar SVG externo directamente
-      renderImg(externalSvg);
+      // Usar SVG externo directamente con cache-busting por versión
+      renderImg(externalSvg + '?v=' + POI_ICONS_VERSION);
     } else {
       // Generar pin programáticamente con icono inline
       const poiData = getPOISVG(poiType);
