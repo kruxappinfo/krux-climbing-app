@@ -287,10 +287,18 @@ function toggleSpotterMenu() {
     {
       label: 'Patrimonio', color: '#795548',
       items: [
-        { key: 'mirador', label: 'Mirador', emoji: '👁️' },
         { key: 'iglesia', label: 'Iglesia', emoji: '⛪' },
         { key: 'ermita',  label: 'Ermita',  emoji: '🛕' },
         { key: 'ruina',   label: 'Ruina',   emoji: '🏚️' },
+      ]
+    },
+    {
+      label: 'Importante', color: '#cc2200',
+      items: [
+        { key: 'hospital',  label: 'Hospital',  emoji: '🏥' },
+        { key: 'farmacia',  label: 'Farmacia',  emoji: '💊' },
+        { key: 'policia',   label: 'Policía',   emoji: '👮' },
+        { key: 'bomberos',  label: 'Bomberos',  emoji: '🚒' },
       ]
     },
     {
@@ -302,9 +310,8 @@ function toggleSpotterMenu() {
         { key: 'tienda',       label: 'Tienda',       emoji: '🛒' },
         { key: 'supermercado', label: 'Supermercado', emoji: '🏪' },
         { key: 'merendero',    label: 'Merendero',    emoji: '🧺' },
-        { key: 'farmacia',     label: 'Farmacia',     emoji: '💊' },
-        { key: 'hospital',     label: 'Hospital',     emoji: '🏥' },
         { key: 'banco',        label: 'Banco',        emoji: '🏦' },
+        { key: 'correos',      label: 'Correos',      emoji: '📮' },
         { key: 'informacion',  label: 'Información',  emoji: 'ℹ️' },
       ]
     },
@@ -314,9 +321,7 @@ function toggleSpotterMenu() {
         { key: 'parking',    label: 'Parking',    emoji: '🅿️' },
         { key: 'puente',     label: 'Puente',     emoji: '🌉' },
         { key: 'escalera',   label: 'Escalera',   emoji: '🪜' },
-        { key: 'correos',    label: 'Correos',    emoji: '📮' },
-        { key: 'policia',    label: 'Policía',    emoji: '👮' },
-        { key: 'bomberos',   label: 'Bomberos',   emoji: '🚒' },
+        { key: 'mirador',    label: 'Mirador',    emoji: '👁️' },
         { key: 'telefono',   label: 'Teléfono',   emoji: '📞' },
       ]
     },
