@@ -27,27 +27,26 @@ if [ ! -d "$ORIGEN" ]; then
     exit 1
 fi
 
-# --- Verificar/Instalar ImageMagick ---
-if ! command -v magick &> /dev/null; then
-    echo ""
-    echo "  ImageMagick no está instalado."
-
-    # Verificar si Homebrew está instalado
+# --- Verificar si Homebrew está instalado (necesario para ambas herramientas) ---
+ensure_brew() {
     if ! command -v brew &> /dev/null; then
-        echo "  Homebrew tampoco está instalado. Instalando Homebrew..."
+        echo "  Homebrew no está instalado. Instalando Homebrew..."
         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-        # Añadir Homebrew al PATH (Apple Silicon y Intel)
         if [ -f "/opt/homebrew/bin/brew" ]; then
             eval "$(/opt/homebrew/bin/brew shellenv)"
         elif [ -f "/usr/local/bin/brew" ]; then
             eval "$(/usr/local/bin/brew shellenv)"
         fi
     fi
+}
 
+# --- Verificar/Instalar ImageMagick (para HEIC) ---
+if ! command -v magick &> /dev/null; then
+    echo ""
+    echo "  ImageMagick no está instalado."
+    ensure_brew
     echo "  Instalando ImageMagick con Homebrew..."
     brew install imagemagick
-
     if ! command -v magick &> /dev/null; then
         echo ""
         echo "  ERROR: No se pudo instalar ImageMagick."
@@ -55,8 +54,25 @@ if ! command -v magick &> /dev/null; then
         read -p "  Presiona Enter para salir..."
         exit 1
     fi
-
     echo "  ImageMagick instalado correctamente."
+    echo ""
+fi
+
+# --- Verificar/Instalar dcraw (para DNG) ---
+if ! command -v dcraw &> /dev/null; then
+    echo ""
+    echo "  dcraw no está instalado."
+    ensure_brew
+    echo "  Instalando dcraw con Homebrew..."
+    brew install dcraw
+    if ! command -v dcraw &> /dev/null; then
+        echo ""
+        echo "  ERROR: No se pudo instalar dcraw."
+        echo ""
+        read -p "  Presiona Enter para salir..."
+        exit 1
+    fi
+    echo "  dcraw instalado correctamente."
     echo ""
 fi
 
@@ -98,26 +114,19 @@ mkdir -p "$DESTINO"
 
 CONTADOR=0
 
-# --- Función de conversión ---
-convertir_archivo() {
+# --- Función de conversión HEIC ---
+convertir_heic() {
     local archivo="$1"
-    local extension="$2"
     CONTADOR=$((CONTADOR + 1))
 
-    # Obtener ruta relativa
     local RUTA_RELATIVA="${archivo#$ORIGEN}"
     local DIRECTORIO_RELATIVO="$(dirname "$RUTA_RELATIVA")"
-    local NOMBRE="$(basename "$archivo" | sed "s/\.${extension}$//I")"
+    local NOMBRE="$(basename "$archivo" | sed 's/\.heic$//I')"
 
-    # Crear subcarpeta en destino
     mkdir -p "$DESTINO/$DIRECTORIO_RELATIVO"
-
     echo "  [$CONTADOR/$TOTAL] Convirtiendo: $RUTA_RELATIVA"
 
-    if magick "$archivo" -quality 95 "$DESTINO/$DIRECTORIO_RELATIVO/$NOMBRE.jpg" 2>/dev/null; then
-        :
-    else
-        # Fallback con sips (nativo de macOS, no requiere ImageMagick)
+    if ! magick "$archivo" -quality 95 "$DESTINO/$DIRECTORIO_RELATIVO/$NOMBRE.jpg" 2>/dev/null; then
         sips -s format jpeg -s formatOptions 95 "$archivo" --out "$DESTINO/$DIRECTORIO_RELATIVO/$NOMBRE.jpg" &>/dev/null
         if [ $? -ne 0 ]; then
             echo "    > ERROR al convertir: $archivo"
@@ -125,11 +134,37 @@ convertir_archivo() {
     fi
 }
 
+# --- Función de conversión DNG (extrae el JPEG preview embebido por la cámara) ---
+convertir_dng() {
+    local archivo="$1"
+    CONTADOR=$((CONTADOR + 1))
+
+    local RUTA_RELATIVA="${archivo#$ORIGEN}"
+    local DIRECTORIO_RELATIVO="$(dirname "$RUTA_RELATIVA")"
+    local NOMBRE="$(basename "$archivo" | sed 's/\.dng$//I')"
+    local BASE="${archivo%.*}"
+
+    mkdir -p "$DESTINO/$DIRECTORIO_RELATIVO"
+    echo "  [$CONTADOR/$TOTAL] Convirtiendo: $RUTA_RELATIVA"
+
+    # Extraer el JPEG preview embebido en el DNG (procesado por la cámara, colores fieles)
+    if dcraw -e "$archivo" 2>/dev/null; then
+        local THUMB="${BASE}.thumb.jpg"
+        if [ -f "$THUMB" ]; then
+            mv "$THUMB" "$DESTINO/$DIRECTORIO_RELATIVO/$NOMBRE.jpg"
+        else
+            echo "    > ERROR: no se encontró el preview embebido en $archivo"
+        fi
+    else
+        echo "    > ERROR al extraer preview de: $archivo"
+    fi
+}
+
 # --- Convertir archivos HEIC ---
 if [ "$TOTAL_HEIC" -gt 0 ]; then
     echo "  -- Convirtiendo HEIC --"
     while IFS= read -r archivo; do
-        convertir_archivo "$archivo" "heic"
+        convertir_heic "$archivo"
     done < <(find "$ORIGEN" -iname "*.heic")
 fi
 
@@ -138,7 +173,7 @@ if [ "$TOTAL_DNG" -gt 0 ]; then
     echo ""
     echo "  -- Convirtiendo DNG --"
     while IFS= read -r archivo; do
-        convertir_archivo "$archivo" "dng"
+        convertir_dng "$archivo"
     done < <(find "$ORIGEN" -iname "*.dng")
 fi
 
