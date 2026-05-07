@@ -15411,12 +15411,36 @@ body.map-active #btn-dev-editor {
 }
 
 .dev-poi-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  padding: 8px 12px 3px 12px;
-  margin-top: 4px;
+  padding: 7px 12px 7px 12px;
+  margin-top: 2px;
+  border: none;
+  background: rgba(0,0,0,0.04);
+  border-radius: 6px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dev-poi-section-chevron {
+  font-size: 16px;
+  color: #999;
+  margin-left: 6px;
+}
+
+.dev-poi-section-items {
+  display: none;
+  flex-direction: column;
+}
+
+.dev-poi-section-items.open {
+  display: flex;
 }
 
 /* Toolbar flotante para dibujo de sector */
