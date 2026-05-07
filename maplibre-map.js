@@ -2030,7 +2030,7 @@ const POI_SVG_FILES = {
   'baño': 'assets/poi-icons/bano.svg',
   'wc': 'assets/poi-icons/bano.svg',
   'ducha': 'assets/poi-icons/ducha.svg',
-  'piscina': 'assets/poi-icons-png/piscina.png',
+  'piscina': 'assets/poi-icons/zona-de-bano.svg',
 };
 
 /**
