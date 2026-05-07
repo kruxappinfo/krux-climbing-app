@@ -1992,56 +1992,45 @@ const POI_SVG_MAP = {
   'banco': { color: '#F99D04', svg: '<rect x="3" y="14" width="14" height="2" fill="white" stroke="none"/><rect x="3" y="5" width="14" height="2" fill="white" stroke="none"/><rect x="5" y="7" width="2" height="7" fill="white" stroke="none"/><rect x="9" y="7" width="2" height="7" fill="white" stroke="none"/><rect x="13" y="7" width="2" height="7" fill="white" stroke="none"/>' }
 };
 
-// Versión de los iconos SVG (incrementar al actualizar para forzar recarga del cache)
-const POI_ICONS_VERSION = '3';
+// Versión de los iconos (incrementar al actualizar para forzar recarga del cache)
+const POI_ICONS_VERSION = '4';
 
-// Mapa de POIs que tienen icono SVG externo disponible
+// Mapa de POIs que tienen icono PNG externo disponible (los PNGs originales del diseñador)
 const POI_SVG_FILES = {
   // Alojamientos
-  'camping': 'assets/poi-icons/camping.svg',
-  'hotel': 'assets/poi-icons/hotel.svg',
-  'refugio': 'assets/poi-icons/refugio.svg',
-  'albergue': 'assets/poi-icons/albergue.svg',
-  'vivac': 'assets/poi-icons/vivac.svg',
+  'camping': 'assets/poi-icons-png/camping.png',
+  'hotel': 'assets/poi-icons-png/hotel.png',
+  'refugio': 'assets/poi-icons-png/refugio.png',
   // Estado / urgencias
-  'bomberos': 'assets/poi-icons/bomberos.svg',
-  'bombero': 'assets/poi-icons/bomberos.svg',
-  'farmacia': 'assets/poi-icons/farmacia.svg',
-  'hospital': 'assets/poi-icons/hospital.svg',
-  'policia': 'assets/poi-icons/policia.svg',
-  'peligro': 'assets/poi-icons/peligro.svg',
+  'bomberos': 'assets/poi-icons-png/bomberos.png',
+  'bombero': 'assets/poi-icons-png/bomberos.png',
+  'farmacia': 'assets/poi-icons-png/farmacia.png',
+  'hospital': 'assets/poi-icons-png/hospital.png',
+  'policia': 'assets/poi-icons-png/policia.png',
   // Naturaleza
-  'arroyo': 'assets/poi-icons/arroyo.svg',
-  'cueva': 'assets/poi-icons/cueva.svg',
-  'cumbre': 'assets/poi-icons/cumbre.svg',
-  'rio': 'assets/poi-icons/rio.svg',
-  'agua': 'assets/poi-icons/agua.svg',
-  'fuente': 'assets/poi-icons/fuente.svg',
+  'arroyo': 'assets/poi-icons-png/arroyo.png',
+  'cueva': 'assets/poi-icons-png/cueva.png',
+  'cumbre': 'assets/poi-icons-png/cumbre.png',
+  'rio': 'assets/poi-icons-png/rio.png',
+  'fuente': 'assets/poi-icons-png/fuente.png',
   // Servicios
-  'banco': 'assets/poi-icons/banco.svg',
-  'bar': 'assets/poi-icons/bar.svg',
-  'correos': 'assets/poi-icons/correos.svg',
-  'gasolinera': 'assets/poi-icons/gasolinera.svg',
-  'restaurante': 'assets/poi-icons/restaurante.svg',
-  'merendero': 'assets/poi-icons/merendero.svg',
-  'supermercado': 'assets/poi-icons/supermercado.svg',
-  'tienda': 'assets/poi-icons/tienda.svg',
+  'banco': 'assets/poi-icons-png/banco.png',
+  'bar': 'assets/poi-icons-png/bar.png',
+  'correos': 'assets/poi-icons-png/correos.png',
+  'gasolinera': 'assets/poi-icons-png/gasolinera.png',
+  'restaurante': 'assets/poi-icons-png/restaurante.png',
+  'merendero': 'assets/poi-icons-png/merendero.png',
   // Infraestructura
-  'escalera': 'assets/poi-icons/escalera.svg',
-  'puente': 'assets/poi-icons/puente.svg',
-  'mirador': 'assets/poi-icons/mirador.svg',
-  'parking': 'assets/poi-icons/parking.svg',
-  'informacion': 'assets/poi-icons/informacion.svg',
+  'escalera': 'assets/poi-icons-png/escalera.png',
+  'puente': 'assets/poi-icons-png/puente.png',
   // Patrimonio
-  'iglesia': 'assets/poi-icons/iglesia.svg',
-  'ermita': 'assets/poi-icons/ermita.svg',
-  'ruina': 'assets/poi-icons/ruina.svg',
+  'iglesia': 'assets/poi-icons-png/iglesia.png',
+  'ruina': 'assets/poi-icons-png/ruina.png',
   // Instalaciones
-  'baño': 'assets/poi-icons/bano.svg',
-  'wc': 'assets/poi-icons/wc.svg',
-  'ducha': 'assets/poi-icons/ducha.svg',
-  'piscina': 'assets/poi-icons/piscina.svg',
-  'telefono': 'assets/poi-icons/telefono.svg',
+  'baño': 'assets/poi-icons-png/bano.png',
+  'wc': 'assets/poi-icons-png/bano.png',
+  'ducha': 'assets/poi-icons-png/ducha.png',
+  'piscina': 'assets/poi-icons-png/piscina.png',
 };
 
 /**
@@ -2068,13 +2057,44 @@ function createSVGPinImage(poiType, size = 50) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, size, size);
 
-    const renderImg = (src) => {
+    const renderImg = (src, cropToContent = false) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onerror = () => reject(new Error(`Failed to load SVG for POI type "${poiType}"`));
+      img.onerror = () => reject(new Error(`Failed to load image for POI type "${poiType}"`));
       img.onload = () => {
         try {
-          ctx.drawImage(img, 0, 0, size, size);
+          if (cropToContent) {
+            // Detectar bbox del contenido no transparente del PNG y centrarlo en el canvas
+            const tmp = document.createElement('canvas');
+            tmp.width = img.width;
+            tmp.height = img.height;
+            const tctx = tmp.getContext('2d');
+            tctx.drawImage(img, 0, 0);
+            const data = tctx.getImageData(0, 0, img.width, img.height).data;
+            let minX = img.width, minY = img.height, maxX = 0, maxY = 0;
+            for (let y = 0; y < img.height; y++) {
+              for (let x = 0; x < img.width; x++) {
+                // Considerar opaco si alpha > 200 (ignora fondos semi-transparentes)
+                if (data[(y * img.width + x) * 4 + 3] > 200) {
+                  if (x < minX) minX = x;
+                  if (y < minY) minY = y;
+                  if (x > maxX) maxX = x;
+                  if (y > maxY) maxY = y;
+                }
+              }
+            }
+            const cw = maxX - minX + 1;
+            const ch = maxY - minY + 1;
+            // Escalar manteniendo proporciones (contain) en el canvas cuadrado
+            const scale = Math.min(size / cw, size / ch);
+            const drawW = cw * scale;
+            const drawH = ch * scale;
+            const dx = (size - drawW) / 2;
+            const dy = (size - drawH) / 2;
+            ctx.drawImage(img, minX, minY, cw, ch, dx, dy, drawW, drawH);
+          } else {
+            ctx.drawImage(img, 0, 0, size, size);
+          }
           resolve({ data: ctx.getImageData(0, 0, size, size).data, width: size, height: size });
         } catch (e) { reject(e); }
       };
@@ -2082,8 +2102,8 @@ function createSVGPinImage(poiType, size = 50) {
     };
 
     if (externalSvg) {
-      // Usar SVG externo directamente con cache-busting por versión
-      renderImg(externalSvg + '?v=' + POI_ICONS_VERSION);
+      // PNGs externos del diseñador: recortar al bbox del contenido para centrar el pin
+      renderImg(externalSvg + '?v=' + POI_ICONS_VERSION, true);
     } else {
       // Generar pin programáticamente con icono inline
       const poiData = getPOISVG(poiType);
