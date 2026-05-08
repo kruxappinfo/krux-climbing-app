@@ -333,16 +333,12 @@ async function logAscent(ascentData) {
             routeName: ascentData.routeName,
             grade: ascentData.grade,
             sector: ascentData.sector || '',
-            style: ascentData.style,
-            date: new Date(ascentData.date),
+            style: ascentData.style, // 'flash', 'redpoint', 'onsight', 'toprope', 'lead'
+            date: new Date(ascentData.date), // Use user selected date
             tries: ascentData.tries || 1,
             rating: ascentData.rating || 0,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            notes: ascentData.notes || '',
-            ...(ascentData.gradeVote && { gradeVote: ascentData.gradeVote }),
-            ...(ascentData.alejeVote && { alejeVote: ascentData.alejeVote }),
-            ...(ascentData.rockQuality && { rockQuality: ascentData.rockQuality }),
-            ...(ascentData.routeQuality && { routeQuality: ascentData.routeQuality })
+            notes: ascentData.notes || ''
         };
 
         // Add to ascents collection
@@ -538,11 +534,7 @@ async function updateAscent(ascentId, ascentData) {
             notes: ascentData.notes || '',
             tries: ascentData.tries,
             rating: ascentData.rating,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            ...(ascentData.gradeVote && { gradeVote: ascentData.gradeVote }),
-            ...(ascentData.alejeVote && { alejeVote: ascentData.alejeVote }),
-            ...(ascentData.rockQuality && { rockQuality: ascentData.rockQuality }),
-            ...(ascentData.routeQuality && { routeQuality: ascentData.routeQuality })
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
 
         await db.collection('ascents').doc(ascentId).update(data);
@@ -571,90 +563,6 @@ async function getUserStats() {
         return null;
     }
 }
-// ==================== ASCENT MODAL HELPERS ====================
-
-const FRENCH_GRADES = [
-    '3', '3+', '4', '4+', '5', '5+',
-    '6a', '6a+', '6b', '6b+', '6c', '6c+',
-    '7a', '7a+', '7b', '7b+', '7c', '7c+',
-    '8a', '8a+', '8b', '8b+', '8c', '8c+',
-    '9a', '9a+', '9b', '9b+', '9c'
-];
-
-function _amShowStep(step) {
-    document.getElementById('am-step-1')?.classList.toggle('am-step--hidden', step !== 1);
-    document.getElementById('am-step-2')?.classList.toggle('am-step--hidden', step !== 2);
-}
-
-function _amReset() {
-    const modal = document.getElementById('ascent-modal');
-    if (modal) {
-        delete modal.dataset.ascentId;
-        delete modal.dataset.editMode;
-        delete modal.dataset.routeId;
-    }
-    document.getElementById('ascent-style').value = 'redpoint';
-    document.getElementById('ascent-tries').value = '1';
-    document.getElementById('am-tries-display').textContent = '1';
-    document.getElementById('ascent-notes').value = '';
-    document.getElementById('ascent-grade-vote').value = '';
-    document.getElementById('ascent-aleje-vote').value = '';
-    document.getElementById('ascent-rock-quality').value = '0';
-    document.getElementById('ascent-route-quality').value = '0';
-    document.getElementById('am-grade-vote-label').textContent = '—';
-    document.getElementById('am-aleje-vote-label').textContent = '—';
-    _amSetStyle('redpoint');
-    _amSetStars('am-rock-stars', 'ascent-rock-quality', 0);
-    _amSetStars('am-route-stars', 'ascent-route-quality', 0);
-    document.querySelectorAll('.am-aleje-btn').forEach(b => b.classList.remove('am-aleje-btn--active'));
-}
-
-function _amSetStyle(style) {
-    document.getElementById('ascent-style').value = style;
-    document.querySelectorAll('.am-style-btn').forEach(b => {
-        b.classList.toggle('am-style-btn--active', b.dataset.style === style);
-    });
-}
-
-function _amSetStars(containerId, hiddenId, value) {
-    const val = parseInt(value) || 0;
-    document.getElementById(hiddenId).value = val;
-    document.querySelectorAll(`#${containerId} .am-star`).forEach(star => {
-        const starVal = parseInt(star.dataset.val);
-        star.className = starVal <= val ? 'ti ti-star-filled am-star am-star--on' : 'ti ti-star am-star';
-    });
-}
-
-function _amInitGradeSlider(grade) {
-    const slider = document.getElementById('am-grade-slider');
-    const ticks = document.getElementById('am-grade-ticks');
-    if (!slider || !ticks) return;
-
-    const centerIdx = FRENCH_GRADES.indexOf(grade);
-    const start = Math.max(0, centerIdx - 3);
-    const end = Math.min(FRENCH_GRADES.length - 1, centerIdx + 3);
-    const window = FRENCH_GRADES.slice(start, end + 1);
-
-    slider.min = 0;
-    slider.max = window.length - 1;
-    slider.step = 1;
-    const defaultIdx = centerIdx - start;
-    slider.value = defaultIdx;
-    document.getElementById('ascent-grade-vote').value = window[defaultIdx];
-    document.getElementById('am-grade-vote-label').textContent = window[defaultIdx];
-
-    ticks.innerHTML = '';
-    window.forEach((g, i) => {
-        const tick = document.createElement('span');
-        tick.className = 'am-grade-tick' + (i === defaultIdx ? ' am-grade-tick--center' : '');
-        tick.textContent = g;
-        ticks.appendChild(tick);
-    });
-
-    slider._gradeWindow = window;
-    slider._centerIdx = defaultIdx;
-}
-
 // Open ascent modal
 function openAscentModal(schoolId, schoolName, routeId, routeName, grade, sector) {
     if (!currentUser) {
@@ -663,6 +571,7 @@ function openAscentModal(schoolId, schoolName, routeId, routeName, grade, sector
     }
 
     const modal = document.getElementById('ascent-modal');
+    const form = document.getElementById('ascent-form');
 
     // Set hidden fields
     document.getElementById('ascent-school-id').value = schoolId;
@@ -670,29 +579,51 @@ function openAscentModal(schoolId, schoolName, routeId, routeName, grade, sector
     document.getElementById('ascent-route-name').value = routeName;
     document.getElementById('ascent-grade').value = grade;
     document.getElementById('ascent-sector').value = sector || '';
-    modal.dataset.routeId = routeId;
 
-    // Display
-    document.getElementById('am-route-meta').textContent = sector || schoolName || '';
-    document.getElementById('am-route-display').textContent = routeName;
-    const gradeEl = document.getElementById('am-grade-badges');
-    gradeEl.innerHTML = `<span class="am-grade-pill">${grade}</span>`;
+    // Store routeId in form dataset
+    form.dataset.routeId = routeId;
 
+    // Set display fields
+    document.getElementById('display-route-name').textContent = `${routeName} (${grade})`;
     const todayStr = new Date().toISOString().split('T')[0];
     const dateInput = document.getElementById('ascent-date');
     dateInput.max = todayStr;
     dateInput.valueAsDate = new Date();
 
-    _amShowStep(1);
     modal.classList.remove('hidden');
-    _amInitGradeSlider(grade);
 }
 
 // Close ascent modal
 function closeAscentModal() {
     const modal = document.getElementById('ascent-modal');
+    const form = document.getElementById('ascent-form');
+    const modalTitle = document.getElementById('ascent-modal-title');
+
     modal.classList.add('hidden');
-    _amReset();
+    form.reset();
+
+    // Reset style dropdown to default (redpoint)
+    document.getElementById('ascent-style').value = 'redpoint';
+    document.querySelectorAll('.style-dropdown-menu .style-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.value === 'redpoint');
+    });
+    const styleToggle = document.getElementById('style-dropdown-toggle');
+    if (styleToggle) {
+        styleToggle.querySelector('.style-icon').textContent = '🔴';
+        styleToggle.querySelector('.style-dropdown-label').innerHTML = '<strong>Redpoint</strong> — Encadenada tras haberla probado antes';
+    }
+    const styleDropdown = document.querySelector('.style-dropdown');
+    if (styleDropdown) styleDropdown.classList.remove('open');
+
+    // Reset edit mode
+    delete form.dataset.ascentId;
+    delete form.dataset.editMode;
+    delete form.dataset.routeId;
+
+    // Reset title and button text
+    modalTitle.textContent = 'Registrar Ascenso';
+    const submitBtn = form.querySelector('.submit-btn');
+    submitBtn.textContent = 'Registrar';
 }
 
 // Open ascent modal for editing
@@ -700,58 +631,67 @@ function openEditAscentModal(ascent) {
     if (!currentUser) return;
 
     const modal = document.getElementById('ascent-modal');
-    document.getElementById('my-routes-modal')?.classList.add('hidden');
+    const form = document.getElementById('ascent-form');
 
-    // Hidden fields
+    // Close My Routes modal if it's open
+    const myRoutesModal = document.getElementById('my-routes-modal');
+    if (myRoutesModal) {
+        myRoutesModal.classList.add('hidden');
+    }
+
+    // Set hidden fields
     document.getElementById('ascent-school-id').value = ascent.schoolId;
     document.getElementById('ascent-school-name').value = ascent.schoolName;
     document.getElementById('ascent-route-name').value = ascent.routeName;
     document.getElementById('ascent-grade').value = ascent.grade;
-    document.getElementById('ascent-sector').value = ascent.sector || '';
-    modal.dataset.routeId = ascent.routeId || ascent.routeName;
-    modal.dataset.ascentId = ascent.id;
-    modal.dataset.editMode = 'true';
 
-    // Display
-    document.getElementById('am-route-meta').textContent = ascent.sector || ascent.schoolName || '';
-    document.getElementById('am-route-display').textContent = ascent.routeName;
-    document.getElementById('am-grade-badges').innerHTML = `<span class="am-grade-pill">${ascent.grade}</span>`;
+    // Store routeId in form dataset (fallback to routeName for old data)
+    form.dataset.routeId = ascent.routeId || ascent.routeName;
 
-    // Date
+    // Set display fields
+    document.getElementById('display-route-name').textContent = `${ascent.routeName} (${ascent.grade})`;
+
+    // Format date to YYYY-MM-DD for input
     const dateStr = ascent.date instanceof Date
         ? ascent.date.toISOString().split('T')[0]
         : new Date(ascent.date).toISOString().split('T')[0];
-    const dateInput = document.getElementById('ascent-date');
-    dateInput.max = new Date().toISOString().split('T')[0];
-    dateInput.value = dateStr;
 
-    // Style
-    _amSetStyle(ascent.style || 'redpoint');
-
-    // Tries
-    const tries = ascent.tries || 1;
-    document.getElementById('ascent-tries').value = tries;
-    document.getElementById('am-tries-display').textContent = tries;
-
+    const dateInputEdit = document.getElementById('ascent-date');
+    dateInputEdit.max = new Date().toISOString().split('T')[0];
+    dateInputEdit.value = dateStr;
+    document.getElementById('ascent-sector').value = ascent.sector || '';
+    document.getElementById('ascent-style').value = ascent.style;
+    document.querySelectorAll('.style-dropdown-menu .style-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.value === ascent.style);
+        if (o.dataset.value === ascent.style) {
+            const toggle = document.getElementById('style-dropdown-toggle');
+            if (toggle) {
+                toggle.querySelector('.style-icon').textContent = o.querySelector('.style-icon').textContent;
+                toggle.querySelector('.style-dropdown-label').innerHTML = o.querySelector('.style-text').innerHTML;
+            }
+        }
+    });
+    document.getElementById('ascent-tries').value = ascent.tries || 1;
     document.getElementById('ascent-notes').value = ascent.notes || '';
 
-    // Votes (if editing existing)
-    if (ascent.gradeVote) {
-        document.getElementById('ascent-grade-vote').value = ascent.gradeVote;
+    // Set rating
+    if (ascent.rating) {
+        const ratingInput = document.querySelector(`input[name="rating"][value="${ascent.rating}"]`);
+        if (ratingInput) ratingInput.checked = true;
     }
-    if (ascent.alejeVote) {
-        document.getElementById('ascent-aleje-vote').value = ascent.alejeVote;
-        document.querySelectorAll('.am-aleje-btn').forEach(b => {
-            b.classList.toggle('am-aleje-btn--active', b.dataset.aleje === ascent.alejeVote);
-        });
-        document.getElementById('am-aleje-vote-label').textContent = ascent.alejeVote;
-    }
-    _amSetStars('am-rock-stars', 'ascent-rock-quality', ascent.rockQuality || 0);
-    _amSetStars('am-route-stars', 'ascent-route-quality', ascent.routeQuality || ascent.rating || 0);
 
-    _amShowStep(1);
+    // Store ascent ID in form for update
+    form.dataset.ascentId = ascent.id;
+    form.dataset.editMode = 'true';
+
+    // Change title and button text
+    const modalTitle = document.getElementById('ascent-modal-title');
+    modalTitle.textContent = 'Actualizar Ascenso';
+
+    const submitBtn = form.querySelector('.submit-btn');
+    submitBtn.textContent = 'Actualizar';
+
     modal.classList.remove('hidden');
-    _amInitGradeSlider(ascent.grade);
 }
 
 
@@ -2169,198 +2109,214 @@ function renderProjectsList() {
 
 // Initialize event listeners
 document.addEventListener('DOMContentLoaded', () => {
-    // ── Ascent modal ──────────────────────────────────────────
-    const modal = document.getElementById('ascent-modal');
+    // Close modal button
+    const closeBtn = document.getElementById('close-ascent-modal');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeAscentModal);
+    }
 
-    document.getElementById('close-ascent-modal')?.addEventListener('click', closeAscentModal);
+    // Style dropdown toggle
+    const styleDropdown = document.querySelector('.style-dropdown');
+    const styleToggle = document.getElementById('style-dropdown-toggle');
+    const styleMenu = document.getElementById('style-dropdown-menu');
 
-    // Style grid buttons
-    document.querySelectorAll('.am-style-btn').forEach(btn => {
-        btn.addEventListener('click', () => _amSetStyle(btn.dataset.style));
-    });
-
-    // Tries stepper
-    document.getElementById('am-tries-minus')?.addEventListener('click', () => {
-        const input = document.getElementById('ascent-tries');
-        const val = Math.max(1, parseInt(input.value) - 1);
-        input.value = val;
-        document.getElementById('am-tries-display').textContent = val;
-    });
-    document.getElementById('am-tries-plus')?.addEventListener('click', () => {
-        const input = document.getElementById('ascent-tries');
-        const val = Math.min(999, parseInt(input.value) + 1);
-        input.value = val;
-        document.getElementById('am-tries-display').textContent = val;
-    });
-
-    // Step navigation
-    document.getElementById('am-next-btn')?.addEventListener('click', () => _amShowStep(2));
-    document.getElementById('am-back-btn')?.addEventListener('click', () => _amShowStep(1));
-
-    // Save without voting (step 1)
-    document.getElementById('am-save-no-vote')?.addEventListener('click', () => _amSaveAscent(false));
-
-    // Submit with vote (step 2)
-    document.getElementById('am-submit-vote-btn')?.addEventListener('click', () => _amSaveAscent(true));
-
-    // Grade slider
-    document.getElementById('am-grade-slider')?.addEventListener('input', (e) => {
-        const slider = e.target;
-        const grades = slider._gradeWindow;
-        if (!grades) return;
-        const idx = parseInt(slider.value);
-        const grade = grades[idx];
-        document.getElementById('ascent-grade-vote').value = grade;
-        document.getElementById('am-grade-vote-label').textContent = grade;
-
-        // update tick highlights
-        document.querySelectorAll('#am-grade-ticks .am-grade-tick').forEach((tick, i) => {
-            tick.classList.toggle('am-grade-tick--center', i === idx);
-        });
-    });
-
-    // Aleje buttons
-    document.querySelectorAll('.am-aleje-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.am-aleje-btn').forEach(b => b.classList.remove('am-aleje-btn--active'));
-            btn.classList.add('am-aleje-btn--active');
-            const val = btn.dataset.aleje;
-            document.getElementById('ascent-aleje-vote').value = val;
-            document.getElementById('am-aleje-vote-label').textContent = val;
-        });
-    });
-
-    // Star ratings
-    document.querySelectorAll('.am-stars').forEach(container => {
-        container.querySelectorAll('.am-star').forEach(star => {
-            star.addEventListener('click', () => {
-                _amSetStars(container.id, container.dataset.field, parseInt(star.dataset.val));
-            });
-        });
-    });
-
-    // Close on outside click
-    if (modal) {
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) closeAscentModal();
+    if (styleToggle) {
+        styleToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            styleDropdown.classList.toggle('open');
         });
     }
 
-    // ── My Routes modal ───────────────────────────────────────
-    document.getElementById('close-my-routes-modal')?.addEventListener('click', () => {
-        document.getElementById('my-routes-modal').classList.add('hidden');
+    // Style dropdown option selection
+    document.querySelectorAll('.style-dropdown-menu .style-option').forEach(option => {
+        option.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('.style-dropdown-menu .style-option').forEach(o => o.classList.remove('selected'));
+            option.classList.add('selected');
+            document.getElementById('ascent-style').value = option.dataset.value;
+
+            // Update toggle display
+            const icon = option.querySelector('.style-icon').textContent;
+            const text = option.querySelector('.style-text').innerHTML;
+            styleToggle.querySelector('.style-icon').textContent = icon;
+            styleToggle.querySelector('.style-dropdown-label').innerHTML = text;
+
+            // Close dropdown
+            styleDropdown.classList.remove('open');
+        });
     });
 
-    document.getElementById('my-routes-btn')?.addEventListener('click', showMyRoutes);
-    document.getElementById('my-network-btn')?.addEventListener('click', showNetwork);
+    // Close dropdown when clicking outside
+    document.addEventListener('click', () => {
+        if (styleDropdown) styleDropdown.classList.remove('open');
+    });
 
+    // Close My Routes modal
+    const closeRoutesBtn = document.getElementById('close-my-routes-modal');
+    if (closeRoutesBtn) {
+        closeRoutesBtn.addEventListener('click', () => {
+            document.getElementById('my-routes-modal').classList.add('hidden');
+        });
+    }
+
+    // My Routes button
+    const myRoutesBtn = document.getElementById('my-routes-btn');
+    if (myRoutesBtn) {
+        myRoutesBtn.addEventListener('click', showMyRoutes);
+    }
+
+    // My Network button
+    const myNetworkBtn = document.getElementById('my-network-btn');
+    if (myNetworkBtn) {
+        myNetworkBtn.addEventListener('click', showNetwork);
+    }
+
+    // Close Network modal
     const closeNetworkBtn = document.getElementById('close-network-modal');
     const networkModal = document.getElementById('network-modal');
-    closeNetworkBtn?.addEventListener('click', () => networkModal.classList.add('hidden'));
-    networkModal?.addEventListener('click', (e) => {
-        if (e.target === networkModal) networkModal.classList.add('hidden');
-    });
-
-    document.getElementById('my-routes-modal')?.addEventListener('click', (e) => {
-        if (e.target === document.getElementById('my-routes-modal')) {
-            document.getElementById('my-routes-modal').classList.add('hidden');
-        }
-    });
+    if (closeNetworkBtn) {
+        closeNetworkBtn.addEventListener('click', () => {
+            networkModal.classList.add('hidden');
+        });
+    }
+    if (networkModal) {
+        networkModal.addEventListener('click', (e) => {
+            if (e.target === networkModal) {
+                networkModal.classList.add('hidden');
+            }
+        });
+    }
 
     // Initialize tab navigation
     initTabs();
 
-    // ── Comments modal ────────────────────────────────────────
+    // Close modal on outside click
+    const modal = document.getElementById('ascent-modal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeAscentModal();
+            }
+        });
+    }
+
+    const routesModal = document.getElementById('my-routes-modal');
+    if (routesModal) {
+        routesModal.addEventListener('click', (e) => {
+            if (e.target === routesModal) {
+                routesModal.classList.add('hidden');
+            }
+        });
+    }
+
+    // Comments Modal Listeners
     const commentsModal = document.getElementById('comments-modal');
+    const closeCommentsBtn = document.getElementById('close-comments-modal');
+    const commentForm = document.getElementById('comment-form');
     const commentInput = document.getElementById('comment-input');
     const sendCommentBtn = document.getElementById('send-comment-btn');
-    const commentForm = document.getElementById('comment-form');
 
-    document.getElementById('close-comments-modal')?.addEventListener('click', () => {
-        commentsModal.classList.add('hidden');
-    });
-    commentsModal?.addEventListener('click', (e) => {
-        if (e.target === commentsModal) commentsModal.classList.add('hidden');
-    });
+    if (closeCommentsBtn) {
+        closeCommentsBtn.addEventListener('click', () => {
+            commentsModal.classList.add('hidden');
+        });
+    }
+
+    if (commentsModal) {
+        commentsModal.addEventListener('click', (e) => {
+            if (e.target === commentsModal) {
+                commentsModal.classList.add('hidden');
+            }
+        });
+    }
 
     if (commentInput) {
         commentInput.addEventListener('input', (e) => {
             sendCommentBtn.disabled = !e.target.value.trim();
         });
+        // Attach mention autocomplete
         if (typeof MentionAutocomplete !== 'undefined' && !commentInput._mentionAutocomplete) {
             new MentionAutocomplete(commentInput);
         }
     }
-    commentForm?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const text = commentInput.value.trim();
-        if (text) postComment(text);
-    });
-});
 
-async function _amSaveAscent(withVote) {
-    if (!currentUser) return;
-
-    const modal = document.getElementById('ascent-modal');
-    const submitBtn = document.getElementById(withVote ? 'am-submit-vote-btn' : 'am-save-no-vote');
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Guardando...'; }
-
-    try {
-        const selectedDate = document.getElementById('ascent-date').value;
-        if (selectedDate && selectedDate > new Date().toISOString().split('T')[0]) {
-            showToast('No puedes registrar vías con fecha futura', 'error');
-            return;
-        }
-
-        const gradeVoteRaw = document.getElementById('ascent-grade-vote').value;
-        const alejeVoteRaw = document.getElementById('ascent-aleje-vote').value;
-        const rockQuality = parseInt(document.getElementById('ascent-rock-quality').value) || 0;
-        const routeQuality = parseInt(document.getElementById('ascent-route-quality').value) || 0;
-
-        const ascentData = {
-            userId: currentUser.uid,
-            schoolId: document.getElementById('ascent-school-id').value,
-            schoolName: document.getElementById('ascent-school-name').value,
-            routeId: modal.dataset.routeId || document.getElementById('ascent-route-name').value,
-            routeName: document.getElementById('ascent-route-name').value,
-            grade: document.getElementById('ascent-grade').value,
-            sector: document.getElementById('ascent-sector').value,
-            date: selectedDate,
-            style: document.getElementById('ascent-style').value,
-            tries: parseInt(document.getElementById('ascent-tries').value) || 1,
-            notes: document.getElementById('ascent-notes').value,
-            rating: routeQuality,
-            ...(withVote && gradeVoteRaw && { gradeVote: gradeVoteRaw }),
-            ...(withVote && alejeVoteRaw && { alejeVote: alejeVoteRaw }),
-            ...(withVote && rockQuality && { rockQuality }),
-            ...(withVote && routeQuality && { routeQuality }),
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        };
-
-        const isEditMode = modal.dataset.editMode === 'true';
-        const ascentId = modal.dataset.ascentId;
-
-        if (isEditMode && ascentId) {
-            await updateAscent(ascentId, ascentData);
-            closeAscentModal();
-            showToast('¡Ascenso actualizado correctamente!', 'success');
-            showMyRoutes();
-        } else {
-            await logAscent(ascentData);
-            closeAscentModal();
-            showToast('¡Ascenso registrado correctamente!', 'success');
-            if (typeof loadActivityData === 'function') loadActivityData();
-        }
-    } catch (error) {
-        console.error('Error submitting ascent:', error);
-        showToast('Error al guardar el ascenso', 'error');
-    } finally {
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.textContent = withVote ? 'Registrar y votar' : 'Registrar sin votar';
-        }
+    if (commentForm) {
+        commentForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const text = commentInput.value.trim();
+            if (text) {
+                postComment(text);
+            }
+        });
     }
-}
+
+    // Form submission
+    const form = document.getElementById('ascent-form');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!currentUser) return;
+
+            const submitBtn = form.querySelector('.submit-btn');
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Guardando...';
+
+            try {
+                const selectedDate = document.getElementById('ascent-date').value;
+                if (selectedDate && selectedDate > new Date().toISOString().split('T')[0]) {
+                    showToast('No puedes registrar vías con fecha futura', 'error');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                    return;
+                }
+
+                const ascentData = {
+                    userId: currentUser.uid,
+                    schoolId: document.getElementById('ascent-school-id').value,
+                    schoolName: document.getElementById('ascent-school-name').value,
+                    routeId: form.dataset.routeId || document.getElementById('ascent-route-name').value,
+                    routeName: document.getElementById('ascent-route-name').value,
+                    grade: document.getElementById('ascent-grade').value,
+                    sector: document.getElementById('ascent-sector').value,
+                    date: document.getElementById('ascent-date').value,
+                    style: document.getElementById('ascent-style').value,
+                    tries: parseInt(document.getElementById('ascent-tries').value),
+                    notes: document.getElementById('ascent-notes').value,
+                    rating: parseInt(document.querySelector('input[name="rating"]:checked')?.value || 0),
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                };
+
+                // Check if we're in edit mode
+                const isEditMode = form.dataset.editMode === 'true';
+                const ascentId = form.dataset.ascentId;
+
+                if (isEditMode && ascentId) {
+                    // Update existing ascent
+                    await updateAscent(ascentId, ascentData);
+                    closeAscentModal();
+                    showToast('¡Ascenso actualizado correctamente!', 'success');
+                    // Reload and reopen My Routes list
+                    showMyRoutes();
+                } else {
+                    // Create new ascent
+                    await logAscent(ascentData);
+                    closeAscentModal();
+                    showToast('¡Ascenso registrado correctamente!', 'success');
+                    if (typeof loadActivityData === 'function') loadActivityData();
+                }
+
+            } catch (error) {
+                console.error('Error submitting ascent:', error);
+                showToast('Error al guardar el ascenso', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+            }
+        });
+    }
+});
 
 // ==================== MESSAGING SERVICE ====================
 
