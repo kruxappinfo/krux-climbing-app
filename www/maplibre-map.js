@@ -1993,7 +1993,7 @@ const POI_SVG_MAP = {
 };
 
 // Versión de los iconos (incrementar al actualizar para forzar recarga del cache)
-const POI_ICONS_VERSION = '8';
+const POI_ICONS_VERSION = '9';
 
 // Mapa de POIs que tienen icono PNG externo disponible (los PNGs originales del diseñador)
 const POI_SVG_FILES = {
@@ -2071,45 +2071,14 @@ function createSVGPinImage(poiType, size = 50) {
       img.onerror = () => reject(new Error(`Failed to load image for POI type "${poiType}"`));
       img.onload = () => {
         try {
-          if (cropToContent) {
-            // Detectar bbox del contenido no transparente del PNG y centrarlo en el canvas
-            const tmp = document.createElement('canvas');
-            tmp.width = img.width;
-            tmp.height = img.height;
-            const tctx = tmp.getContext('2d');
-            tctx.drawImage(img, 0, 0);
-            const data = tctx.getImageData(0, 0, img.width, img.height).data;
-            let minX = img.width, minY = img.height, maxX = 0, maxY = 0;
-            for (let y = 0; y < img.height; y++) {
-              for (let x = 0; x < img.width; x++) {
-                // Considerar opaco si alpha > 200 (ignora fondos semi-transparentes)
-                if (data[(y * img.width + x) * 4 + 3] > 200) {
-                  if (x < minX) minX = x;
-                  if (y < minY) minY = y;
-                  if (x > maxX) maxX = x;
-                  if (y > maxY) maxY = y;
-                }
-              }
-            }
-            const cw = maxX - minX + 1;
-            const ch = maxY - minY + 1;
-            // Expandir el bbox a un cuadrado centrado en el icono para que TODOS
-            // los iconos ocupen el mismo tamaño visual independientemente de su aspect ratio
-            const sideLen = Math.max(cw, ch);
-            const cx = (minX + maxX) / 2;
-            const cy = (minY + maxY) / 2;
-            const sx = cx - sideLen / 2;
-            const sy = cy - sideLen / 2;
-            ctx.drawImage(img, sx, sy, sideLen, sideLen, 0, 0, size, size);
-          } else {
-            // Contain: mantener proporción, centrar en el canvas
-            const scale = Math.min(size / img.width, size / img.height);
-            const drawW = img.width * scale;
-            const drawH = img.height * scale;
-            const dx = (size - drawW) / 2;
-            const dy = (size - drawH) / 2;
-            ctx.drawImage(img, dx, dy, drawW, drawH);
-          }
+          // Contain: escalar manteniendo proporción original, centrado en el canvas
+          const scale = Math.min(size / img.width, size / img.height);
+          const drawW = img.width * scale;
+          const drawH = img.height * scale;
+          const dx = (size - drawW) / 2;
+          const dy = (size - drawH) / 2;
+          ctx.drawImage(img, dx, dy, drawW, drawH);
+          void cropToContent; // parámetro mantenido por compatibilidad
           resolve({ data: ctx.getImageData(0, 0, size, size).data, width: size, height: size });
         } catch (e) { reject(e); }
       };
@@ -5589,36 +5558,15 @@ function loadParkingIcon() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, size, size);
 
-    // Detectar bbox del contenido no transparente para recortar al icono real
-    const tmp = document.createElement('canvas');
-    tmp.width = img.width;
-    tmp.height = img.height;
-    const tctx = tmp.getContext('2d');
-    tctx.drawImage(img, 0, 0);
-    const data = tctx.getImageData(0, 0, img.width, img.height).data;
-    let minX = img.width, minY = img.height, maxX = 0, maxY = 0;
-    for (let y = 0; y < img.height; y++) {
-      for (let x = 0; x < img.width; x++) {
-        if (data[(y * img.width + x) * 4 + 3] > 200) {
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-        }
-      }
-    }
-    const cw = maxX - minX + 1;
-    const ch = maxY - minY + 1;
-    const sideLen = Math.max(cw, ch);
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    const sx = cx - sideLen / 2;
-    const sy = cy - sideLen / 2;
-
     // Contorno blanco
     ctx.shadowColor = 'white';
     ctx.shadowBlur = 4;
-    ctx.drawImage(img, sx, sy, sideLen, sideLen, 0, 0, size, size);
+    const scale = Math.min(size / img.width, size / img.height);
+    const drawW = img.width * scale;
+    const drawH = img.height * scale;
+    const dx = (size - drawW) / 2;
+    const dy = (size - drawH) / 2;
+    ctx.drawImage(img, dx, dy, drawW, drawH);
     ctx.shadowBlur = 0;
 
     const imageData = ctx.getImageData(0, 0, size, size);
