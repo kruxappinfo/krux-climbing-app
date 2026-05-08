@@ -61,9 +61,11 @@
 
   <!-- Google Fonts - Inter with display swap for faster text rendering -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Tabler Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
 
   <!-- CSS with cache busting -->
-  <link rel="stylesheet" href="./app_2.css?v=26" />
+  <link rel="stylesheet" href="./app_2.css?v=27" />
 
   <!-- Capacitor - debe cargarse primero para detectar plataforma -->
 
@@ -87,7 +89,7 @@
 
   <script defer src="./auth.js"></script>
 
-  <script defer src="./user-features.js?v=2"></script>
+  <script defer src="./user-features.js?v=3"></script>
 
   <script defer src="./route-photos.js?v=2"></script>
 
@@ -1466,86 +1468,208 @@
 
   <!-- Ascent Logging Modal -->
   <div id="ascent-modal" class="modal hidden">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3 id="ascent-modal-title">Registrar Ascenso</h3>
-        <button id="close-ascent-modal" class="close-btn">x</button>
+    <!-- Hidden data fields -->
+    <input type="hidden" id="ascent-school-id">
+    <input type="hidden" id="ascent-school-name">
+    <input type="hidden" id="ascent-route-name">
+    <input type="hidden" id="ascent-grade">
+    <input type="hidden" id="ascent-sector">
+    <input type="hidden" id="ascent-style" value="redpoint">
+    <input type="hidden" id="ascent-grade-vote" value="">
+    <input type="hidden" id="ascent-aleje-vote" value="">
+    <input type="hidden" id="ascent-rock-quality" value="0">
+    <input type="hidden" id="ascent-route-quality" value="0">
+
+    <div class="am-sheet">
+
+      <!-- ── PASO 1: Tu ascensión ── -->
+      <div class="am-step" id="am-step-1">
+        <div class="am-step-label">Paso 1 · tu ascensión</div>
+        <div class="am-card">
+
+          <div class="am-card-header">
+            <div class="am-header-info">
+              <div class="am-route-meta" id="am-route-meta">Sector</div>
+              <h3 class="am-route-name" id="am-route-display">—</h3>
+              <div class="am-grade-badges" id="am-grade-badges"></div>
+            </div>
+            <button id="close-ascent-modal" class="am-close-btn" aria-label="Cerrar">
+              <i class="ti ti-x"></i>
+            </button>
+          </div>
+
+          <div class="am-card-body">
+
+            <!-- Estilo -->
+            <div class="am-field">
+              <label class="am-label">Estilo de ascensión</label>
+              <div class="am-style-grid">
+                <button class="am-style-btn" data-style="onsight" aria-label="A vista">
+                  <i class="ti ti-eye am-style-icon" style="color:#1D9E75"></i>
+                  <span>A vista</span>
+                </button>
+                <button class="am-style-btn" data-style="flash" aria-label="Flash">
+                  <i class="ti ti-bolt am-style-icon" style="color:#EF9F27"></i>
+                  <span>Flash</span>
+                </button>
+                <button class="am-style-btn am-style-btn--active" data-style="redpoint" aria-label="Redpoint">
+                  <i class="ti ti-flag am-style-icon" style="color:#A32D2D"></i>
+                  <span>Redpoint</span>
+                </button>
+                <button class="am-style-btn" data-style="toprope" aria-label="Top rope">
+                  <i class="ti ti-arrow-up am-style-icon" style="color:#639922"></i>
+                  <span>Top rope</span>
+                </button>
+                <button class="am-style-btn" data-style="project" aria-label="Intento">
+                  <i class="ti ti-target am-style-icon" style="color:#888780"></i>
+                  <span>Intento</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Fecha + Intentos -->
+            <div class="am-row-2">
+              <div class="am-field">
+                <label class="am-label" for="ascent-date">Fecha</label>
+                <div class="am-date-display">
+                  <i class="ti ti-calendar"></i>
+                  <input type="date" id="ascent-date" class="am-date-input" required>
+                </div>
+              </div>
+              <div class="am-field">
+                <label class="am-label">Intentos</label>
+                <div class="am-stepper">
+                  <button type="button" class="am-stepper-btn" id="am-tries-minus" aria-label="Restar">
+                    <i class="ti ti-minus"></i>
+                  </button>
+                  <span class="am-stepper-val" id="am-tries-display">1</span>
+                  <button type="button" class="am-stepper-btn" id="am-tries-plus" aria-label="Sumar">
+                    <i class="ti ti-plus"></i>
+                  </button>
+                </div>
+                <input type="hidden" id="ascent-tries" value="1">
+              </div>
+            </div>
+
+            <!-- Notas -->
+            <div class="am-field">
+              <label class="am-label" for="ascent-notes">Notas</label>
+              <textarea id="ascent-notes" class="am-textarea" rows="2" placeholder="Sensaciones, beta, compañía…"></textarea>
+            </div>
+
+            <!-- Extras opcionales -->
+            <div class="am-extras">
+              <button type="button" class="am-extra-btn" id="am-photo-btn">
+                <i class="ti ti-camera"></i> Foto
+              </button>
+              <button type="button" class="am-extra-btn" id="am-conditions-btn">
+                <i class="ti ti-cloud"></i> Condiciones
+              </button>
+              <button type="button" class="am-extra-btn" id="am-partners-btn">
+                <i class="ti ti-users"></i> Cordada
+              </button>
+            </div>
+
+          </div>
+
+          <div class="am-card-footer">
+            <button type="button" class="am-btn-primary" id="am-next-btn">
+              Siguiente · valorar la vía
+              <i class="ti ti-arrow-right"></i>
+            </button>
+            <button type="button" class="am-btn-ghost" id="am-save-no-vote">
+              Registrar sin votar
+            </button>
+          </div>
+        </div>
       </div>
-      <form id="ascent-form">
-        <input type="hidden" id="ascent-school-id">
-        <input type="hidden" id="ascent-school-name">
-        <input type="hidden" id="ascent-route-name">
-        <input type="hidden" id="ascent-grade">
 
-        <div class="form-group">
-          <label>Ví­a</label>
-          <div id="display-route-name" class="route-name-display"></div>
-        </div>
+      <!-- ── PASO 2: Tu opinión ── -->
+      <div class="am-step am-step--hidden" id="am-step-2">
+        <div class="am-step-label">Paso 2 · tu opinión</div>
+        <div class="am-card">
 
-        <input type="hidden" id="ascent-sector">
-
-        <div class="form-group">
-          <label for="ascent-date">Fecha</label>
-          <input type="date" id="ascent-date" required>
-        </div>
-
-        <div class="form-group">
-          <label>Estilo</label>
-          <input type="hidden" id="ascent-style" value="redpoint">
-          <div class="style-dropdown">
-            <div class="style-dropdown-toggle" id="style-dropdown-toggle">
-              <span class="style-icon">🔴</span>
-              <span class="style-dropdown-label"><strong>Redpoint</strong> — Encadenada tras haberla probado antes</span>
-              <span class="style-dropdown-arrow">&#9662;</span>
-            </div>
-            <div class="style-dropdown-menu" id="style-dropdown-menu">
-              <div class="style-option selected" data-value="redpoint">
-                <span class="style-icon">🔴</span>
-                <span class="style-text"><strong>Redpoint</strong> — Encadenada tras haberla probado antes</span>
-              </div>
-              <div class="style-option" data-value="onsight">
-                <span class="style-icon">👁️</span>
-                <span class="style-text"><strong>A vista</strong> — Encadenada a la primera, sin info previa</span>
-              </div>
-              <div class="style-option" data-value="flash">
-                <span class="style-icon">⚡</span>
-                <span class="style-text"><strong>Flash</strong> — Encadenada a la primera, con info previa</span>
-              </div>
-              <div class="style-option" data-value="toprope">
-                <span class="style-icon">🪀</span>
-                <span class="style-text"><strong>Top Rope</strong> — Escalada con cuerda por arriba</span>
-              </div>
-              <div class="style-option" data-value="project">
-                <span class="style-icon">🎯</span>
-                <span class="style-text"><strong>Intento</strong> — Probada, pero sin encadenar</span>
-              </div>
+          <div class="am-card-header am-card-header--vote">
+            <button type="button" class="am-back-btn" id="am-back-btn" aria-label="Atrás">
+              <i class="ti ti-arrow-left"></i>
+            </button>
+            <div>
+              <h3 class="am-vote-title">¿Qué te ha parecido?</h3>
+              <p class="am-vote-subtitle">Todo opcional. Mejora los datos de la vía.</p>
             </div>
           </div>
-        </div>
 
-        <div class="form-group">
-          <label for="ascent-tries">Intentos</label>
-          <input type="number" id="ascent-tries" min="1" value="1">
-        </div>
+          <div class="am-card-body">
 
-        <div class="form-group">
-          <label for="ascent-notes">Notas</label>
-          <textarea id="ascent-notes" rows="3" placeholder="Sensaciones, beta, companí­a..."></textarea>
-        </div>
+            <!-- Grado -->
+            <div class="am-field">
+              <div class="am-field-row-header">
+                <label class="am-label">Grado</label>
+                <span class="am-vote-display">Tu voto: <strong id="am-grade-vote-label">—</strong></span>
+              </div>
+              <div class="am-grade-slider-wrap">
+                <input type="range" id="am-grade-slider" class="am-grade-slider" min="0" step="1">
+                <div class="am-grade-ticks" id="am-grade-ticks"></div>
+              </div>
+              <div class="am-community-avg" id="am-community-avg"></div>
+            </div>
 
-        <div class="form-group rating-group">
-          <label>Valoración</label>
-          <div class="star-rating">
-            <input type="radio" id="star5" name="rating" value="5" /><label for="star5">★</label>
-            <input type="radio" id="star4" name="rating" value="4" /><label for="star4">★</label>
-            <input type="radio" id="star3" name="rating" value="3" /><label for="star3">★</label>
-            <input type="radio" id="star2" name="rating" value="2" /><label for="star2">★</label>
-            <input type="radio" id="star1" name="rating" value="1" /><label for="star1">★</label>
+            <!-- Aleje -->
+            <div class="am-field">
+              <div class="am-field-row-header">
+                <label class="am-label">Aleje</label>
+                <span class="am-vote-display">Tu voto: <strong id="am-aleje-vote-label">—</strong></span>
+              </div>
+              <div class="am-aleje-grid">
+                <button type="button" class="am-aleje-btn" data-aleje="plomo" style="--aleje-bg:#C0DD97;--aleje-color:#173404">Plomo</button>
+                <button type="button" class="am-aleje-btn" data-aleje="comodo" style="--aleje-bg:#97C459;--aleje-color:#173404">Cómodo</button>
+                <button type="button" class="am-aleje-btn" data-aleje="justo" style="--aleje-bg:#FAC775;--aleje-color:#412402">Justo</button>
+                <button type="button" class="am-aleje-btn" data-aleje="largo" style="--aleje-bg:#F5C4B3;--aleje-color:#4A1B0C">Largo</button>
+                <button type="button" class="am-aleje-btn" data-aleje="runout" style="--aleje-bg:#F09595;--aleje-color:#501313">Run-out</button>
+              </div>
+            </div>
+
+            <!-- Estado de la roca -->
+            <div class="am-field">
+              <div class="am-field-row-header">
+                <label class="am-label">Estado de la roca</label>
+                <span class="am-vote-display" id="am-rock-avg"></span>
+              </div>
+              <div class="am-stars" id="am-rock-stars" data-field="ascent-rock-quality">
+                <i class="ti ti-star am-star" data-val="1"></i>
+                <i class="ti ti-star am-star" data-val="2"></i>
+                <i class="ti ti-star am-star" data-val="3"></i>
+                <i class="ti ti-star am-star" data-val="4"></i>
+                <i class="ti ti-star am-star" data-val="5"></i>
+              </div>
+            </div>
+
+            <!-- Calidad de la vía -->
+            <div class="am-quality-row">
+              <div>
+                <div class="am-quality-title">Calidad de la vía</div>
+                <div class="am-quality-sub">Tu valoración personal</div>
+              </div>
+              <div class="am-stars" id="am-route-stars" data-field="ascent-route-quality">
+                <i class="ti ti-star am-star" data-val="1"></i>
+                <i class="ti ti-star am-star" data-val="2"></i>
+                <i class="ti ti-star am-star" data-val="3"></i>
+                <i class="ti ti-star am-star" data-val="4"></i>
+                <i class="ti ti-star am-star" data-val="5"></i>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="am-card-footer">
+            <button type="button" class="am-btn-primary" id="am-submit-vote-btn">
+              <i class="ti ti-check"></i>
+              Registrar y votar
+            </button>
           </div>
         </div>
+      </div>
 
-        <button type="submit" class="submit-btn">Registrar</button>
-      </form>
     </div>
   </div>
 
