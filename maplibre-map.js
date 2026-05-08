@@ -5579,21 +5579,17 @@ function setupSectoresInteraction() {
  * Carga icono de parking
  */
 function loadParkingIcon() {
-  // Crear icono SVG como imagen
-  const svgIcon = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="11" fill="#4285f4" stroke="#ffffff" stroke-width="2"/>
-      <text x="12" y="17" text-anchor="middle" fill="white" font-size="14" font-weight="bold">P</text>
-    </svg>
-  `;
-
-  const img = new Image(24, 24);
-  img.onload = () => {
+  createSVGPinImage('parking', 50).then(({ data, width, height }) => {
     if (!mlMap.hasImage('parking-icon')) {
-      mlMap.addImage('parking-icon', img);
+      mlMap.addImage('parking-icon', { data: new Uint8Array(data), width, height });
     }
-  };
-  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgIcon);
+  }).catch(() => {
+    // Fallback al icono inline si falla
+    const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#4285f4" stroke="#ffffff" stroke-width="2"/><text x="12" y="17" text-anchor="middle" fill="white" font-size="14" font-weight="bold">P</text></svg>`;
+    const img = new Image(24, 24);
+    img.onload = () => { if (!mlMap.hasImage('parking-icon')) mlMap.addImage('parking-icon', img); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgIcon);
+  });
 }
 
 // ============================================
