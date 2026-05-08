@@ -1688,7 +1688,7 @@ async function mlLoadSchoolVectorTiles(school) {
       minzoom: school.zoomLevels.parkings,
       layout: {
         'icon-image': 'parking-icon',
-        'icon-size': 1.0,
+        'icon-size': 0.75,
         'icon-allow-overlap': true
       }
     });
@@ -1871,7 +1871,7 @@ async function mlLoadSchoolGeoJSON(school) {
       school.zoomLevels.parkings,
       {
         'icon-image': 'parking-icon',
-        'icon-size': 1.0,
+        'icon-size': 0.75,
         'icon-allow-overlap': true
       }
     );
