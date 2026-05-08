@@ -1993,7 +1993,7 @@ const POI_SVG_MAP = {
 };
 
 // Versión de los iconos (incrementar al actualizar para forzar recarga del cache)
-const POI_ICONS_VERSION = '7';
+const POI_ICONS_VERSION = '8';
 
 // Mapa de POIs que tienen icono PNG externo disponible (los PNGs originales del diseñador)
 const POI_SVG_FILES = {
