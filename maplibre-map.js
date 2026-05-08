@@ -1067,6 +1067,9 @@ function onMapLoad() {
   // Cargar icono de parking
   loadParkingIcon();
 
+  // Precalentar los iconos POI más comunes en tiempo libre del navegador
+  _mlPrewarmPOIIcons();
+
   // Listener para actualizar ticks de ascensos al moverse/zoom
   mlMap.on('moveend', scheduleTicksUpdate);
   mlMap.on('sourcedata', (e) => {
@@ -2036,11 +2039,36 @@ function getPOISVG(descripcion) {
   return POI_SVG_MAP[desc] || { color: '#37474f', svg: '<circle cx="10" cy="10" r="3" fill="white"/>' };
 }
 
+// Caché global: reutiliza iconos ya renderizados dentro de la sesión
+const _mlPoiIconCache = new Map();
+
+/**
+ * Precalienta los iconos POI más comunes usando tiempo libre del navegador.
+ * Así están listos en caché cuando el usuario abre una escuela.
+ */
+function _mlPrewarmPOIIcons() {
+  const types = ['parking', 'camping', 'vivac', 'mirador', 'fuente', 'restaurante', 'bar', 'hotel', 'refugio', ''];
+  const schedule = typeof requestIdleCallback !== 'undefined'
+    ? (cb) => requestIdleCallback(cb, { timeout: 5000 })
+    : (cb) => setTimeout(cb, 2000);
+  schedule(() => { types.forEach(t => createSVGPinImage(t, 50).catch(() => {})); });
+}
+
 /**
  * Genera una imagen de pin SVG con color y icono para usar como icono en MapLibre.
  * Si hay SVG externo disponible en POI_SVG_FILES, lo usa directamente.
+ * El resultado se cachea en memoria para evitar re-renderizado al cambiar de escuela.
  */
 function createSVGPinImage(poiType, size = 50) {
+  const cacheKey = (poiType || '').toLowerCase().trim() || '__default__';
+  if (_mlPoiIconCache.has(cacheKey)) return Promise.resolve(_mlPoiIconCache.get(cacheKey));
+  return _createSVGPinImageRaw(poiType, size).then(img => {
+    _mlPoiIconCache.set(cacheKey, img);
+    return img;
+  });
+}
+
+function _createSVGPinImageRaw(poiType, size = 50) {
   const desc = (poiType || '').toLowerCase().trim();
   const externalSvg = POI_SVG_FILES[desc];
 
@@ -2128,41 +2156,22 @@ async function mlLoadPuntosInteres(url) {
       usedPOITypes.add(desc.toLowerCase().trim());
     });
 
-    // Registrar todos los tipos de POI en paralelo
-    const typesToLoad = [...usedPOITypes].filter(t => !mlMap.hasImage('poi-svg-' + t));
-    if (!mlMap.hasImage('poi-svg-default')) typesToLoad.push('');
-    await Promise.all(typesToLoad.map(async poiType => {
-      try {
-        const img = await createSVGPinImage(poiType, 50);
-        const imgId = poiType === '' ? 'poi-svg-default' : 'poi-svg-' + poiType;
-        if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, img, { sdf: false });
-      } catch (err) {
-        console.warn(`Error creating SVG for POI type "${poiType}":`, err);
-      }
-    }));
+    // Remover capas/fuentes anteriores
+    if (mlMap.getLayer(layerId)) mlMap.removeLayer(layerId);
+    if (mlMap.getSource(sourceId)) mlMap.removeSource(sourceId);
 
-    // Remover si ya existe
-    if (mlMap.getLayer(layerId)) {
-      mlMap.removeLayer(layerId);
-    }
-    if (mlMap.getSource(sourceId)) {
-      mlMap.removeSource(sourceId);
-    }
-
-    mlMap.addSource(sourceId, {
-      type: 'geojson',
-      data: geojson
-    });
+    mlMap.addSource(sourceId, { type: 'geojson', data: geojson });
     mlLoadedSources.add(sourceId);
 
-    // Capa de iconos con pins SVG
+    // Añadir capa INMEDIATAMENTE con fallback al icono por defecto
+    // MapLibre re-renderiza automáticamente cuando se registra cada icono con addImage()
     mlMap.addLayer({
       id: layerId,
       type: 'symbol',
       source: sourceId,
       minzoom: 14,
       layout: {
-        'icon-image': ['get', '_svgIcon'],
+        'icon-image': ['coalesce', ['image', ['get', '_svgIcon']], ['image', 'poi-svg-default']],
         'icon-size': [
           'interpolate', ['linear'], ['zoom'],
           14, 0.55,
@@ -2175,6 +2184,19 @@ async function mlLoadPuntosInteres(url) {
         'icon-anchor': 'bottom'
       }
     });
+
+    // Cargar iconos en background — no bloquear la aparición de la capa
+    const typesToLoad = [...usedPOITypes].filter(t => !mlMap.hasImage('poi-svg-' + t));
+    if (!mlMap.hasImage('poi-svg-default')) typesToLoad.push('');
+    Promise.all(typesToLoad.map(async poiType => {
+      try {
+        const img = await createSVGPinImage(poiType, 50);
+        const imgId = poiType === '' ? 'poi-svg-default' : 'poi-svg-' + poiType;
+        if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, img, { sdf: false });
+      } catch (err) {
+        console.warn(`Error creating SVG for POI type "${poiType}":`, err);
+      }
+    }));
 
     // Interactividad: mostrar popup con descripción al hacer click
     let mlPoiPopup = null;
@@ -8879,11 +8901,11 @@ async function loadApprovedPOIFromFirestore(schoolId) {
 
           console.log(`%c[ApprovedPOI] Realtime: ${features.length} POI para ${schoolId} (skippedCoords=${skippedCoords}, skippedSchool=${skippedSchool})`, 'color: #4CAF50; font-weight: bold');
 
-          // Registrar iconos SVG necesarios (igual que mlLoadPuntosInteres)
+          // Registrar iconos SVG necesarios en background (no bloquear el render)
           const usedTypes = new Set(features.map(f => f.properties._poiType.toLowerCase().trim()));
           const typesToLoad = [...usedTypes].filter(t => !mlMap.hasImage('poi-svg-' + t));
           if (!mlMap.hasImage('poi-svg-default')) typesToLoad.push('');
-          await Promise.all(typesToLoad.map(async poiType => {
+          Promise.all(typesToLoad.map(async poiType => {
             try {
               const img = await createSVGPinImage(poiType, 50);
               const imgId = poiType === '' ? 'poi-svg-default' : 'poi-svg-' + poiType;
