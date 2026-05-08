@@ -2485,27 +2485,6 @@ function updateAscentTicksLayer() {
     }
   });
 
-  // Separar ticks que comparten coordenadas en patrón circular
-  const SPREAD_RADIUS = 0.00010; // ~8m en latitud 40°N
-  const coordMap = new Map();
-  tickFeatures.forEach((feat, i) => {
-    const key = feat.geometry.coordinates[0].toFixed(6) + ',' + feat.geometry.coordinates[1].toFixed(6);
-    if (!coordMap.has(key)) coordMap.set(key, []);
-    coordMap.get(key).push(i);
-  });
-  coordMap.forEach(indices => {
-    if (indices.length < 2) return;
-    const base = tickFeatures[indices[0]].geometry.coordinates.slice();
-    const n = indices.length;
-    indices.forEach((idx, i) => {
-      const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-      tickFeatures[idx].geometry.coordinates = [
-        base[0] + Math.cos(angle) * SPREAD_RADIUS,
-        base[1] + Math.sin(angle) * SPREAD_RADIUS * 0.65
-      ];
-    });
-  });
-
   const tickGeoJSON = {
     type: 'FeatureCollection',
     features: tickFeatures
