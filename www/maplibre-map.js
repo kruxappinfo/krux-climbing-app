@@ -2219,10 +2219,10 @@ async function mlLoadPuntosInteres(url) {
         'icon-image': ['get', '_svgIcon'],
         'icon-size': [
           'interpolate', ['linear'], ['zoom'],
-          14, 0.7,
-          16, 0.9,
-          18, 1.1,
-          20, 1.3
+          14, 0.55,
+          16, 0.72,
+          18, 0.88,
+          20, 1.05
         ],
         'icon-allow-overlap': true,
         'icon-ignore-placement': true,
