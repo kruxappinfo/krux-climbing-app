@@ -1977,7 +1977,7 @@ const POI_SVG_MAP = {
   'tienda': { color: '#e65100', svg: '<rect x="3" y="7" width="14" height="10" rx="0.5"/><path d="M3 7L5 3H15L17 7"/><line x1="3" y1="11" x2="17" y2="11"/><rect x="8" y="13" width="4" height="4"/>' },
   'puente': { color: '#37474f', svg: '<line x1="3" y1="9" x2="17" y2="9"/><line x1="3" y1="14" x2="17" y2="14"/><line x1="5" y1="9" x2="5" y2="14"/><line x1="10" y1="9" x2="10" y2="14"/><line x1="15" y1="9" x2="15" y2="14"/><path d="M3 9C5 9 5 5 10 5C15 5 15 9 17 9"/>' },
   'escalera': { color: '#37474f', svg: '<path d="M4 17L4 13L8 13L8 9L12 9L12 5L17 5"/><line x1="4" y1="17" x2="17" y2="17"/>' },
-  'mirador': { color: '#37474f', svg: '<path d="M3 10C3 10 6 5 10 5C14 5 17 10 17 10C17 10 14 15 10 15C6 15 3 10 3 10Z"/><circle cx="10" cy="10" r="2.5" fill="white" stroke="white" stroke-width="0.5"/><circle cx="10" cy="10" r="1.2" fill="#37474f" stroke="none"/>' },
+  'mirador': { color: '#37474f', svg: '<path d="M3 10C3 10 6 5 10 5C14 5 17 10 17 10C17 10 14 15 10 15C6 15 3 10 3 10Z" fill="none" stroke="white" stroke-width="1.5"/><circle cx="10" cy="10" r="2.5" fill="white" stroke="none"/><circle cx="10" cy="10" r="1.2" fill="#37474f" stroke="none"/>' },
   'parking': { color: '#37474f', svg: '<text x="6" y="15" font-size="13" font-weight="bold" fill="white" font-family="Arial, sans-serif" stroke="none">P</text>' },
   'correos': { color: '#37474f', svg: '<rect x="3" y="6" width="14" height="10" rx="0.5"/><path d="M3 6L10 12L17 6" fill="none"/>' },
   'informacion': { color: '#37474f', svg: '<circle cx="10" cy="10" r="7"/><line x1="10" y1="9" x2="10" y2="14"/><circle cx="10" cy="6.5" r="0.9" fill="white" stroke="none"/>' },
