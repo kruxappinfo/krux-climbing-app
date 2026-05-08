@@ -1685,7 +1685,7 @@ async function mlLoadSchoolVectorTiles(school) {
       minzoom: school.zoomLevels.parkings,
       layout: {
         'icon-image': 'parking-icon',
-        'icon-size': 0.7,
+        'icon-size': 1.0,
         'icon-allow-overlap': true
       }
     });
@@ -1868,7 +1868,7 @@ async function mlLoadSchoolGeoJSON(school) {
       school.zoomLevels.parkings,
       {
         'icon-image': 'parking-icon',
-        'icon-size': 0.7,
+        'icon-size': 1.0,
         'icon-allow-overlap': true
       }
     );
@@ -5579,17 +5579,36 @@ function setupSectoresInteraction() {
  * Carga icono de parking
  */
 function loadParkingIcon() {
-  createSVGPinImage('parking', 50).then(({ data, width, height }) => {
+  const size = 64;
+  const externalSvg = POI_SVG_FILES['parking'];
+  if (!externalSvg) return;
+
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, size, size);
+
+    // Contorno blanco
+    ctx.shadowColor = 'white';
+    ctx.shadowBlur = 4;
+    const scale = Math.min(size / img.width, size / img.height);
+    const drawW = img.width * scale;
+    const drawH = img.height * scale;
+    const dx = (size - drawW) / 2;
+    const dy = (size - drawH) / 2;
+    ctx.drawImage(img, dx, dy, drawW, drawH);
+    ctx.shadowBlur = 0;
+
+    const imageData = ctx.getImageData(0, 0, size, size);
     if (!mlMap.hasImage('parking-icon')) {
-      mlMap.addImage('parking-icon', { data: new Uint8Array(data), width, height });
+      mlMap.addImage('parking-icon', { data: new Uint8Array(imageData.data), width: size, height: size });
     }
-  }).catch(() => {
-    // Fallback al icono inline si falla
-    const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#4285f4" stroke="#ffffff" stroke-width="2"/><text x="12" y="17" text-anchor="middle" fill="white" font-size="14" font-weight="bold">P</text></svg>`;
-    const img = new Image(24, 24);
-    img.onload = () => { if (!mlMap.hasImage('parking-icon')) mlMap.addImage('parking-icon', img); };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgIcon);
-  });
+  };
+  img.src = externalSvg + '?v=' + POI_ICONS_VERSION;
 }
 
 // ============================================
