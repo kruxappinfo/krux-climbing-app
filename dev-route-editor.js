@@ -145,8 +145,9 @@ async function addDevEditorButton() {
     // Si entre tanto otra invocación creó el botón, salir
     if (document.getElementById('btn-dev-editor')) return;
 
-    // Anclar al body para no depender de la integridad del contenedor del mapa.
-    const host = document.body;
+    // Anclar al contenedor del mapa (igual que btn-3d-toggle y dev-spotter-menu)
+    // para que position:absolute use el mismo sistema de coordenadas en desktop y mobile.
+    const host = document.getElementById('map') || document.body;
     if (!host) {
       setTimeout(addDevEditorButton, 500);
       return;
@@ -168,7 +169,7 @@ async function addDevEditorButton() {
     </svg>`;
     btn.title = 'Herramienta de desarrollador: Añadir vías';
     btn.style.cssText = `
-      position: fixed;
+      position: absolute;
       bottom: 306px;
       right: 10px;
       width: 36px;
