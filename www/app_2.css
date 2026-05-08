@@ -15252,6 +15252,7 @@ body.pwa-standalone .feed-header {
 /* Botón Spotter solo visible en el mapa */
 #btn-dev-editor {
   display: none !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15) !important;
 }
 body.map-active #btn-dev-editor {
   display: flex !important;
