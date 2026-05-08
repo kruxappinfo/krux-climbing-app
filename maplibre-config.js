@@ -235,6 +235,33 @@ const MAPLIBRE_SCHOOLS = {
       vias: 17,
       parkings: 15
     }
+  },
+  pedriza: {
+    id: 'pedriza',
+    name: 'La Pedriza',
+    center: [-3.879682, 40.752920],
+    zoom: 15,
+    bounds: [[-3.8943, 40.7432], [-3.8651, 40.7626]],
+    // Vector Tiles (preferido - más rápido)
+    tiles: {
+      vias: 'tiles/pedriza/vias/{z}/{x}/{y}.pbf',
+      sectores: 'tiles/pedriza/sectores/{z}/{x}/{y}.pbf',
+      parkings: 'tiles/pedriza/parkings/{z}/{x}/{y}.pbf'
+    },
+    // GeoJSON fallback
+    geojson: {
+      vias: 'Cartografia/La Pedriza/Pedriza_Vias.geojson',
+      sectores: 'Cartografia/La Pedriza/Pedriza_Sectores.geojson',
+      parkings: 'Cartografia/La Pedriza/Pedriza_Parkings.geojson',
+      puntosInteres: 'Cartografia/La Pedriza/Pedriza_Puntos_interes.geojson',
+      rutasAcceso: 'Cartografia/La Pedriza/Pedriza_Rutas_acceso.geojson'
+    },
+    zoomLevels: {
+      sectores: 12,
+      sectorNames: 16,
+      vias: 17,
+      parkings: 15
+    }
   }
 };
 
@@ -263,7 +290,7 @@ const SCHOOL_MARKERS = [
     nombre: 'La Pedriza',
     coords: [-3.8891, 40.7545],
     zoom: 15,
-    isOpen: false,
+    isOpen: true,
     rockType: 'Granito'
   },
   {

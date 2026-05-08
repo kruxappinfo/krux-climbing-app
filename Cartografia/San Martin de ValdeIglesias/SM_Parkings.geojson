@@ -3,6 +3,8 @@
 "name": "SM_Parkings",
 "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
 "features": [
-{ "type": "Feature", "properties": { "fid": 1, "id": null, "Descripcion": "Parking de tierra" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ -4.385435453300946, 40.401679348135438 ] ] } }
+{ "type": "Feature", "properties": { "fid": 1, "id": null, "Descripcion": "Parking de tierra" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ -4.385435453300946, 40.401679348135438 ] ] } },
+{ "type": "Feature", "properties": { "fid": 2, "id": 2, "Descripcion": "Entrada por sector Romería" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ -4.38448126307149, 40.400808307648802 ] ] } },
+{ "type": "Feature", "properties": { "fid": 3, "id": 3, "Descripcion": "Entrada por el sector Tobogán" }, "geometry": { "type": "MultiPoint", "coordinates": [ [ -4.383303327220197, 40.399697795735086 ] ] } }
 ]
 }
