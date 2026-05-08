@@ -2037,7 +2037,6 @@ const POI_SVG_FILES = {
   'ducha': 'assets/poi-icons/ducha.svg',
   'piscina': 'assets/poi-icons/zona-de-bano.svg',
   // Otros
-  'mirador': 'assets/poi-icons/mirador.svg',
   'informacion': 'assets/poi-icons/info.svg',
 };
 
