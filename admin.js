@@ -2892,7 +2892,7 @@ const POI_EMOJIS = {
     'restaurante': '🍽️', 'tienda': '🛒', 'farmacia': '💊', 'gasolinera': '⛽',
     'camping': '⛺', 'wc': '🚻', 'escalera': '🪜', 'puente': '🌉',
     'peligro': '⚠️', 'informacion': 'ℹ️', 'iglesia': '⛪', 'hotel': '🏨',
-    'supermercado': '🛒', 'albergue': '🛏️', 'merendero': '🧺'
+    'albergue': '🛏️', 'merendero': '🧺'
 };
 
 function getAdminPOIEmoji(desc) {

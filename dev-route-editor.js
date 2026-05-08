@@ -278,7 +278,6 @@ function toggleSpotterMenu() {
       items: [
         { key: 'cumbre',  label: 'Cumbre',  emoji: '🏔️' },
         { key: 'rio',     label: 'Río',     emoji: '🌊' },
-        { key: 'fuente',  label: 'Fuente',  emoji: '🚰' },
         { key: 'cueva',   label: 'Cueva',   emoji: '🕳️' },
       ]
     },
@@ -306,7 +305,6 @@ function toggleSpotterMenu() {
         { key: 'bar',          label: 'Bar',          emoji: '🍺' },
         { key: 'gasolinera',   label: 'Gasolinera',   emoji: '⛽' },
         { key: 'tienda',       label: 'Tienda',       emoji: '🛒' },
-        { key: 'supermercado', label: 'Supermercado', emoji: '🏪' },
         { key: 'merendero',    label: 'Merendero',    emoji: '🧺' },
         { key: 'banco',        label: 'Banco',        emoji: '🏦' },
         { key: 'correos',      label: 'Correos',      emoji: '📮' },
@@ -325,8 +323,8 @@ function toggleSpotterMenu() {
     {
       label: 'Instalaciones', color: '#0277BD',
       items: [
+        { key: 'fuente',  label: 'Fuente',  emoji: '🚰' },
         { key: 'wc',      label: 'WC',      emoji: '🚻' },
-        { key: 'baño',    label: 'Baño',    emoji: '🛁' },
         { key: 'ducha',   label: 'Ducha',   emoji: '🚿' },
         { key: 'piscina', label: 'Piscina', emoji: '🏊' },
       ]
