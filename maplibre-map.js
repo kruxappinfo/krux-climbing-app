@@ -1993,7 +1993,7 @@ const POI_SVG_MAP = {
 };
 
 // Versión de los iconos (incrementar al actualizar para forzar recarga del cache)
-const POI_ICONS_VERSION = '5';
+const POI_ICONS_VERSION = '6';
 
 // Mapa de POIs que tienen icono PNG externo disponible (los PNGs originales del diseñador)
 const POI_SVG_FILES = {
@@ -2037,6 +2037,7 @@ const POI_SVG_FILES = {
   'ducha': 'assets/poi-icons/ducha.svg',
   'piscina': 'assets/poi-icons/zona-de-bano.svg',
   // Otros
+  'mirador': 'assets/poi-icons/mirador.svg',
   'informacion': 'assets/poi-icons/info.svg',
 };
 
@@ -2115,12 +2116,8 @@ function createSVGPinImage(poiType, size = 50) {
     };
 
     if (externalSvg) {
-      if (externalSvg.endsWith('.svg')) {
-        renderImg(externalSvg + '?v=' + POI_ICONS_VERSION, false);
-      } else {
-        // PNGs: recortar al bbox del contenido para centrar el pin
-        renderImg(externalSvg + '?v=' + POI_ICONS_VERSION, true);
-      }
+      // Recortar al bbox del contenido no transparente para centrar el pin
+      renderImg(externalSvg + '?v=' + POI_ICONS_VERSION, true);
     } else {
       // Generar pin programáticamente con icono inline
       const poiData = getPOISVG(poiType);
