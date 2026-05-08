@@ -1929,7 +1929,7 @@ const POI_SVG_MAP = {
 };
 
 // Versión de los iconos (incrementar al actualizar para forzar recarga del cache)
-const POI_ICONS_VERSION = '14';
+const POI_ICONS_VERSION = '15';
 
 // Mapa de POIs que tienen icono PNG externo disponible (los PNGs originales del diseñador)
 const POI_SVG_FILES = {
@@ -2004,6 +2004,9 @@ function _mlPrewarmPOIIcons() {
  * Si hay SVG externo disponible en POI_SVG_FILES, lo usa directamente.
  * El resultado se cachea en memoria para evitar re-renderizado al cambiar de escuela.
  */
+// DPR del dispositivo, limitado a 3 para no desperdiciar memoria
+const _mlDPR = Math.min(Math.ceil(window.devicePixelRatio || 1), 3);
+
 function createSVGPinImage(poiType, size = 50) {
   const cacheKey = (poiType || '').toLowerCase().trim() || '__default__';
   if (_mlPoiIconCache.has(cacheKey)) return Promise.resolve(_mlPoiIconCache.get(cacheKey));
@@ -2016,13 +2019,15 @@ function createSVGPinImage(poiType, size = 50) {
 function _createSVGPinImageRaw(poiType, size = 50) {
   const desc = (poiType || '').toLowerCase().trim();
   const externalSvg = POI_SVG_FILES[desc];
+  // Renderizar a tamaño físico (size × DPR) para pantallas Retina/HiDPI
+  const physicalSize = size * _mlDPR;
 
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = physicalSize;
+    canvas.height = physicalSize;
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, size, size);
+    ctx.clearRect(0, 0, physicalSize, physicalSize);
 
     const renderImg = (src, cropToContent = false) => {
       const img = new Image();
@@ -2031,14 +2036,14 @@ function _createSVGPinImageRaw(poiType, size = 50) {
       img.onload = () => {
         try {
           // Contain: escalar manteniendo proporción original, centrado en el canvas
-          const scale = Math.min(size / img.width, size / img.height);
+          const scale = Math.min(physicalSize / img.width, physicalSize / img.height);
           const drawW = img.width * scale;
           const drawH = img.height * scale;
-          const dx = (size - drawW) / 2;
-          const dy = (size - drawH) / 2;
+          const dx = (physicalSize - drawW) / 2;
+          const dy = (physicalSize - drawH) / 2;
           ctx.drawImage(img, dx, dy, drawW, drawH);
-          void cropToContent; // parámetro mantenido por compatibilidad
-          resolve({ data: ctx.getImageData(0, 0, size, size).data, width: size, height: size });
+          void cropToContent;
+          resolve({ data: ctx.getImageData(0, 0, physicalSize, physicalSize).data, width: physicalSize, height: physicalSize });
         } catch (e) { reject(e); }
       };
       img.src = src;
@@ -2137,7 +2142,7 @@ async function mlLoadPuntosInteres(url) {
       try {
         const img = await createSVGPinImage(poiType, 50);
         const imgId = poiType === '' ? 'poi-svg-default' : 'poi-svg-' + poiType;
-        if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, img, { sdf: false });
+        if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, img, { sdf: false, pixelRatio: _mlDPR });
       } catch (err) {
         console.warn(`Error creating SVG for POI type "${poiType}":`, err);
       }
@@ -5486,6 +5491,7 @@ function setupSectoresInteraction() {
  */
 function loadParkingIcon() {
   const size = 64;
+  const physicalSize = size * _mlDPR;
   const externalSvg = POI_SVG_FILES['parking'];
   if (!externalSvg) return;
 
@@ -5493,25 +5499,27 @@ function loadParkingIcon() {
   img.crossOrigin = 'anonymous';
   img.onload = () => {
     const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = physicalSize;
+    canvas.height = physicalSize;
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, size, size);
+    ctx.clearRect(0, 0, physicalSize, physicalSize);
 
-    // Contorno blanco
     ctx.shadowColor = 'white';
-    ctx.shadowBlur = 4;
-    const scale = Math.min(size / img.width, size / img.height);
+    ctx.shadowBlur = 4 * _mlDPR;
+    const scale = Math.min(physicalSize / img.width, physicalSize / img.height);
     const drawW = img.width * scale;
     const drawH = img.height * scale;
-    const dx = (size - drawW) / 2;
-    const dy = (size - drawH) / 2;
+    const dx = (physicalSize - drawW) / 2;
+    const dy = (physicalSize - drawH) / 2;
     ctx.drawImage(img, dx, dy, drawW, drawH);
     ctx.shadowBlur = 0;
 
-    const imageData = ctx.getImageData(0, 0, size, size);
+    const imageData = ctx.getImageData(0, 0, physicalSize, physicalSize);
     if (!mlMap.hasImage('parking-icon')) {
-      mlMap.addImage('parking-icon', { data: new Uint8Array(imageData.data), width: size, height: size });
+      mlMap.addImage('parking-icon',
+        { data: new Uint8Array(imageData.data), width: physicalSize, height: physicalSize },
+        { pixelRatio: _mlDPR }
+      );
     }
   };
   img.src = externalSvg + '?v=' + POI_ICONS_VERSION;
@@ -8851,7 +8859,7 @@ async function loadApprovedPOIFromFirestore(schoolId) {
             try {
               const img = await createSVGPinImage(poiType, 50);
               const imgId = poiType === '' ? 'poi-svg-default' : 'poi-svg-' + poiType;
-              if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, img, { sdf: false });
+              if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, img, { sdf: false, pixelRatio: _mlDPR });
             } catch (e) {
               console.warn('[ApprovedPOI] Error creando icono para', poiType, e);
             }
@@ -9232,7 +9240,7 @@ async function loadMyPendingPOIFromFirestore(schoolId) {
           for (const poiType of usedTypes2) {
             const imgId = 'poi-svg-' + poiType;
             if (!mlMap.hasImage(imgId)) {
-              try { mlMap.addImage(imgId, await createSVGPinImage(poiType, 50), { sdf: false }); } catch (e) {}
+              try { mlMap.addImage(imgId, await createSVGPinImage(poiType, 50), { sdf: false, pixelRatio: _mlDPR }); } catch (e) {}
             }
           }
 
@@ -9650,7 +9658,7 @@ async function loadAllPendingForAdmin(schoolId, minZoom = 14) {
       for (const poiType of usedTypesAdmin) {
         const imgId = 'poi-svg-' + poiType;
         if (!mlMap.hasImage(imgId)) {
-          try { mlMap.addImage(imgId, await createSVGPinImage(poiType, 50), { sdf: false }); } catch (e) {}
+          try { mlMap.addImage(imgId, await createSVGPinImage(poiType, 50), { sdf: false, pixelRatio: _mlDPR }); } catch (e) {}
         }
       }
       const geojson = { type: 'FeatureCollection', features };
