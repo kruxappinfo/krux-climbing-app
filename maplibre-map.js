@@ -1877,20 +1877,11 @@ async function mlLoadSchoolGeoJSON(school) {
     setupParkingsInteraction();
   }
 
-  // Cargar puntos de interés
-  if (school.geojson.puntosInteres) {
-    await mlLoadPuntosInteres(school.geojson.puntosInteres);
-  }
-
-  // Cargar rutas de acceso (línea naranja intermitente)
-  if (school.geojson.rutasAcceso) {
-    await mlLoadRutasAcceso(school.geojson.rutasAcceso);
-  }
-
-  // Cargar puntos de interés (emojis diferenciados por tipo)
-  if (school.geojson.puntosInteres) {
-    await mlLoadPuntosInteres(school.geojson.puntosInteres);
-  }
+  // Cargar puntos de interés y rutas de acceso en paralelo
+  await Promise.all([
+    school.geojson.puntosInteres ? mlLoadPuntosInteres(school.geojson.puntosInteres) : Promise.resolve(),
+    school.geojson.rutasAcceso ? mlLoadRutasAcceso(school.geojson.rutasAcceso) : Promise.resolve()
+  ]);
 }
 
 /**
@@ -1900,8 +1891,7 @@ async function mlLoadRutasAcceso(url) {
   const sourceId = 'rutas-acceso-source';
   const layerId = 'rutas-acceso-layer';
 
-  // Añadir timestamp para evitar caché
-  const urlWithCache = `${url}?v=${Date.now()}`;
+  const urlWithCache = url;
 
   try {
     const response = await fetch(urlWithCache);
@@ -2116,7 +2106,7 @@ async function mlLoadPuntosInteres(url) {
   const sourceId = 'puntos-interes-source';
   const layerId = 'puntos-interes-layer';
 
-  const urlWithCache = `${url}?v=${Date.now()}`;
+  const urlWithCache = url;
 
   try {
     const response = await fetch(urlWithCache);
@@ -2138,28 +2128,18 @@ async function mlLoadPuntosInteres(url) {
       usedPOITypes.add(desc.toLowerCase().trim());
     });
 
-    // Registrar cada tipo de POI único como imagen SVG en el mapa
-    for (const poiType of usedPOITypes) {
-      const imgId = 'poi-svg-' + poiType;
-      if (!mlMap.hasImage(imgId)) {
-        try {
-          const img = await createSVGPinImage(poiType, 50);
-          mlMap.addImage(imgId, img, { sdf: false });
-        } catch (err) {
-          console.warn(`Error creating SVG for POI type "${poiType}":`, err);
-        }
-      }
-    }
-
-    // Registrar el fallback
-    if (!mlMap.hasImage('poi-svg-default')) {
+    // Registrar todos los tipos de POI en paralelo
+    const typesToLoad = [...usedPOITypes].filter(t => !mlMap.hasImage('poi-svg-' + t));
+    if (!mlMap.hasImage('poi-svg-default')) typesToLoad.push('');
+    await Promise.all(typesToLoad.map(async poiType => {
       try {
-        const fallbackImg = await createSVGPinImage('', 50);
-        mlMap.addImage('poi-svg-default', fallbackImg, { sdf: false });
+        const img = await createSVGPinImage(poiType, 50);
+        const imgId = poiType === '' ? 'poi-svg-default' : 'poi-svg-' + poiType;
+        if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, img, { sdf: false });
       } catch (err) {
-        console.warn('Error creating fallback SVG:', err);
+        console.warn(`Error creating SVG for POI type "${poiType}":`, err);
       }
-    }
+    }));
 
     // Remover si ya existe
     if (mlMap.getLayer(layerId)) {
@@ -8901,23 +8881,17 @@ async function loadApprovedPOIFromFirestore(schoolId) {
 
           // Registrar iconos SVG necesarios (igual que mlLoadPuntosInteres)
           const usedTypes = new Set(features.map(f => f.properties._poiType.toLowerCase().trim()));
-          for (const poiType of usedTypes) {
-            const imgId = 'poi-svg-' + poiType;
-            if (!mlMap.hasImage(imgId)) {
-              try {
-                const img = await createSVGPinImage(poiType, 50);
-                mlMap.addImage(imgId, img, { sdf: false });
-              } catch (e) {
-                console.warn('[ApprovedPOI] Error creando icono para', poiType, e);
-              }
-            }
-          }
-          if (!mlMap.hasImage('poi-svg-default')) {
+          const typesToLoad = [...usedTypes].filter(t => !mlMap.hasImage('poi-svg-' + t));
+          if (!mlMap.hasImage('poi-svg-default')) typesToLoad.push('');
+          await Promise.all(typesToLoad.map(async poiType => {
             try {
-              const fallbackImg = await createSVGPinImage('', 50);
-              mlMap.addImage('poi-svg-default', fallbackImg, { sdf: false });
-            } catch (e) {}
-          }
+              const img = await createSVGPinImage(poiType, 50);
+              const imgId = poiType === '' ? 'poi-svg-default' : 'poi-svg-' + poiType;
+              if (!mlMap.hasImage(imgId)) mlMap.addImage(imgId, img, { sdf: false });
+            } catch (e) {
+              console.warn('[ApprovedPOI] Error creando icono para', poiType, e);
+            }
+          }));
 
           const geojson = { type: 'FeatureCollection', features };
 
