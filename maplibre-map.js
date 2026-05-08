@@ -879,7 +879,7 @@ async function findNearestSector(schoolId, lng, lat) {
       return null;
     }
 
-    const response = await fetch(school.geojson.sectores + '?v=' + Date.now());
+    const response = await fetch(school.geojson.sectores);
     if (!response.ok) return null;
 
     const geojson = await response.json();
@@ -1656,7 +1656,7 @@ async function mlLoadSchoolVectorTiles(school) {
     // Cargar GeoJSON en paralelo solo para construir el índice de variantes
     // (las tiles PBF no permiten pre-procesamiento de features)
     if (school.geojson && school.geojson.vias) {
-      fetch(school.geojson.vias + '?v=' + Date.now())
+      fetch(school.geojson.vias)
         .then(r => r.ok ? r.json() : null)
         .then(geojson => {
           if (geojson && geojson.features) {
@@ -1727,130 +1727,14 @@ async function mlLoadSchoolVectorTiles(school) {
  * Carga escuela usando GeoJSON (fallback)
  */
 async function mlLoadSchoolGeoJSON(school) {
-  // Cargar sectores con estilo casing
-  if (school.geojson.sectores) {
-    // Añadir timestamp para evitar caché
-    const urlWithCache = `${school.geojson.sectores}?v=${Date.now()}`;
+  // Lanzar suscripciones Firestore inmediatamente — independientes del GeoJSON estático
+  const firestoreLoads = [
+    loadApprovedRoutesFromFirestore(school.id, school.zoomLevels?.vias || 14),
+    loadApprovedSectorsFromFirestore(school.id),
+    loadApprovedPOIFromFirestore(school.id)
+  ];
 
-    try {
-      const response = await fetch(urlWithCache);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const geojson = await response.json();
-
-      // [FIX] Generar FIDs numéricos si no existen para permitir coloreado dinámico
-      if (geojson.features) {
-        geojson.features.forEach((f, i) => {
-          if (f.properties.fid == null || f.properties.fid === '') {
-            // Usar hash del nombre para mantener consistencia entre recargas
-            const name = f.properties.nombre || f.properties.name || `sector-${i}`;
-            let hash = 0;
-            for (let j = 0; j < name.length; j++) {
-              hash = ((hash << 5) - hash) + name.charCodeAt(j);
-              hash |= 0;
-            }
-            f.properties.fid = Math.abs(hash);
-          }
-        });
-      }
-
-      // Añadir source
-      mlMap.addSource('sectores-source', {
-        type: 'geojson',
-        data: geojson
-      });
-      mlLoadedSources.add('sectores-source');
-
-      // Capa de casing (borde oscuro exterior) - color dinámico por sector
-      mlMap.addLayer({
-        id: 'sectores-casing-layer',
-        type: 'line',
-        source: 'sectores-source',
-        minzoom: school.zoomLevels.sectores,
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round'
-        },
-        paint: {
-          'line-color': generateSectorCasingColorExpression(),
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            14, 6,
-            16, 10,
-            18, 14,
-            20, 18
-          ],
-          'line-opacity': 0.9
-        }
-      });
-
-      // Capa principal - color dinámico por sector
-      mlMap.addLayer({
-        id: 'sectores-layer',
-        type: 'line',
-        source: 'sectores-source',
-        minzoom: school.zoomLevels.sectores,
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round'
-        },
-        paint: {
-          'line-color': generateSectorColorExpression(),
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            14, 4,
-            16, 7,
-            18, 10,
-            20, 14
-          ],
-          'line-opacity': 1
-        }
-      });
-
-      console.log(`Capa sectores cargada: ${geojson.features?.length || 0} elementos`);
-    } catch (error) {
-      console.error('Error cargando sectores:', error);
-    }
-  }
-
-  // Cargar vías
-  if (school.geojson.vias) {
-    await mlLoadGeoJSONLayer(
-      'vias',
-      school.geojson.vias,
-      'circle',
-      {
-        'circle-radius': [
-          'interpolate', ['linear'], ['zoom'],
-          14, isMobileDevice() ? 2 : 3,
-          16, isMobileDevice() ? 3.5 : 5,
-          18, isMobileDevice() ? 5.5 : 8,
-          20, isMobileDevice() ? 9 : 14
-        ],
-        'circle-color': generateGradeColorExpression('grado1'),
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': isMobileDevice() ? 1 : 1.5,
-        'circle-opacity': 0.95
-      },
-      school.zoomLevels.vias,
-      {},
-      mlProcessVariantsForGeoJSON
-    );
-
-    // Añadir interactividad a vías
-    setupViasInteraction();
-    setupSectoresInteraction();
-
-    // Cargar vías aprobadas desde Firestore (usando el mismo minzoom que las vías oficiales)
-    await loadApprovedRoutesFromFirestore(school.id, school.zoomLevels.vias);
-  }
-
-  // Cargar sectores aprobados desde Firestore
-  await loadApprovedSectorsFromFirestore(school.id);
-
-  // Cargar POIs aprobados desde Firestore
-  await loadApprovedPOIFromFirestore(school.id);
-
-  // Cargar ítems pendientes según rol
+  // Items pendientes según rol: fire and forget
   checkAdminRole().then(role => {
     if (role === 'admin') {
       loadAllPendingForAdmin(school.id, school.zoomLevels?.vias || 14);
@@ -1861,29 +1745,90 @@ async function mlLoadSchoolGeoJSON(school) {
     }
   });
 
-  // Cargar parkings
-  if (school.geojson.parkings) {
-    await mlLoadGeoJSONLayer(
-      'parkings',
-      school.geojson.parkings,
-      'symbol',
-      {},
-      school.zoomLevels.parkings,
-      {
-        'icon-image': 'parking-icon',
-        'icon-size': 0.75,
-        'icon-allow-overlap': true
+  // Sectores
+  const sectoresLoad = school.geojson.sectores ? (async () => {
+    try {
+      const response = await fetch(school.geojson.sectores);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const geojson = await response.json();
+
+      // Generar FIDs numéricos si no existen para coloreado dinámico
+      if (geojson.features) {
+        geojson.features.forEach((f, i) => {
+          if (f.properties.fid == null || f.properties.fid === '') {
+            const name = f.properties.nombre || f.properties.name || `sector-${i}`;
+            let hash = 0;
+            for (let j = 0; j < name.length; j++) { hash = ((hash << 5) - hash) + name.charCodeAt(j); hash |= 0; }
+            f.properties.fid = Math.abs(hash);
+          }
+        });
       }
+
+      mlMap.addSource('sectores-source', { type: 'geojson', data: geojson });
+      mlLoadedSources.add('sectores-source');
+      mlMap.addLayer({
+        id: 'sectores-casing-layer', type: 'line', source: 'sectores-source',
+        minzoom: school.zoomLevels.sectores,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': generateSectorCasingColorExpression(),
+          'line-width': ['interpolate', ['linear'], ['zoom'], 14, 6, 16, 10, 18, 14, 20, 18],
+          'line-opacity': 0.9
+        }
+      });
+      mlMap.addLayer({
+        id: 'sectores-layer', type: 'line', source: 'sectores-source',
+        minzoom: school.zoomLevels.sectores,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': generateSectorColorExpression(),
+          'line-width': ['interpolate', ['linear'], ['zoom'], 14, 4, 16, 7, 18, 10, 20, 14],
+          'line-opacity': 1
+        }
+      });
+      console.log(`Capa sectores cargada: ${geojson.features?.length || 0} elementos`);
+    } catch (error) {
+      console.error('Error cargando sectores:', error);
+    }
+  })() : Promise.resolve();
+
+  // Vías (setupViasInteraction necesita la capa, se llama dentro)
+  const viasLoad = school.geojson.vias ? (async () => {
+    await mlLoadGeoJSONLayer(
+      'vias', school.geojson.vias, 'circle',
+      {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'],
+          14, isMobileDevice() ? 2 : 3, 16, isMobileDevice() ? 3.5 : 5,
+          18, isMobileDevice() ? 5.5 : 8, 20, isMobileDevice() ? 9 : 14],
+        'circle-color': generateGradeColorExpression('grado1'),
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': isMobileDevice() ? 1 : 1.5,
+        'circle-opacity': 0.95
+      },
+      school.zoomLevels.vias, {}, mlProcessVariantsForGeoJSON
     );
+    setupViasInteraction();
+    setupSectoresInteraction();
+  })() : Promise.resolve();
 
-    // Añadir interactividad a parkings
+  // Parkings
+  const parkingsLoad = school.geojson.parkings ? (async () => {
+    await mlLoadGeoJSONLayer(
+      'parkings', school.geojson.parkings, 'symbol', {},
+      school.zoomLevels.parkings,
+      { 'icon-image': 'parking-icon', 'icon-size': 0.75, 'icon-allow-overlap': true }
+    );
     setupParkingsInteraction();
-  }
+  })() : Promise.resolve();
 
-  // Cargar puntos de interés y rutas de acceso en paralelo
+  // Todo en paralelo: GeoJSON estáticos + Firestore + POIs + rutas de acceso
   await Promise.all([
+    sectoresLoad,
+    viasLoad,
+    parkingsLoad,
     school.geojson.puntosInteres ? mlLoadPuntosInteres(school.geojson.puntosInteres) : Promise.resolve(),
-    school.geojson.rutasAcceso ? mlLoadRutasAcceso(school.geojson.rutasAcceso) : Promise.resolve()
+    school.geojson.rutasAcceso ? mlLoadRutasAcceso(school.geojson.rutasAcceso) : Promise.resolve(),
+    ...firestoreLoads
   ]);
 }
 
@@ -2299,12 +2244,9 @@ async function mlLoadGeoJSONLayer(layerId, url, type, paint, minzoom = 0, layout
   const sourceId = `${layerId}-source`;
   const fullLayerId = `${layerId}-layer`;
 
-  // Añadir timestamp para evitar caché
-  const urlWithCache = `${url}?v=${Date.now()}`;
-
   try {
     // Cargar GeoJSON
-    const response = await fetch(urlWithCache);
+    const response = await fetch(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const geojson = await response.json();
 
@@ -5013,7 +4955,7 @@ async function mlFindRouteCoords(routeId) {
   const school = typeof MAPLIBRE_SCHOOLS !== 'undefined' ? MAPLIBRE_SCHOOLS[schoolId] : null;
   if (school && school.geojson && school.geojson.vias) {
     try {
-      const resp = await fetch(school.geojson.vias + '?v=' + Date.now());
+      const resp = await fetch(school.geojson.vias);
       if (resp.ok) {
         const geojson = await resp.json();
         for (const f of (geojson.features || [])) {
@@ -6259,7 +6201,7 @@ async function loadSchoolStats(schoolId, chartId) {
   try {
     const schoolConfig = MAPLIBRE_SCHOOLS[schoolId];
     if (schoolConfig && schoolConfig.geojson && schoolConfig.geojson.vias) {
-      const response = await fetch(`${schoolConfig.geojson.vias}?v=${Date.now()}`);
+      const response = await fetch(schoolConfig.geojson.vias);
       if (response.ok) {
         const geojson = await response.json();
 
@@ -8001,7 +7943,7 @@ async function loadBottomSheetStats(schoolId) {
       throw new Error('No hay ruta de vías configurada');
     }
 
-    const response = await fetch(`${viasPath}?v=${Date.now()}`);
+    const response = await fetch(viasPath);
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
