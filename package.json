@@ -29,6 +29,7 @@
   "license": "UNLICENSED",
   "private": true,
   "devDependencies": {
+    "firebase": "^9.23.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
