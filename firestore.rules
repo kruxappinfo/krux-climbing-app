@@ -10,6 +10,14 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isString(field, maxLen) {
+      return field is string && field.size() <= maxLen;
+    }
+
+    function isNumber(field) {
+      return field is number;
+    }
+
     // Users collection
     match /users/{userId} {
       allow read: if isAuthenticated();
@@ -73,6 +81,42 @@ service cloud.firestore {
         // The notificationId contains the creator's uid for idempotency
         allow create: if isAuthenticated() &&
                         request.resource.data.fromUserId == request.auth.uid;
+      }
+
+      // ───────── Test Definitions ─────────
+      match /test_definitions/{testId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && isString(request.resource.data.name, 100)
+          && isString(request.resource.data.templateKey, 50)
+          && request.resource.data.unit in ['kg', 'mm', 'seconds', 'reps', 'percent_bw', 'grade', 'custom']
+          && request.resource.data.progressDirection in ['higher_is_better', 'lower_is_better']
+          && request.resource.data.pinned is bool
+          && isNumber(request.resource.data.order)
+          && request.resource.data.requiredContext is list;
+
+        allow update: if isOwner(userId)
+          && (!('enabledAt' in request.resource.data.diff(resource.data).affectedKeys()));
+
+        allow delete: if isOwner(userId);
+      }
+
+      // ───────── Test Measurements ─────────
+      match /test_measurements/{measurementId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && isString(request.resource.data.testId, 100)
+          && isNumber(request.resource.data.value)
+          && request.resource.data.measuredAt is timestamp
+          && request.resource.data.measuredAt <= request.time;
+
+        allow update: if isOwner(userId)
+          && isNumber(request.resource.data.value)
+          && request.resource.data.testId == resource.data.testId;
+
+        allow delete: if isOwner(userId);
       }
     }
 

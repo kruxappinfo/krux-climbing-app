@@ -7,8 +7,9 @@
     "noEmit": true,
     "skipLibCheck": true,
     "lib": ["ES2020", "DOM"],
-    "baseUrl": "."
+    "baseUrl": ".",
+    "jsx": "react-jsx"
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules"]
 }
