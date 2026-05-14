@@ -1,0 +1,15 @@
+{
+"name": "/Users/jaimelillo/Downloads/APP/00_APP1/tiles/valeria/sectores.mbtiles",
+"description": "/Users/jaimelillo/Downloads/APP/00_APP1/tiles/valeria/sectores.mbtiles",
+"version": "2",
+"minzoom": "12",
+"maxzoom": "20",
+"center": "-2.152805,39.781498,20",
+"bounds": "-2.155643,39.773665,-2.146733,39.807450",
+"antimeridian_adjusted_bounds": "-2.155643,39.773665,-2.146733,39.807450",
+"type": "overlay",
+"format": "pbf",
+"generator": "tile-join v2.79.0",
+"generator_options": "tippecanoe '--output=/Users/jaimelillo/Downloads/APP/00_APP1/tiles/valeria/sectores.mbtiles' '--layer=sectores' '--minimum-zoom=12' '--maximum-zoom=20' --no-feature-limit --no-tile-size-limit --no-tile-compression --no-simplification-of-shared-nodes --no-line-simplification --force /Users/jaimelillo/Downloads/APP/00_APP1/Cartografia/Valeria/Valeria_Sectores.geojson; tile-join '--output-to-directory=/Users/jaimelillo/Downloads/APP/00_APP1/tiles/valeria/sectores' --no-tile-compression --force /Users/jaimelillo/Downloads/APP/00_APP1/tiles/valeria/sectores.mbtiles",
+"json": "{\"vector_layers\":[{\"id\":\"sectores\",\"description\":\"\",\"minzoom\":12,\"maxzoom\":20,\"fields\":{\"Fecha_fin\":\"String\",\"Fecha_inicio\":\"String\",\"exposicion\":\"String\",\"fid\":\"Number\",\"nombre\":\"String\",\"restr\":\"String\"}}],\"tilestats\":{\"layerCount\":1,\"layers\":[{\"layer\":\"sectores\",\"count\":462,\"geometry\":\"LineString\",\"attributeCount\":6,\"attributes\":[{\"attribute\":\"Fecha_fin\",\"count\":1,\"type\":\"string\",\"values\":[\"15-08\"]},{\"attribute\":\"Fecha_inicio\",\"count\":1,\"type\":\"string\",\"values\":[\"15-01\"]},{\"attribute\":\"exposicion\",\"count\":5,\"type\":\"string\",\"values\":[\"Sol\",\"Sol \",\"Sol mañana\",\"Sol tarde\",\"Sombra\"]},{\"attribute\":\"fid\",\"count\":24,\"type\":\"number\",\"values\":[1,10,11,12,13,14,15,16,17,18,19,2,20,21,22,23,24,25,3,4,5,6,7,8],\"min\":1,\"max\":25},{\"attribute\":\"nombre\",\"count\":24,\"type\":\"string\",\"values\":[\"Atico\",\"Cabeza De Águila\",\"Callejón Sin Salida\",\"Casas Colgadas\",\"Cenajo De La Velilla\",\"Chiringuito\",\"Chopera Sur\",\"Cueva De La Tierra Magra\",\"Este / Fuente del Almirez\",\"Fuente de Santiago\",\"Huerto de Mencho\",\"Molino\",\"Moros\",\"Muelecilla De Los Asnos\",\"Panoramix / Elero\",\"Pico de la Muela\",\"Piedra de los Enamorados Suicidas\",\"Piscina\",\"Puente\",\"Restaurante\",\"Rocas Rojas\",\"Rodalete\",\"Rompeculos\",\"Tocho Quo Vadis\"]},{\"attribute\":\"restr\",\"count\":4,\"type\":\"string\",\"values\":[\"NO\",\"No\",\"SI\",\"Si\"]}]}]}}"
+}

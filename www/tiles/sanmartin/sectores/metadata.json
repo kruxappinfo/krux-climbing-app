@@ -1,0 +1,15 @@
+{
+"name": "/Users/jaimelillo/Downloads/APP/00_APP1/tiles/sanmartin/sectores.mbtiles",
+"description": "/Users/jaimelillo/Downloads/APP/00_APP1/tiles/sanmartin/sectores.mbtiles",
+"version": "2",
+"minzoom": "12",
+"maxzoom": "20",
+"center": "-4.384060,40.401340,20",
+"bounds": "-4.384414,40.400698,-4.379999,40.401912",
+"antimeridian_adjusted_bounds": "-4.384414,40.400698,-4.379999,40.401912",
+"type": "overlay",
+"format": "pbf",
+"generator": "tile-join v2.79.0",
+"generator_options": "tippecanoe '--output=/Users/jaimelillo/Downloads/APP/00_APP1/tiles/sanmartin/sectores.mbtiles' '--layer=sectores' '--minimum-zoom=12' '--maximum-zoom=20' --no-feature-limit --no-tile-size-limit --no-tile-compression --no-simplification-of-shared-nodes --no-line-simplification --force '/Users/jaimelillo/Downloads/APP/00_APP1/Cartografia/San Martin de ValdeIglesias/SM_Sectores.geojson'; tile-join '--output-to-directory=/Users/jaimelillo/Downloads/APP/00_APP1/tiles/sanmartin/sectores' --no-tile-compression --force /Users/jaimelillo/Downloads/APP/00_APP1/tiles/sanmartin/sectores.mbtiles",
+"json": "{\"vector_layers\":[{\"id\":\"sectores\",\"description\":\"\",\"minzoom\":12,\"maxzoom\":20,\"fields\":{\"exposicion\":\"String\",\"fid\":\"Number\",\"nombre\":\"String\",\"restr\":\"String\"}}],\"tilestats\":{\"layerCount\":1,\"layers\":[{\"layer\":\"sectores\",\"count\":99,\"geometry\":\"LineString\",\"attributeCount\":4,\"attributes\":[{\"attribute\":\"exposicion\",\"count\":4,\"type\":\"string\",\"values\":[\"Sol\",\"Sol mañana\",\"Sol tarde\",\"Sol tarde \"]},{\"attribute\":\"fid\",\"count\":8,\"type\":\"number\",\"values\":[10,2,3,5,6,7,8,9],\"min\":2,\"max\":10},{\"attribute\":\"nombre\",\"count\":8,\"type\":\"string\",\"values\":[\"Barrio Sésamo\",\"Callejón\",\"Ecológico\",\"Mirador Romántico\",\"Pared Naranja\",\"Romería\",\"Seispelas\",\"Serpiente\"]},{\"attribute\":\"restr\",\"count\":2,\"type\":\"string\",\"values\":[\"NO\",\"No\"]}]}]}}"
+}

@@ -1,0 +1,15 @@
+{
+"name": "/Users/jaimelillo/Downloads/APP/00_APP1/tiles/sanmartin/parkings.mbtiles",
+"description": "/Users/jaimelillo/Downloads/APP/00_APP1/tiles/sanmartin/parkings.mbtiles",
+"version": "2",
+"minzoom": "10",
+"maxzoom": "20",
+"center": "-4.385435,40.401679,20",
+"bounds": "-4.385436,40.401667,-4.385433,40.401683",
+"antimeridian_adjusted_bounds": "-4.385436,40.401667,-4.385433,40.401683",
+"type": "overlay",
+"format": "pbf",
+"generator": "tile-join v2.79.0",
+"generator_options": "tippecanoe '--output=/Users/jaimelillo/Downloads/APP/00_APP1/tiles/sanmartin/parkings.mbtiles' '--layer=parkings' '--minimum-zoom=10' '--maximum-zoom=20' --no-feature-limit --no-tile-size-limit --no-tile-compression -r1 '--cluster-distance=0' --force '/Users/jaimelillo/Downloads/APP/00_APP1/Cartografia/San Martin de ValdeIglesias/SM_Parkings.geojson'; tile-join '--output-to-directory=/Users/jaimelillo/Downloads/APP/00_APP1/tiles/sanmartin/parkings' --no-tile-compression --force /Users/jaimelillo/Downloads/APP/00_APP1/tiles/sanmartin/parkings.mbtiles",
+"json": "{\"vector_layers\":[{\"id\":\"parkings\",\"description\":\"\",\"minzoom\":10,\"maxzoom\":20,\"fields\":{\"Descripcion\":\"String\",\"fid\":\"Number\"}}],\"tilestats\":{\"layerCount\":1,\"layers\":[{\"layer\":\"parkings\",\"count\":11,\"geometry\":\"Point\",\"attributeCount\":2,\"attributes\":[{\"attribute\":\"Descripcion\",\"count\":1,\"type\":\"string\",\"values\":[\"Parking de tierra\"]},{\"attribute\":\"fid\",\"count\":1,\"type\":\"number\",\"values\":[1],\"min\":1,\"max\":1}]}]}}"
+}
