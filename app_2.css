@@ -20040,3 +20040,148 @@ body.map-active #btn-dev-editor {
 @media (max-width: 480px) {
   .gth-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Gym test header modals */
+.gth-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+  padding: 1rem;
+}
+.gth-modal {
+  background: var(--bg-primary);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 440px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: gth-modal-in 0.2s ease;
+}
+@keyframes gth-modal-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.gth-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 0.5px solid var(--border-color);
+}
+.gth-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.gth-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+}
+.gth-modal-sub {
+  padding: 14px 20px 6px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.gth-modal-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+.gth-modal-list {
+  padding: 6px 20px 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+.gth-modal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 0.5px solid var(--border-color);
+  cursor: pointer;
+}
+.gth-modal-row:last-child { border-bottom: none; }
+.gth-modal-row-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.gth-modal-row-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.gth-modal-row input[type=checkbox] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--gym-color);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.gth-modal-footer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 0.5px solid var(--border-color);
+}
+.gth-modal-btn-primary,
+.gth-modal-btn-secondary {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.gth-modal-btn-primary {
+  background: var(--gym-color);
+  border: none;
+  color: white;
+}
+.gth-modal-btn-secondary {
+  background: var(--bg-primary);
+  border: 0.5px solid var(--border-color);
+  color: var(--text-primary);
+}
+.gth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.gth-field span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.gth-field input,
+.gth-field select {
+  padding: 10px 12px;
+  border: 0.5px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  font-size: 14px;
+  color: var(--text-primary);
+  font-family: inherit;
+}
+.gth-field input:focus,
+.gth-field select:focus {
+  outline: none;
+  border-color: var(--gym-color);
+}
