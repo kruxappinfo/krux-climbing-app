@@ -10063,6 +10063,9 @@ function initActivityView() {
 
   // Load user activity data
   loadActivityData();
+
+  // Start live test header subscriptions
+  initTestHeader();
 }
 
 
@@ -10985,7 +10988,8 @@ async function loadActivityData() {
       buildGymStats(allAscents);
       updateActivityRecords(allAscents);
       updateCombinedHistogram(allAscents);
-      renderProgressCards('month', allAscents);
+      renderProgressCards(_pcCurrentPeriod || 'month', allAscents);
+      updatePcTimeNav(_pcCurrentPeriod || 'month');
       const activeChartTab = document.querySelector('.chart-tab.active');
       updateActivityChart(activeChartTab ? activeChartTab.dataset.chart : 'week');
     });
@@ -11235,6 +11239,17 @@ function buildActivityHeatmap(allAscents) {
   buildHeatmapFor(allAscents.filter(a => isGymAscent(a)), 'act-heatmap-weeks-gym', 'act-heatmap-months-gym', 'hm-g');
 }
 
+function getHmTooltip() {
+  let tip = document.getElementById('hm-tooltip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'hm-tooltip';
+    tip.className = 'hm-tooltip';
+    document.body.appendChild(tip);
+  }
+  return tip;
+}
+
 function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
   const weeksEl = document.getElementById(weeksId);
   const monthsEl = document.getElementById(monthsId);
@@ -11287,7 +11302,21 @@ function buildHeatmapFor(ascents, weeksId, monthsId, colorPrefix) {
             const count = dayCount[key] || 0;
             const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 4 ? 2 : count <= 7 ? 3 : 4;
             cell.className = `act-heatmap-cell ${level === 0 ? 'hm-0' : colorPrefix + level}`;
-            if (count > 0) cell.title = `${date.toLocaleDateString('es-ES', { day:'numeric', month:'short' })}: ${count} vías`;
+            if (count > 0) {
+              const label = `${count} ${count === 1 ? 'vía' : 'vías'} · ${date.toLocaleDateString('es-ES', { day:'numeric', month:'short' })}`;
+              cell.addEventListener('mouseenter', e => {
+                const tip = getHmTooltip();
+                tip.textContent = label;
+                const r = cell.getBoundingClientRect();
+                tip.style.left = `${r.left + r.width / 2}px`;
+                tip.style.top = `${r.top - 8}px`;
+                tip.style.transform = 'translateX(-50%) translateY(-100%)';
+                tip.classList.add('visible');
+              });
+              cell.addEventListener('mouseleave', () => {
+                getHmTooltip().classList.remove('visible');
+              });
+            }
           }
         }
         weekDiv.appendChild(cell);
@@ -11386,6 +11415,222 @@ function buildGymStats(allAscents) {
 
   // Gym timeline
   renderGymTimeline(gymAscents.slice(0, 50));
+}
+
+// ============================================================
+// GYM TEST HEADER — vanilla JS implementation
+// ============================================================
+
+let _gthUnsubDefs = null;
+let _gthUnsubMeasures = null;
+let _gthDefs = [];
+let _gthMeasures = [];
+
+function initTestHeader() {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  _gthTeardown();
+
+  const db = firebase.firestore();
+  const defsRef = db.collection('users').doc(user.uid).collection('test_definitions');
+  const measRef = db.collection('users').doc(user.uid).collection('test_measurements');
+
+  _gthUnsubDefs = defsRef.onSnapshot(
+    (snap) => {
+      _gthDefs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      _gthRender();
+    },
+    (err) => console.error('[TestHeader] defs error', err)
+  );
+
+  _gthUnsubMeasures = measRef.onSnapshot(
+    (snap) => {
+      _gthMeasures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      _gthRender();
+    },
+    (err) => console.error('[TestHeader] measures error', err)
+  );
+}
+
+function _gthTeardown() {
+  if (_gthUnsubDefs) { _gthUnsubDefs(); _gthUnsubDefs = null; }
+  if (_gthUnsubMeasures) { _gthUnsubMeasures(); _gthUnsubMeasures = null; }
+}
+
+function _gthUnitLabel(def) {
+  switch (def.unit) {
+    case 'kg': return 'kg';
+    case 'mm': return 'mm';
+    case 'seconds': return 's';
+    case 'reps': return 'reps';
+    case 'percent_bw': return '% PC';
+    case 'grade': return '';
+    case 'custom': return def.customUnitLabel || '';
+    default: return '';
+  }
+}
+
+function _gthFormatDays(days) {
+  if (days === null || days === undefined) return '';
+  if (days === 0) return 'hoy';
+  if (days === 1) return 'ayer';
+  if (days < 30) return `hace ${days}d`;
+  if (days < 365) return `hace ${Math.floor(days / 30)}m`;
+  return `hace ${Math.floor(days / 365)}a`;
+}
+
+function _gthSparkline(values) {
+  if (!values || values.length < 2) return '';
+  const VW = 120, VH = 28, PAD = 2;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const pts = values.map((v, i) => {
+    const x = PAD + (i / (values.length - 1)) * (VW - PAD * 2);
+    const y = VH - PAD - ((v - min) / range) * (VH - PAD * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const lastV = values[values.length - 1];
+  const dotY = (VH - PAD - ((lastV - min) / range) * (VH - PAD * 2)).toFixed(1);
+  const dotX = (VW - PAD).toFixed(1);
+  return `<svg class="gth-sparkline" viewBox="0 0 ${VW} ${VH}" aria-hidden="true">` +
+    `<polyline points="${pts}" fill="none" stroke="var(--gym-color)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `<circle cx="${dotX}" cy="${dotY}" r="2.2" fill="var(--gym-color)"/>` +
+    `</svg>`;
+}
+
+function _gthBuildCardState(def, allMeasures) {
+  const now = new Date().toISOString();
+  const MS = 1000 * 60 * 60 * 24;
+  const sorted = allMeasures
+    .filter(m => m.testId === def.id)
+    .map(m => {
+      // Firestore Timestamp or ISO string
+      const ts = m.measuredAt && m.measuredAt.toDate ? m.measuredAt.toDate().toISOString() : m.measuredAt;
+      return { ...m, _iso: ts };
+    })
+    .sort((a, b) => a._iso < b._iso ? -1 : 1);
+
+  if (sorted.length === 0) {
+    return { def, latest: null, previous: null, delta: null, daysSince: null, sparkline: [] };
+  }
+  const latest = sorted[sorted.length - 1];
+  const previous = sorted.length > 1 ? sorted[sorted.length - 2] : null;
+  let delta = null;
+  if (previous !== null) {
+    const raw = latest.value - previous.value;
+    delta = def.progressDirection === 'higher_is_better' ? raw : -raw;
+  }
+  const daysSince = Math.floor((new Date(now) - new Date(latest._iso)) / MS);
+  const sparkline = sorted.slice(-8).map(m => m.value);
+  return { def, latest, previous, delta, daysSince, sparkline };
+}
+
+function _gthCardHTML(state) {
+  const { def, latest, delta, daysSince, sparkline } = state;
+  const unit = _gthUnitLabel(def);
+  const ctx = def.defaults && def.defaults.edgeMm
+    ? `${def.defaults.edgeMm}mm`
+    : (def.requiredContext && def.requiredContext.includes('bodyWeightKg') ? 'a PC' : '');
+
+  let numStr = '—';
+  let unitStr = '';
+  if (latest) {
+    if (def.unit === 'grade' && latest.gradeValue) {
+      numStr = latest.gradeValue;
+    } else {
+      numStr = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 }).format(latest.value);
+      unitStr = unit;
+    }
+  }
+
+  let badgeClass = 'gth-badge--neutral';
+  let badgeText = '= Sin datos';
+  if (delta !== null) {
+    if (delta > 0)  { badgeClass = 'gth-badge--positive'; badgeText = `↑ +${new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 }).format(delta)}${unit ? ' ' + unit : ''}`; }
+    else if (delta < 0) { badgeClass = 'gth-badge--negative'; badgeText = `↓ ${new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 }).format(delta)}${unit ? ' ' + unit : ''}`; }
+    else { badgeText = `= 0${unit ? ' ' + unit : ''}`; }
+  }
+
+  const daysStr = _gthFormatDays(daysSince);
+
+  return `<article class="gth-card" data-test-id="${def.id}" role="button" tabindex="0" aria-label="${def.name}: ${numStr} ${unitStr}">
+    <div class="gth-card-top">
+      <span class="gth-card-name">${def.name.toUpperCase()}</span>
+      ${ctx ? `<span class="gth-card-ctx">${ctx}</span>` : ''}
+    </div>
+    <div class="gth-card-value">${numStr}${unitStr ? `<span class="gth-card-unit"> ${unitStr}</span>` : ''}</div>
+    <div class="gth-card-meta">
+      <span class="gth-badge ${badgeClass}">${badgeText}</span>
+      ${daysStr ? `<span class="gth-card-days">${daysStr}</span>` : ''}
+    </div>
+    ${_gthSparkline(sparkline)}
+  </article>`;
+}
+
+function _gthRender() {
+  const root = document.getElementById('test-header-root');
+  if (!root) return;
+
+  const pinned = _gthDefs
+    .filter(d => d.pinned)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  const cardsHTML = pinned.map(def => {
+    const state = _gthBuildCardState(def, _gthMeasures);
+    return _gthCardHTML(state);
+  }).join('');
+
+  const addCardHTML = `<button class="gth-add-card" id="btn-gth-add" aria-label="Añadir test al header">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+    <span class="gth-add-card-label">Añadir test<br>al header</span>
+  </button>`;
+
+  root.innerHTML = `<div class="gth-root">
+    <div class="gth-header-row">
+      <p class="gth-section-title">TESTS DE RENDIMIENTO</p>
+      <button class="gth-btn-outline" id="btn-gth-configure">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        Configurar tests
+      </button>
+    </div>
+    <div class="gth-grid">
+      ${pinned.length === 0 && _gthDefs.length === 0
+        ? `<div class="gth-empty" style="grid-column:1/-1">Cargando tests…</div>`
+        : cardsHTML + addCardHTML
+      }
+    </div>
+    <button class="gth-btn-register" id="btn-gth-register">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Registrar nueva medición
+    </button>
+  </div>`;
+
+  // Wire up click events after DOM update
+  root.querySelector('#btn-gth-configure')?.addEventListener('click', () => {
+    // TODO: open test configuration panel
+    console.log('[TestHeader] configurar tests');
+  });
+  root.querySelector('#btn-gth-register')?.addEventListener('click', () => {
+    // TODO: open measurement recording flow
+    console.log('[TestHeader] registrar medición');
+  });
+  root.querySelector('#btn-gth-add')?.addEventListener('click', () => {
+    console.log('[TestHeader] añadir test');
+  });
+  root.querySelectorAll('.gth-card').forEach(card => {
+    card.addEventListener('click', () => {
+      console.log('[TestHeader] test clicked:', card.dataset.testId);
+    });
+  });
 }
 
 function renderGymTimeline(ascents) {
@@ -12109,6 +12354,58 @@ let _pcAscents = [];
 let _pcCurrentPeriod = 'month';
 let _pcCurrentSlide = 0;
 let _pcPageCount = 1;
+let _pcNavContext = null; // {year} for month, {year, month} for week, {year} for year
+
+function updatePcTimeNav(period) {
+  const sel = document.getElementById('pc-time-nav');
+  if (!sel) return;
+  sel.innerHTML = '';
+
+  const now = new Date();
+  const monthLabels = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+  if (period === 'month') {
+    const years = [...new Set(_pcAscents.map(a => {
+      const d = parseAscentDate(a.date);
+      return d ? d.getFullYear() : null;
+    }).filter(Boolean))].sort((a,b) => b - a);
+    if (!years.length) years.push(now.getFullYear());
+    years.forEach(y => {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      if (y === (_pcNavContext?.year ?? now.getFullYear())) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.style.display = '';
+    _pcNavContext = { year: parseInt(sel.value) };
+
+  } else if (period === 'week') {
+    const monthsSet = new Set();
+    _pcAscents.forEach(a => {
+      const d = parseAscentDate(a.date);
+      if (d) monthsSet.add(`${d.getFullYear()}-${String(d.getMonth()).padStart(2,'0')}`);
+    });
+    const sortedMonths = [...monthsSet].sort().reverse();
+    if (!sortedMonths.length) sortedMonths.push(`${now.getFullYear()}-${String(now.getMonth()).padStart(2,'0')}`);
+    sortedMonths.forEach(key => {
+      const [y, m] = key.split('-').map(Number);
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = `${monthLabels[m]} ${y}`;
+      const curKey = `${_pcNavContext?.year ?? now.getFullYear()}-${String(_pcNavContext?.month ?? now.getMonth()).padStart(2,'0')}`;
+      if (key === curKey) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.style.display = '';
+    const [y, m] = sel.value.split('-').map(Number);
+    _pcNavContext = { year: y, month: m };
+
+  } else {
+    sel.style.display = 'none';
+    _pcNavContext = null;
+  }
+}
 
 function initProgressCards() {
   const tabs = document.querySelectorAll('[data-pc]');
@@ -12122,9 +12419,22 @@ function initProgressCards() {
       tabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       _pcCurrentPeriod = period;
+      _pcNavContext = null;
       document.getElementById('pc-custom-banner')?.classList.add('hidden');
+      updatePcTimeNav(period);
       renderProgressCards(period, _pcAscents);
     });
+  });
+
+  document.getElementById('pc-time-nav')?.addEventListener('change', e => {
+    const val = e.target.value;
+    if (_pcCurrentPeriod === 'month') {
+      _pcNavContext = val ? { year: parseInt(val) } : null;
+    } else if (_pcCurrentPeriod === 'week') {
+      if (val) { const [y, m] = val.split('-').map(Number); _pcNavContext = { year: y, month: m }; }
+      else _pcNavContext = null;
+    }
+    renderProgressCards(_pcCurrentPeriod, _pcAscents);
   });
 
   document.getElementById('pc-overlay')?.addEventListener('click', e => {
@@ -12216,7 +12526,7 @@ function renderProgressCards(period, ascents, customFrom, customTo) {
   const dotsEl = document.getElementById('pc-carousel-dots');
   if (!carouselEl) return;
 
-  const cards = buildPcCardData(_pcAscents, period, customFrom, customTo);
+  const cards = buildPcCardData(_pcAscents, period, customFrom, customTo, _pcNavContext);
 
   if (!cards.length) {
     carouselEl.innerHTML = `<div class="pc-carousel-slide"><div class="pc-cards-grid"><div class="pc-empty-card" style="grid-column:1/-1">Sin ascensiones en este periodo</div></div></div>`;
@@ -12290,44 +12600,44 @@ function goPcSlide(index, animate = true) {
 }
 
 
-function buildPcCardData(ascents, period, customFrom, customTo) {
+function buildPcCardData(ascents, period, customFrom, customTo, navContext) {
   const now = new Date();
   const monthLabels = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const dayLabels = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   let groups = [];
 
   if (period === 'week') {
-    const dow = now.getDay();
-    const mondayOffset = dow === 0 ? -6 : 1 - dow;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + mondayOffset);
-    monday.setHours(0,0,0,0);
-    for (let i = 0; i < 7; i++) {
-      const day = new Date(monday);
-      day.setDate(monday.getDate() + i);
-      const dY = day.getFullYear(), dM = day.getMonth(), dD = day.getDate();
-      const dayAscents = ascents.filter(a => {
+    const selYear = navContext?.year ?? now.getFullYear();
+    const selMonth = navContext?.month ?? now.getMonth();
+    const daysInMonth = new Date(selYear, selMonth + 1, 0).getDate();
+    for (let startDay = 1; startDay <= daysInMonth; startDay += 7) {
+      const endDay = Math.min(startDay + 6, daysInMonth);
+      const from = new Date(selYear, selMonth, startDay, 0, 0, 0, 0);
+      const to = new Date(selYear, selMonth, endDay, 23, 59, 59, 999);
+      const weekAscents = ascents.filter(a => {
         const d = parseAscentDate(a.date);
-        return d && d.getFullYear() === dY && d.getMonth() === dM && d.getDate() === dD;
+        return d && d >= from && d <= to;
       });
-      if (dayAscents.length) groups.push({ label: `${dayLabels[i]} ${dD}`, ascents: dayAscents });
+      if (weekAscents.length) groups.push({ label: `${startDay}–${endDay} ${monthLabels[selMonth]}`, ascents: weekAscents });
     }
 
   } else if (period === 'month') {
+    const selYear = navContext?.year ?? now.getFullYear();
     for (let m = 0; m < 12; m++) {
       const monthAscents = ascents.filter(a => {
         const d = parseAscentDate(a.date);
-        return d && d.getFullYear() === now.getFullYear() && d.getMonth() === m;
+        return d && d.getFullYear() === selYear && d.getMonth() === m;
       });
       if (monthAscents.length) groups.push({ label: monthLabels[m], ascents: monthAscents });
     }
 
   } else if (period === 'year') {
-    const years = [...new Set(ascents.map(a => {
+    const allYears = [...new Set(ascents.map(a => {
       const d = parseAscentDate(a.date);
       return d ? d.getFullYear() : null;
     }).filter(Boolean))].sort();
-    years.forEach(y => {
+    const filteredYears = navContext?.year ? allYears.filter(y => y === navContext.year) : allYears;
+    filteredYears.forEach(y => {
       const yAscents = ascents.filter(a => {
         const d = parseAscentDate(a.date);
         return d && d.getFullYear() === y;
@@ -12339,26 +12649,11 @@ function buildPcCardData(ascents, period, customFrom, customTo) {
     const from = new Date(customFrom);
     const to = new Date(customTo);
     to.setHours(23,59,59,999);
-    // Agrupar por mes dentro del rango
     const rangeAscents = ascents.filter(a => {
       const d = parseAscentDate(a.date);
       return d && d >= from && d <= to;
     });
-    // Si el rango es ≤ 31 días, una sola card; si no, por mes
-    const diffDays = (to - from) / 86400000;
-    if (diffDays <= 31) {
-      if (rangeAscents.length) groups.push({ label: `${fmtPcDate(customFrom)} – ${fmtPcDate(customTo)}`, ascents: rangeAscents });
-    } else {
-      const monthSet = {};
-      rangeAscents.forEach(a => {
-        const d = parseAscentDate(a.date);
-        if (!d) return;
-        const key = `${d.getFullYear()}-${d.getMonth()}`;
-        if (!monthSet[key]) monthSet[key] = { label: `${monthLabels[d.getMonth()]} ${d.getFullYear()}`, ascents: [] };
-        monthSet[key].ascents.push(a);
-      });
-      groups = Object.values(monthSet);
-    }
+    if (rangeAscents.length) groups.push({ label: `${fmtPcDate(customFrom)} – ${fmtPcDate(customTo)}`, ascents: rangeAscents });
   }
 
   return groups.map(g => {
