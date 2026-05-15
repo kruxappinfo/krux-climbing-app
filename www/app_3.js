@@ -11425,32 +11425,81 @@ let _gthUnsubDefs = null;
 let _gthUnsubMeasures = null;
 let _gthDefs = [];
 let _gthMeasures = [];
+let _gthAuthHooked = false;
+
+// Built-in test templates (subset — only the ones we seed by default)
+const _GTH_TEMPLATES = [
+  { key: 'max_hang',       name: 'Max Hangs',           unit: 'kg', progressDirection: 'higher_is_better', requiredContext: ['edgeMm', 'bodyWeightKg'], defaults: { edgeMm: 20 } },
+  { key: 'min_edge_7s',    name: 'Regleta mínima 7s',   unit: 'mm', progressDirection: 'lower_is_better',  requiredContext: ['bodyWeightKg'] },
+  { key: 'forty_sec_hang', name: '40s en regleta',      unit: 'mm', progressDirection: 'lower_is_better',  requiredContext: ['bodyWeightKg'] },
+];
 
 function initTestHeader() {
-  const user = firebase.auth().currentUser;
-  if (!user) return;
+  if (_gthAuthHooked) return;
+  _gthAuthHooked = true;
 
-  _gthTeardown();
+  // Render an immediate skeleton/empty state so the section is visible
+  _gthRender();
 
-  const db = firebase.firestore();
-  const defsRef = db.collection('users').doc(user.uid).collection('test_definitions');
-  const measRef = db.collection('users').doc(user.uid).collection('test_measurements');
+  firebase.auth().onAuthStateChanged((user) => {
+    _gthTeardown();
+    _gthDefs = [];
+    _gthMeasures = [];
 
-  _gthUnsubDefs = defsRef.onSnapshot(
-    (snap) => {
-      _gthDefs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!user) {
       _gthRender();
-    },
-    (err) => console.error('[TestHeader] defs error', err)
-  );
+      return;
+    }
 
-  _gthUnsubMeasures = measRef.onSnapshot(
-    (snap) => {
-      _gthMeasures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      _gthRender();
-    },
-    (err) => console.error('[TestHeader] measures error', err)
-  );
+    const db = firebase.firestore();
+    const defsRef = db.collection('users').doc(user.uid).collection('test_definitions');
+    const measRef = db.collection('users').doc(user.uid).collection('test_measurements');
+
+    _gthUnsubDefs = defsRef.onSnapshot(
+      async (snap) => {
+        _gthDefs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Seed defaults if the user has never had any test definitions
+        if (_gthDefs.length === 0) {
+          await _gthSeedDefaults(defsRef);
+        }
+        _gthRender();
+      },
+      (err) => { console.error('[TestHeader] defs error', err); _gthRender(); }
+    );
+
+    _gthUnsubMeasures = measRef.onSnapshot(
+      (snap) => {
+        _gthMeasures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        _gthRender();
+      },
+      (err) => console.error('[TestHeader] measures error', err)
+    );
+  });
+}
+
+async function _gthSeedDefaults(defsRef) {
+  try {
+    const now = firebase.firestore.FieldValue.serverTimestamp();
+    const batch = firebase.firestore().batch();
+    _GTH_TEMPLATES.forEach((tpl, i) => {
+      const docRef = defsRef.doc();
+      batch.set(docRef, {
+        templateKey: tpl.key,
+        name: tpl.name,
+        unit: tpl.unit,
+        progressDirection: tpl.progressDirection,
+        requiredContext: tpl.requiredContext,
+        defaults: tpl.defaults || {},
+        pinned: true,
+        order: i,
+        enabledAt: now,
+      });
+    });
+    await batch.commit();
+    console.log('[TestHeader] seeded default tests');
+  } catch (e) {
+    console.error('[TestHeader] seed failed', e);
+  }
 }
 
 function _gthTeardown() {
