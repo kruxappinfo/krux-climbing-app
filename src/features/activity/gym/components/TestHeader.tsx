@@ -3,108 +3,109 @@ import type { CSSProperties } from 'react';
 import type { TestRepository } from '../repositories/TestRepository';
 import type { TestHeaderCardState } from '../types/test.types';
 import { useTestHeader } from '../hooks/useTestHeader';
-import { formatTestValue, formatDelta, formatDaysAgo } from '../services/formatTest';
+import { formatDelta, formatDaysAgo, unitLabel } from '../services/formatTest';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sparkline
+// Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SW = 88;
-const SH = 36;
-const SP = 3; // padding
+const GYM_COLOR = '#534AB7';
 
-const TREND_COLOR: Record<'up' | 'down' | 'flat', string> = {
-  up:   '#7c3aed',
-  down: '#ef4444',
-  flat: '#94a3b8',
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// Sparkline — matches mockup (no fill, 26px height, viewBox 120×28)
+// ─────────────────────────────────────────────────────────────────────────────
 
-function Sparkline({
-  values,
-  trend,
-}: {
-  values: readonly number[];
-  trend: 'up' | 'down' | 'flat';
-}) {
-  if (values.length < 2) return null;
+function Sparkline({ values }: { values: readonly number[] }) {
+  if (values.length < 2) return <div style={{ height: 26 }} />;
 
+  const VW = 120, VH = 28, PAD = 2;
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
 
   const pts = values
     .map((v, i) => {
-      const x = SP + (i / (values.length - 1)) * (SW - SP * 2);
-      const y = SH - SP - ((v - min) / range) * (SH - SP * 2);
+      const x = PAD + (i / (values.length - 1)) * (VW - PAD * 2);
+      const y = VH - PAD - ((v - min) / range) * (VH - PAD * 2);
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(' ');
 
-  const color = TREND_COLOR[trend];
   const lastV = values[values.length - 1];
-  const dotX = (SW - SP).toFixed(1);
-  const dotY = (SH - SP - ((lastV - min) / range) * (SH - SP * 2)).toFixed(1);
+  const dotY = VH - PAD - ((lastV - min) / range) * (VH - PAD * 2);
 
   return (
-    <svg
-      width="100%"
-      height={SH}
-      viewBox={`0 0 ${SW} ${SH}`}
-      preserveAspectRatio="none"
-      aria-hidden
-    >
-      {/* Area fill */}
-      <defs>
-        <linearGradient id={`sg-${trend}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-      <polygon
-        points={`${SP},${SH} ${pts} ${SW - SP},${SH}`}
-        fill={`url(#sg-${trend})`}
-      />
+    <svg viewBox={`0 0 ${VW} ${VH}`} style={{ width: '100%', height: 26 }} aria-hidden>
       <polyline
         points={pts}
         fill="none"
-        stroke={color}
+        stroke={GYM_COLOR}
         strokeWidth="1.5"
-        strokeLinejoin="round"
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      <circle cx={dotX} cy={dotY} r="2.5" fill={color} />
+      <circle cx={(VW - PAD).toFixed(1)} cy={dotY.toFixed(1)} r="2.2" fill={GYM_COLOR} />
     </svg>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Skeleton
+// Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function Bone({ w, h, mb = 0 }: { w: number | string; h: number; mb?: number }) {
-  return (
-    <div
-      style={{
-        width: w,
-        height: h,
-        marginBottom: mb,
-        borderRadius: 6,
-        background: 'var(--border-color)',
-        animation: 'pulse 1.5s ease-in-out infinite',
-      }}
-    />
-  );
+/** Short context label shown top-right of each card (e.g. "20mm", "a PC"). */
+function contextLabel(state: TestHeaderCardState): string {
+  const { test } = state;
+  if (test.defaults?.edgeMm) return `${test.defaults.edgeMm}mm`;
+  if (test.requiredContext.includes('bodyWeightKg')) return 'a PC';
+  return '';
 }
+
+/** Split formatted value into {num, unit} for the two-size display. */
+function splitValue(state: TestHeaderCardState): { num: string; unit: string } {
+  const { test, latest } = state;
+  if (!latest) return { num: '—', unit: '' };
+  if (test.unit === 'grade') return { num: latest.gradeValue ?? String(latest.value), unit: '' };
+
+  const formatted = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 }).format(latest.value);
+  return { num: formatted, unit: unitLabel(test) };
+}
+
+/** Delta arrow + text for the badge. */
+function deltaDisplay(state: TestHeaderCardState): {
+  arrow: '↑' | '↓' | '=';
+  text: string;
+  sign: 'positive' | 'negative' | 'neutral';
+} {
+  const { delta, test } = state;
+  if (delta === null) return { arrow: '=', text: 'Sin datos', sign: 'neutral' };
+  if (delta === 0) return { arrow: '=', text: `0 ${unitLabel(test)}`, sign: 'neutral' };
+
+  const d = formatDelta(delta, test);
+  return {
+    arrow: delta > 0 ? '↑' : '↓',
+    text: d.text,
+    sign: d.sign,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Skeleton card
+// ─────────────────────────────────────────────────────────────────────────────
 
 function CardSkeleton() {
   return (
     <div style={s.card} aria-hidden>
-      <Bone w={60} h={10} mb={10} />
-      <Bone w={80} h={28} mb={6} />
-      <Bone w={52} h={18} mb={4} />
-      <Bone w={38} h={10} mb={12} />
-      <Bone w="100%" h={SH} />
-      <Bone w="100%" h={28} mb={0} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ ...s.bone, width: 56, height: 10 }} />
+        <div style={{ ...s.bone, width: 24, height: 10 }} />
+      </div>
+      <div style={{ ...s.bone, width: 70, height: 28, marginBottom: 8 }} />
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        <div style={{ ...s.bone, width: 52, height: 18 }} />
+        <div style={{ ...s.bone, width: 38, height: 18 }} />
+      </div>
+      <div style={{ ...s.bone, width: '100%', height: 26 }} />
     </div>
   );
 }
@@ -115,55 +116,71 @@ function CardSkeleton() {
 
 function TestCard({
   state,
-  onRecord,
+  onClick,
 }: {
   state: TestHeaderCardState;
-  onRecord: (testId: string) => void;
+  onClick: (testId: string) => void;
 }) {
-  const { test, latest, delta, deltaPercent, daysSinceLatest, sparkline, trend } = state;
-  const d = formatDelta(delta, test);
+  const { num, unit } = splitValue(state);
+  const { arrow, text: deltaText, sign } = deltaDisplay(state);
+  const ctx = contextLabel(state);
 
-  const deltaStyle: CSSProperties = {
-    ...s.delta,
-    color:
-      d.sign === 'positive' ? '#16a34a'
-      : d.sign === 'negative' ? '#dc2626'
-      : 'var(--text-muted)',
-    background:
-      d.sign === 'positive' ? '#dcfce7'
-      : d.sign === 'negative' ? '#fee2e2'
-      : 'transparent',
+  const badgeStyle: CSSProperties = {
+    ...s.badge,
+    background: sign === 'positive' ? '#E1F5EE' : sign === 'negative' ? '#fee2e2' : 'var(--bg-secondary)',
+    color:      sign === 'positive' ? '#0F6E56' : sign === 'negative' ? '#dc2626' : 'var(--text-secondary)',
   };
 
   return (
-    <article style={s.card}>
-      <div style={s.cardName}>{test.name}</div>
-
-      <div style={s.cardValue}>{formatTestValue(latest, test)}</div>
-
-      <div style={deltaStyle}>
-        {d.text}
-        {deltaPercent !== null && (
-          <span style={s.deltaPercent}>
-            &nbsp;({deltaPercent > 0 ? '+' : ''}{deltaPercent.toFixed(0)}%)
-          </span>
-        )}
+    <article
+      style={s.card}
+      role="button"
+      tabIndex={0}
+      aria-label={`Test ${state.test.name}: ${num} ${unit}`}
+      onClick={() => onClick(state.test.id)}
+      onKeyDown={(e) => e.key === 'Enter' && onClick(state.test.id)}
+    >
+      {/* Row 1: name + context */}
+      <div style={s.cardTop}>
+        <span style={s.cardName}>{state.test.name.toUpperCase()}</span>
+        {ctx && <span style={s.cardCtx}>{ctx}</span>}
       </div>
 
-      <div style={s.cardDays}>{formatDaysAgo(daysSinceLatest)}</div>
-
-      <div style={s.sparklineWrap}>
-        <Sparkline values={sparkline} trend={trend} />
+      {/* Row 2: value */}
+      <div style={s.cardValue}>
+        {num}
+        {unit && <span style={s.cardUnit}> {unit}</span>}
       </div>
 
-      <button
-        style={s.cardBtn}
-        onClick={() => onRecord(test.id)}
-        aria-label={`Registrar medición de ${test.name}`}
-      >
-        + Registrar
-      </button>
+      {/* Row 3: delta badge + days */}
+      <div style={s.cardMeta}>
+        <span style={badgeStyle}>{arrow} {deltaText}</span>
+        <span style={s.cardDays}>{formatDaysAgo(state.daysSinceLatest)}</span>
+      </div>
+
+      {/* Sparkline */}
+      <Sparkline values={state.sparkline} />
     </article>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Add-test card
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AddCard({ onAdd }: { onAdd?: () => void }) {
+  return (
+    <button
+      style={s.addCard}
+      onClick={onAdd}
+      aria-label="Añadir test al header"
+    >
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </svg>
+      <span style={s.addCardLabel}>Añadir test<br />al header</span>
+    </button>
   );
 }
 
@@ -171,76 +188,97 @@ function TestCard({
 // TestHeader
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type GymTab = 'roca' | 'rocodromo';
+
 export interface TestHeaderProps {
   repo: TestRepository;
+  activeTab?: GymTab;
+  onTabChange?: (tab: GymTab) => void;
   onConfigureTests?: () => void;
-  onRecordMeasurement?: (testId: string) => void;
+  onRecordMeasurement?: (testId?: string) => void;
+  onAddTest?: () => void;
 }
 
-export function TestHeader({ repo, onConfigureTests, onRecordMeasurement }: TestHeaderProps) {
+export function TestHeader({
+  repo,
+  activeTab = 'rocodromo',
+  onTabChange,
+  onConfigureTests,
+  onRecordMeasurement,
+  onAddTest,
+}: TestHeaderProps) {
   const { cards, loading, error } = useTestHeader(repo);
 
-  const firstTestId = cards[0]?.test.id ?? '';
-
   return (
-    <section style={s.root} aria-label="Tests de rendimiento">
+    <div style={s.root}>
 
-      {/* ── Header row ─────────────────────────────────────────── */}
-      <div style={s.headerRow}>
-        <h2 style={s.sectionTitle}>Tests de rendimiento</h2>
-        <div style={s.headerActions}>
-          <button style={s.btnSecondary} onClick={onConfigureTests}>
-            <IconSettings />
-            Configurar tests
+      {/* ── Toggle Roca / Rocódromo ──────────────────────────── */}
+      <div style={s.toggleRow}>
+        <div style={s.toggle}>
+          <button
+            style={activeTab === 'roca' ? s.toggleActive : s.toggleInactive}
+            onClick={() => onTabChange?.('roca')}
+          >
+            Roca
           </button>
           <button
-            style={s.btnPrimary}
-            onClick={() => onRecordMeasurement?.(firstTestId)}
-            disabled={loading || cards.length === 0}
+            style={activeTab === 'rocodromo' ? s.toggleActive : s.toggleInactive}
+            onClick={() => onTabChange?.('rocodromo')}
           >
-            <IconPlus />
-            Registrar medición
+            Rocódromo
           </button>
         </div>
       </div>
 
-      {/* ── Error ──────────────────────────────────────────────── */}
+      {/* ── Section header ───────────────────────────────────── */}
+      <div style={s.headerRow}>
+        <p style={s.sectionTitle}>TESTS DE RENDIMIENTO</p>
+        <button style={s.btnOutline} onClick={onConfigureTests}>
+          <IconSettings />
+          Configurar tests
+        </button>
+      </div>
+
+      {/* ── Error ────────────────────────────────────────────── */}
       {error && (
         <div style={s.error} role="alert">
           No se pudieron cargar los tests: {error.message}
         </div>
       )}
 
-      {/* ── Cards scroll ───────────────────────────────────────── */}
-      <div style={s.scroll} role="list">
+      {/* ── Grid ─────────────────────────────────────────────── */}
+      <div style={s.grid}>
         {loading ? (
           <>
             <CardSkeleton />
             <CardSkeleton />
             <CardSkeleton />
           </>
-        ) : cards.length === 0 ? (
-          <div style={s.empty}>
-            <div style={s.emptyIcon}>📊</div>
-            <p style={s.emptyTitle}>Sin tests configurados</p>
-            <p style={s.emptyHint}>
-              Añade tests de rendimiento para hacer seguimiento de tu progreso
-            </p>
-            <button style={s.btnPrimary} onClick={onConfigureTests}>
-              Añadir mi primer test
-            </button>
-          </div>
         ) : (
-          cards.map((state) => (
-            <TestCard
-              key={state.test.id}
-              state={state}
-              onRecord={(id) => onRecordMeasurement?.(id)}
-            />
-          ))
+          <>
+            {cards.map((state) => (
+              <TestCard
+                key={state.test.id}
+                state={state}
+                onClick={(id) => onRecordMeasurement?.(id)}
+              />
+            ))}
+            <AddCard onAdd={onAddTest ?? onConfigureTests} />
+          </>
         )}
       </div>
-    </section>
+
+      {/* ── CTA bottom ───────────────────────────────────────── */}
+      <button
+        style={s.btnRegister}
+        onClick={() => onRecordMeasurement?.()}
+        disabled={loading}
+      >
+        <IconPlus />
+        Registrar nueva medición
+      </button>
+
+    </div>
   );
 }
 
@@ -250,16 +288,16 @@ export function TestHeader({ repo, onConfigureTests, onRecordMeasurement }: Test
 
 function IconSettings() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden>
       <circle cx="12" cy="12" r="3" />
-      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }
 
 function IconPlus() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }} aria-hidden>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }} aria-hidden>
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
@@ -272,147 +310,168 @@ function IconPlus() {
 
 const s: Record<string, CSSProperties> = {
   root: {
-    width: '100%',
+    background: 'var(--bg-secondary)',
+    borderRadius: 20,
+    padding: '1.5rem',
   },
+
+  // Toggle
+  toggleRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    marginBottom: '1.25rem',
+  },
+  toggle: {
+    display: 'inline-flex',
+    background: 'var(--bg-primary)',
+    border: '0.5px solid var(--border-color)',
+    borderRadius: 9999,
+    padding: 4,
+  },
+  toggleActive: {
+    border: 'none',
+    background: GYM_COLOR,
+    padding: '6px 16px',
+    borderRadius: 9999,
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: 500,
+    cursor: 'pointer',
+  },
+  toggleInactive: {
+    border: 'none',
+    background: 'transparent',
+    padding: '6px 16px',
+    borderRadius: 9999,
+    fontSize: 13,
+    color: 'var(--text-secondary)',
+    cursor: 'pointer',
+  },
+
+  // Header row
   headerRow: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
-    marginBottom: '0.625rem',
-    flexWrap: 'wrap',
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 11,
-    fontWeight: 600,
-    color: 'var(--text-secondary)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
     margin: 0,
-  },
-  headerActions: {
-    display: 'flex',
-    gap: 6,
-    flexShrink: 0,
-  },
-
-  // Buttons
-  btnSecondary: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 5,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 500,
-    padding: '5px 12px',
-    borderRadius: 9999,
-    border: '1px solid var(--border-color)',
-    background: 'var(--bg-primary)',
+    letterSpacing: '0.06em',
     color: 'var(--text-secondary)',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
   },
-  btnPrimary: {
+  btnOutline: {
+    border: '0.5px solid var(--border-color)',
+    background: 'var(--bg-primary)',
+    padding: '6px 12px',
+    borderRadius: 12,
+    fontSize: 12,
+    color: 'var(--text-primary)',
+    cursor: 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 5,
-    fontSize: 12,
-    fontWeight: 500,
-    padding: '5px 12px',
-    borderRadius: 9999,
-    border: 'none',
-    background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
-    color: '#fff',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
+    gap: 6,
   },
 
-  // Scroll container
-  scroll: {
-    display: 'flex',
-    gap: 10,
-    overflowX: 'auto',
-    overflowY: 'hidden',
-    paddingBottom: 8,
-    scrollSnapType: 'x mandatory',
-    WebkitOverflowScrolling: 'touch',
-    // Hide scrollbar visually but keep functional
-    msOverflowStyle: 'none',
+  // Grid
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+    gap: 12,
+    marginBottom: 12,
   },
 
   // Card
   card: {
-    display: 'flex',
-    flexDirection: 'column',
-    minWidth: 152,
-    maxWidth: 172,
-    flexShrink: 0,
-    background: 'linear-gradient(135deg, #f5f3ff 0%, #faf5ff 100%)',
-    border: '1px solid rgba(124, 58, 237, 0.12)',
+    background: 'var(--bg-primary)',
+    border: '0.5px solid var(--border-color)',
     borderRadius: 16,
-    padding: '14px 14px 10px',
-    scrollSnapAlign: 'start',
-    gap: 0,
+    padding: 14,
+    cursor: 'pointer',
+  },
+  cardTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
   },
   cardName: {
+    fontSize: 11,
+    color: 'var(--text-secondary)',
+    fontWeight: 500,
+    letterSpacing: '0.04em',
+  },
+  cardCtx: {
     fontSize: 10,
-    fontWeight: 600,
-    color: '#7c3aed',
-    textTransform: 'uppercase',
-    letterSpacing: '0.07em',
-    marginBottom: 8,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
+    color: 'var(--text-muted)',
   },
   cardValue: {
     fontSize: 26,
-    fontWeight: 600,
-    color: 'var(--text-primary)',
-    lineHeight: 1,
-    marginBottom: 6,
-    letterSpacing: '-0.02em',
-  },
-  delta: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    fontSize: 12,
     fontWeight: 500,
+    color: GYM_COLOR,
+    lineHeight: 1.1,
+    marginBottom: 6,
+  },
+  cardUnit: {
+    fontSize: 14,
+    color: 'var(--text-secondary)',
+    fontWeight: 400,
+  },
+  cardMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  badge: {
+    fontSize: 11,
     padding: '2px 7px',
     borderRadius: 9999,
-    alignSelf: 'flex-start',
-    marginBottom: 3,
-  },
-  deltaPercent: {
-    fontSize: 11,
-    fontWeight: 400,
-    opacity: 0.75,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
   },
   cardDays: {
     fontSize: 11,
     color: 'var(--text-muted)',
-    marginBottom: 8,
-    marginLeft: 2,
-  },
-  sparklineWrap: {
-    marginBottom: 10,
-  },
-  cardBtn: {
-    fontSize: 11,
-    fontWeight: 500,
-    padding: '5px 0',
-    borderRadius: 8,
-    border: '1px solid rgba(124, 58, 237, 0.25)',
-    background: 'transparent',
-    color: '#7c3aed',
-    cursor: 'pointer',
-    textAlign: 'center',
-    width: '100%',
   },
 
-  // Skeleton pulse
-  skeleton: {
-    borderRadius: 6,
-    background: 'rgba(124, 58, 237, 0.08)',
+  // Add card
+  addCard: {
+    background: 'transparent',
+    border: '0.5px dashed var(--border-color)',
+    borderRadius: 16,
+    padding: 14,
+    cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 124,
+    gap: 6,
+  },
+  addCardLabel: {
+    fontSize: 12,
+    color: 'var(--text-secondary)',
+    textAlign: 'center',
+    lineHeight: 1.3,
+  },
+
+  // CTA bottom
+  btnRegister: {
+    width: '100%',
+    background: 'var(--bg-primary)',
+    border: '0.5px solid var(--border-color)',
+    borderRadius: 12,
+    padding: 10,
+    fontSize: 13,
+    color: 'var(--text-primary)',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
 
   // Error
@@ -426,34 +485,9 @@ const s: Record<string, CSSProperties> = {
     marginBottom: 10,
   },
 
-  // Empty state
-  empty: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 6,
-    padding: '28px 24px',
-    background: 'linear-gradient(135deg, #f5f3ff 0%, #faf5ff 100%)',
-    border: '1px dashed rgba(124, 58, 237, 0.25)',
-    borderRadius: 16,
-    width: '100%',
-    textAlign: 'center',
-  },
-  emptyIcon: {
-    fontSize: 28,
-    lineHeight: 1,
-    marginBottom: 4,
-  },
-  emptyTitle: {
-    margin: 0,
-    fontSize: 14,
-    fontWeight: 600,
-    color: 'var(--text-primary)',
-  },
-  emptyHint: {
-    margin: 0,
-    fontSize: 12,
-    color: 'var(--text-secondary)',
-    maxWidth: 240,
+  // Skeleton
+  bone: {
+    borderRadius: 6,
+    background: 'var(--border-color)',
   },
 };
