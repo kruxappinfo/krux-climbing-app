@@ -11427,11 +11427,17 @@ let _gthDefs = [];
 let _gthMeasures = [];
 let _gthAuthHooked = false;
 
-// Built-in test templates (subset — only the ones we seed by default)
+// Built-in test templates (9 tests imprescindibles — Lattice/Eva López/Beastmaker)
 const _GTH_TEMPLATES = [
-  { key: 'max_hang',       name: 'Max Hangs',           unit: 'kg', progressDirection: 'higher_is_better', requiredContext: ['edgeMm', 'bodyWeightKg'], defaults: { edgeMm: 20 } },
-  { key: 'min_edge_7s',    name: 'Regleta mínima 7s',   unit: 'mm', progressDirection: 'lower_is_better',  requiredContext: ['bodyWeightKg'] },
-  { key: 'forty_sec_hang', name: '40s en regleta',      unit: 'mm', progressDirection: 'lower_is_better',  requiredContext: ['bodyWeightKg'] },
+  { key: 'max_hang',         name: 'Max Hangs',           unit: 'kg',     progressDirection: 'higher_is_better', requiredContext: ['edgeMm', 'bodyWeightKg'], defaults: { edgeMm: 20 }, description: 'Fuerza máxima de dedos en regleta de referencia' },
+  { key: 'min_edge_7s',      name: 'Regleta mínima 7s',   unit: 'mm',     progressDirection: 'lower_is_better',  requiredContext: ['bodyWeightKg'],            description: 'Fuerza máxima relativa' },
+  { key: 'repeaters_7_3',    name: 'Repeaters 7/3',       unit: 'reps',   progressDirection: 'higher_is_better', requiredContext: ['edgeMm', 'bodyWeightKg'], defaults: { edgeMm: 20 }, description: 'Resistencia de fuerza local' },
+  { key: 'forty_sec_hang',   name: '40s en regleta',      unit: 'mm',     progressDirection: 'lower_is_better',  requiredContext: ['bodyWeightKg'],            description: 'Resistencia anaeróbica' },
+  { key: 'max_pull_ups',     name: 'Dominadas máximas',   unit: 'reps',   progressDirection: 'higher_is_better', requiredContext: [],                          description: 'Fuerza tracción' },
+  { key: 'weighted_pull_up', name: 'Dominada con lastre', unit: 'kg',     progressDirection: 'higher_is_better', requiredContext: ['bodyWeightKg'],            description: 'Potencia tracción' },
+  { key: 'campus_1_5_9',     name: 'Campus 1-5-9',        unit: 'custom', customUnitLabel: 'listón', progressDirection: 'higher_is_better', requiredContext: [], description: 'Potencia de contacto' },
+  { key: 'foot_on_campus',   name: 'Foot-on campus',      unit: 'custom', customUnitLabel: 'combo',  progressDirection: 'higher_is_better', requiredContext: [], description: 'Potencia controlada' },
+  { key: 'boulder_test',     name: 'Test de bloque',      unit: 'grade',  progressDirection: 'higher_is_better', requiredContext: ['gymId'],                   description: 'Grado consolidado' },
 ];
 
 function initTestHeader() {
@@ -11481,19 +11487,24 @@ async function _gthSeedDefaults(defsRef) {
   try {
     const now = firebase.firestore.FieldValue.serverTimestamp();
     const batch = firebase.firestore().batch();
+    const DEFAULT_PINNED = new Set(['max_hang', 'min_edge_7s', 'forty_sec_hang']);
     _GTH_TEMPLATES.forEach((tpl, i) => {
       const docRef = defsRef.doc();
-      batch.set(docRef, {
+      const pinned = DEFAULT_PINNED.has(tpl.key);
+      const data = {
         templateKey: tpl.key,
         name: tpl.name,
+        description: tpl.description || '',
         unit: tpl.unit,
         progressDirection: tpl.progressDirection,
         requiredContext: tpl.requiredContext,
         defaults: tpl.defaults || {},
-        pinned: true,
-        order: i,
+        pinned,
+        order: pinned ? i : 1000 + i,
         enabledAt: now,
-      });
+      };
+      if (tpl.customUnitLabel) data.customUnitLabel = tpl.customUnitLabel;
+      batch.set(docRef, data);
     });
     await batch.commit();
     console.log('[TestHeader] seeded default tests');
@@ -11664,22 +11675,231 @@ function _gthRender() {
   </div>`;
 
   // Wire up click events after DOM update
-  root.querySelector('#btn-gth-configure')?.addEventListener('click', () => {
-    // TODO: open test configuration panel
-    console.log('[TestHeader] configurar tests');
-  });
-  root.querySelector('#btn-gth-register')?.addEventListener('click', () => {
-    // TODO: open measurement recording flow
-    console.log('[TestHeader] registrar medición');
-  });
-  root.querySelector('#btn-gth-add')?.addEventListener('click', () => {
-    console.log('[TestHeader] añadir test');
-  });
+  root.querySelector('#btn-gth-configure')?.addEventListener('click', _gthOpenConfigure);
+  root.querySelector('#btn-gth-add')?.addEventListener('click', _gthOpenConfigure);
+  root.querySelector('#btn-gth-register')?.addEventListener('click', () => _gthOpenRecord(null));
   root.querySelectorAll('.gth-card').forEach(card => {
-    card.addEventListener('click', () => {
-      console.log('[TestHeader] test clicked:', card.dataset.testId);
-    });
+    card.addEventListener('click', () => _gthOpenRecord(card.dataset.testId));
   });
+}
+
+// ============================================================
+// Modal: Configurar tests (pin/unpin from catalogue)
+// ============================================================
+function _gthOpenConfigure() {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  // Index existing defs by templateKey
+  const byKey = {};
+  _gthDefs.forEach(d => { if (d.templateKey) byKey[d.templateKey] = d; });
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay gth-modal-overlay';
+  overlay.innerHTML = `
+    <div class="gth-modal">
+      <div class="gth-modal-header">
+        <h3>Configurar tests</h3>
+        <button class="gth-modal-close" aria-label="Cerrar">×</button>
+      </div>
+      <p class="gth-modal-sub">Activa los tests que quieres ver en tu header.</p>
+      <div class="gth-modal-list">
+        ${_GTH_TEMPLATES.map(tpl => {
+          const def = byKey[tpl.key];
+          const pinned = def ? !!def.pinned : false;
+          return `<label class="gth-modal-row">
+            <div>
+              <div class="gth-modal-row-name">${tpl.name}</div>
+              <div class="gth-modal-row-desc">${tpl.description || ''}</div>
+            </div>
+            <input type="checkbox" data-tpl-key="${tpl.key}" ${pinned ? 'checked' : ''}>
+          </label>`;
+        }).join('')}
+      </div>
+      <div class="gth-modal-footer">
+        <button class="gth-modal-btn-secondary" id="gth-cfg-cancel">Cancelar</button>
+        <button class="gth-modal-btn-primary" id="gth-cfg-save">Guardar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.querySelector('.gth-modal-close').onclick = close;
+  overlay.querySelector('#gth-cfg-cancel').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  overlay.querySelector('#gth-cfg-save').onclick = async () => {
+    const db = firebase.firestore();
+    const defsRef = db.collection('users').doc(user.uid).collection('test_definitions');
+    const batch = db.batch();
+    let order = 0;
+
+    for (const tpl of _GTH_TEMPLATES) {
+      const cb = overlay.querySelector(`input[data-tpl-key="${tpl.key}"]`);
+      const wantPinned = cb.checked;
+      const existing = byKey[tpl.key];
+
+      if (existing) {
+        if (existing.pinned !== wantPinned) {
+          batch.update(defsRef.doc(existing.id), {
+            pinned: wantPinned,
+            order: wantPinned ? order++ : 1000 + order++,
+          });
+        } else if (wantPinned) {
+          order++;
+        }
+      } else if (wantPinned) {
+        // Create new definition for a template the user never had
+        const docRef = defsRef.doc();
+        const data = {
+          templateKey: tpl.key,
+          name: tpl.name,
+          description: tpl.description || '',
+          unit: tpl.unit,
+          progressDirection: tpl.progressDirection,
+          requiredContext: tpl.requiredContext,
+          defaults: tpl.defaults || {},
+          pinned: true,
+          order: order++,
+          enabledAt: firebase.firestore.FieldValue.serverTimestamp(),
+        };
+        if (tpl.customUnitLabel) data.customUnitLabel = tpl.customUnitLabel;
+        batch.set(docRef, data);
+      }
+    }
+
+    try {
+      await batch.commit();
+      close();
+    } catch (e) {
+      console.error('[TestHeader] save config failed', e);
+      alert('Error guardando: ' + e.message);
+    }
+  };
+}
+
+// ============================================================
+// Modal: Registrar nueva medición
+// ============================================================
+function _gthOpenRecord(preselectedTestId) {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  const pinned = _gthDefs.filter(d => d.pinned).sort((a, b) => (a.order || 0) - (b.order || 0));
+  if (pinned.length === 0) {
+    alert('Primero configura algún test desde "Configurar tests"');
+    return;
+  }
+  const selectedId = preselectedTestId && pinned.find(d => d.id === preselectedTestId)
+    ? preselectedTestId
+    : pinned[0].id;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay gth-modal-overlay';
+  overlay.innerHTML = `
+    <div class="gth-modal">
+      <div class="gth-modal-header">
+        <h3>Registrar medición</h3>
+        <button class="gth-modal-close" aria-label="Cerrar">×</button>
+      </div>
+      <div class="gth-modal-body">
+        <label class="gth-field">
+          <span>Test</span>
+          <select id="gth-rec-test">
+            ${pinned.map(d => `<option value="${d.id}" ${d.id === selectedId ? 'selected' : ''}>${d.name}</option>`).join('')}
+          </select>
+        </label>
+        <div id="gth-rec-fields"></div>
+        <label class="gth-field">
+          <span>Fecha</span>
+          <input type="date" id="gth-rec-date" value="${new Date().toISOString().slice(0, 10)}">
+        </label>
+      </div>
+      <div class="gth-modal-footer">
+        <button class="gth-modal-btn-secondary" id="gth-rec-cancel">Cancelar</button>
+        <button class="gth-modal-btn-primary" id="gth-rec-save">Guardar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.querySelector('.gth-modal-close').onclick = close;
+  overlay.querySelector('#gth-rec-cancel').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  const sel = overlay.querySelector('#gth-rec-test');
+  const fieldsDiv = overlay.querySelector('#gth-rec-fields');
+
+  function renderFields() {
+    const def = pinned.find(d => d.id === sel.value);
+    if (!def) return;
+    const unit = _gthUnitLabel(def);
+    let fieldsHTML = `<label class="gth-field">
+      <span>Valor${unit ? ' (' + unit + ')' : ''}</span>
+      <input type="${def.unit === 'grade' ? 'text' : 'number'}" step="any" id="gth-rec-value" required>
+    </label>`;
+
+    (def.requiredContext || []).forEach(ctx => {
+      if (ctx === 'edgeMm') {
+        const dflt = def.defaults && def.defaults.edgeMm ? def.defaults.edgeMm : '';
+        fieldsHTML += `<label class="gth-field">
+          <span>Regleta (mm)</span>
+          <input type="number" step="1" id="gth-rec-ctx-edgeMm" value="${dflt}">
+        </label>`;
+      } else if (ctx === 'bodyWeightKg') {
+        fieldsHTML += `<label class="gth-field">
+          <span>Peso corporal (kg)</span>
+          <input type="number" step="0.1" id="gth-rec-ctx-bodyWeightKg">
+        </label>`;
+      } else if (ctx === 'gymId') {
+        fieldsHTML += `<label class="gth-field">
+          <span>Rocódromo</span>
+          <input type="text" id="gth-rec-ctx-gymId" placeholder="Nombre del rocódromo">
+        </label>`;
+      }
+    });
+    fieldsDiv.innerHTML = fieldsHTML;
+  }
+
+  sel.addEventListener('change', renderFields);
+  renderFields();
+
+  overlay.querySelector('#gth-rec-save').onclick = async () => {
+    const def = pinned.find(d => d.id === sel.value);
+    const valEl = overlay.querySelector('#gth-rec-value');
+    const dateEl = overlay.querySelector('#gth-rec-date');
+    const rawVal = valEl.value.trim();
+    if (!rawVal) { valEl.focus(); return; }
+
+    const context = {};
+    (def.requiredContext || []).forEach(ctx => {
+      const el = overlay.querySelector(`#gth-rec-ctx-${ctx}`);
+      if (el && el.value !== '') {
+        context[ctx] = ctx === 'gymId' ? el.value : parseFloat(el.value);
+      }
+    });
+
+    const payload = {
+      testId: def.id,
+      value: def.unit === 'grade' ? 0 : parseFloat(rawVal),
+      measuredAt: firebase.firestore.Timestamp.fromDate(new Date(dateEl.value)),
+    };
+    if (def.unit === 'grade') payload.gradeValue = rawVal;
+    if (Object.keys(context).length > 0) payload.context = context;
+
+    try {
+      await firebase.firestore()
+        .collection('users').doc(user.uid)
+        .collection('test_measurements')
+        .add(payload);
+      close();
+    } catch (e) {
+      console.error('[TestHeader] save measurement failed', e);
+      alert('Error guardando: ' + e.message);
+    }
+  };
 }
 
 function renderGymTimeline(ascents) {
