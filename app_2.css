@@ -18948,24 +18948,6 @@ body.map-active #btn-dev-editor {
 .act-hero-gym {
   background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
   border-color: rgba(124, 58, 237, 0.15);
-  grid-template-columns: minmax(120px, 170px) 1fr;
-  align-items: start;
-}
-
-.act-hero-tests {
-  border-left: 1px solid rgba(124, 58, 237, 0.12);
-  padding-left: 1.25rem;
-}
-
-.act-hero .gth-root {
-  background: transparent;
-  border-radius: 0;
-  padding: 0;
-  margin-bottom: 0;
-}
-
-.act-hero .gth-btn-register {
-  display: none;
 }
 
 .act-hero-left {
@@ -19493,8 +19475,7 @@ body.map-active #btn-dev-editor {
     grid-template-columns: 1fr;
   }
 
-  .act-hero-right,
-  .act-hero-tests {
+  .act-hero-right {
     display: none;
   }
 
@@ -20387,7 +20368,7 @@ body.map-active #btn-dev-editor {
    ============================================ */
 
 .roco-section {
-  margin-top: 20px;
+  margin-top: 0;
   padding-bottom: 8px;
 }
 
