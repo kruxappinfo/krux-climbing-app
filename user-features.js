@@ -333,12 +333,14 @@ async function logAscent(ascentData) {
             routeName: ascentData.routeName,
             grade: ascentData.grade,
             sector: ascentData.sector || '',
-            style: ascentData.style, // 'flash', 'redpoint', 'onsight', 'toprope', 'lead'
-            date: new Date(ascentData.date), // Use user selected date
+            style: ascentData.style,
+            date: new Date(ascentData.date),
             tries: ascentData.tries || 1,
             rating: ascentData.rating || 0,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            notes: ascentData.notes || ''
+            notes: ascentData.notes || '',
+            ...(ascentData.schoolCity ? { schoolCity: ascentData.schoolCity } : {}),
+            ...(ascentData.climbType ? { climbType: ascentData.climbType } : {}),
         };
 
         // Add to ascents collection
@@ -619,6 +621,20 @@ function closeAscentModal() {
     delete form.dataset.ascentId;
     delete form.dataset.editMode;
     delete form.dataset.routeId;
+
+    // Reset gym mode
+    delete form.dataset.gymMode;
+    const schoolCityEl = document.getElementById('ascent-school-city');
+    if (schoolCityEl) schoolCityEl.value = '';
+    const climbTypeEl = document.getElementById('ascent-climb-type');
+    if (climbTypeEl) climbTypeEl.value = 'outdoor';
+    ['gm-gym-group', 'gm-type-group', 'gm-grade-group', 'gm-route-group'].forEach(id => {
+        document.getElementById(id)?.classList.add('hidden');
+    });
+    const routeDisplayGroup = document.getElementById('route-display-group');
+    if (routeDisplayGroup) routeDisplayGroup.classList.remove('hidden');
+    const gmLabel = document.getElementById('gm-gym-label');
+    if (gmLabel) gmLabel.textContent = 'Selecciona un rocódromo';
 
     // Reset title and button text
     modalTitle.textContent = 'Registrar Ascenso';
@@ -2272,13 +2288,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
+                const isGymMode = form.dataset.gymMode === 'true';
+                const gmRouteName = isGymMode ? (document.getElementById('gm-route-input')?.value.trim() || '') : '';
                 const ascentData = {
                     userId: currentUser.uid,
                     schoolId: document.getElementById('ascent-school-id').value,
                     schoolName: document.getElementById('ascent-school-name').value,
-                    routeId: form.dataset.routeId || document.getElementById('ascent-route-name').value,
-                    routeName: document.getElementById('ascent-route-name').value,
-                    grade: document.getElementById('ascent-grade').value,
+                    routeId: isGymMode
+                        ? (gmRouteName || `gym_${Date.now()}`)
+                        : (form.dataset.routeId || document.getElementById('ascent-route-name').value),
+                    routeName: isGymMode
+                        ? (gmRouteName || 'Vía sin nombre')
+                        : document.getElementById('ascent-route-name').value,
+                    grade: isGymMode
+                        ? (document.getElementById('gm-grade-select')?.value || '')
+                        : document.getElementById('ascent-grade').value,
+                    schoolCity: document.getElementById('ascent-school-city')?.value || '',
+                    climbType: document.getElementById('ascent-climb-type')?.value || 'outdoor',
                     sector: document.getElementById('ascent-sector').value,
                     date: document.getElementById('ascent-date').value,
                     style: document.getElementById('ascent-style').value,

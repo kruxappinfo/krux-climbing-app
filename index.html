@@ -709,6 +709,9 @@
               </div>
             </div>
 
+            <!-- Mis rocódromos -->
+            <div id="gym-mis-rocodromos"></div>
+
           </div><!-- /content-rocodromo -->
 
           <!-- FAB Nueva Ascensión -->
@@ -1462,12 +1465,44 @@
         <input type="hidden" id="ascent-route-name">
         <input type="hidden" id="ascent-grade">
 
-        <div class="form-group">
+        <div class="form-group" id="route-display-group">
           <label>Ví­a</label>
           <div id="display-route-name" class="route-name-display"></div>
         </div>
 
         <input type="hidden" id="ascent-sector">
+        <input type="hidden" id="ascent-school-city">
+        <input type="hidden" id="ascent-climb-type" value="outdoor">
+
+        <!-- GYM MODE: campos visibles solo al registrar ascenso libre de rocódromo -->
+        <div id="gm-gym-group" class="form-group hidden">
+          <label>Rocódromo</label>
+          <div class="gm-gym-trigger" id="gm-gym-trigger">
+            <div class="gm-gym-trigger-left">
+              <svg class="gm-gym-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              <span id="gm-gym-label">Selecciona un rocódromo</span>
+            </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+        </div>
+
+        <div id="gm-type-group" class="form-group hidden">
+          <label>Tipo</label>
+          <div class="gm-type-seg" id="gm-type-seg">
+            <button type="button" class="gm-type-btn active" data-gtype="via">Vía indoor</button>
+            <button type="button" class="gm-type-btn" data-gtype="boulder">Boulder</button>
+          </div>
+        </div>
+
+        <div id="gm-grade-group" class="form-group hidden">
+          <label>Grado</label>
+          <select id="gm-grade-select"></select>
+        </div>
+
+        <div id="gm-route-group" class="form-group hidden">
+          <label>Vía <span class="gm-optional">(opcional)</span></label>
+          <input type="text" id="gm-route-input" placeholder="Ej: Amarilla sector A" autocomplete="off">
+        </div>
 
         <div class="form-group">
           <label for="ascent-date">Fecha</label>
@@ -3364,6 +3399,24 @@
       console.log('[PWA] Sin conexión - modo offline activo');
     });
   </script>
+
+  <!-- Gym Picker Sheet -->
+  <div id="gym-picker-sheet" class="modal hidden">
+    <div class="modal-content gym-picker-content">
+      <div class="modal-header">
+        <h3>Rocódromo</h3>
+        <button type="button" id="gym-picker-close" class="close-btn">✕</button>
+      </div>
+      <button type="button" id="gym-picker-gps" class="gym-picker-gps-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v3.5M12 19.5V23M1 12h3.5M19.5 12H23"/><circle cx="12" cy="12" r="9" opacity=".25" stroke-width="1.5"/></svg>
+        Detectar mi ubicación
+      </button>
+      <div class="form-group gym-picker-search-group">
+        <input type="text" id="gym-picker-search" placeholder="Buscar o escribir nombre..." autocomplete="off">
+      </div>
+      <div id="gym-picker-list" class="gym-picker-list"></div>
+    </div>
+  </div>
 </body>
 
 </html>
