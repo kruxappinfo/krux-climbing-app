@@ -10943,10 +10943,10 @@ async function loadActivityData() {
     const snapshot = await ascentsRef.get();
 
     if (snapshot.empty) {
-      // Show empty state and reset all stats
       const emptyState = document.getElementById('activity-empty');
       if (emptyState) emptyState.style.display = 'flex';
       resetAllStats();
+      buildGymMisRocodromos([]);
       return;
     }
 
@@ -11023,7 +11023,10 @@ async function loadActivityData() {
 function isGymAscent(ascent) {
   const type = (ascent.climbType || ascent.type || '').toLowerCase();
   const school = (ascent.schoolName || ascent.school || '').toLowerCase();
-  return type === 'indoor' || school.includes('rocódromo') || school.includes('rocodromo') || school.includes('gym') || school.includes('indoor');
+  return type === 'indoor' || type === 'boulder'
+    || school.includes('rocódromo') || school.includes('rocodromo')
+    || school.includes('gym') || school.includes('indoor')
+    || school.includes('boulder') || school.includes('escalada');
 }
 
 // ============================================
