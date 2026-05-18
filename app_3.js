@@ -10984,6 +10984,7 @@ async function loadActivityData() {
     requestAnimationFrame(() => {
       buildActivityHeroCard(allAscents, yearAscents);
       buildActivityPyramid(allAscents);
+      buildGymPyramid(allAscents);
       buildActivityHeatmap(allAscents);
       buildGymStats(allAscents);
       updateActivityRecords(allAscents);
@@ -11360,6 +11361,161 @@ function calculateStreak(ascents) {
     }
   }
   return streak;
+}
+
+// ============================================
+// PIRÁMIDE DE GRADOS — Rocódromo
+// ============================================
+
+const GYM_VIA_GRADES = [
+  '4', '4+', '5', '5+',
+  '5a', '5a+', '5b', '5b+', '5c', '5c+',
+  '6a', '6a+', '6b', '6b+', '6c', '6c+',
+  '7a', '7a+', '7b', '7b+', '7c', '7c+',
+  '8a', '8a+', '8b', '8b+', '8c', '8c+', '9a',
+];
+
+const GYM_BOULDER_GRADES = [
+  '3', '4', '4+', '5', '5+',
+  '6A', '6A+', '6B', '6B+', '6C', '6C+',
+  '7A', '7A+', '7B', '7B+', '7C', '7C+',
+  '8A', '8A+', '8B', '8B+', '8C', '8C+',
+];
+
+function buildGymPyramid(allAscents) {
+  const wrap = document.getElementById('gym-pyramid-wrap');
+  if (!wrap) return;
+
+  const gymAscents = allAscents.filter(a => isGymAscent(a));
+
+  function isBoulder(a) {
+    return (a.climbType || a.type || '').toLowerCase() === 'boulder';
+  }
+
+  function normalizeGrade(g, view) {
+    if (!g) return '';
+    const s = g.trim();
+    if (view === 'via') return s.toLowerCase();
+    // Fontainebleau: uppercase letter suffix, e.g. "6b+" → "6B+"
+    return s.replace(/([a-c])(\+?)$/i, (_, l, p) => l.toUpperCase() + p);
+  }
+
+  let activeView = 'via';
+
+  function getViewData() {
+    const grades = activeView === 'via' ? GYM_VIA_GRADES : GYM_BOULDER_GRADES;
+    const viewAscents = gymAscents.filter(a =>
+      activeView === 'via' ? !isBoulder(a) : isBoulder(a)
+    );
+    const sendAscents = viewAscents.filter(a => a.style !== 'project' && a.grade);
+    const projects = viewAscents.filter(a => a.style === 'project');
+
+    const flashMap = {}, redMap = {};
+    sendAscents.forEach(a => {
+      const g = normalizeGrade(a.grade, activeView);
+      if (!grades.includes(g)) return;
+      if (a.style === 'flash' || a.style === 'onsight') flashMap[g] = (flashMap[g] || 0) + 1;
+      else redMap[g] = (redMap[g] || 0) + 1;
+    });
+
+    const activeGrades = grades.filter(g => (flashMap[g]||0)+(redMap[g]||0) > 0).reverse();
+    const max = activeGrades.reduce((m, g) => Math.max(m, (flashMap[g]||0)+(redMap[g]||0)), 1);
+
+    // Consolidation: highest grade with ≥5 combined sends
+    let conso = null;
+    for (let i = grades.length - 1; i >= 0; i--) {
+      if ((flashMap[grades[i]]||0) + (redMap[grades[i]]||0) >= 5) { conso = grades[i]; break; }
+    }
+
+    return { activeGrades, flashMap, redMap, max, conso, projects };
+  }
+
+  function renderPyramid() {
+    const { activeGrades, flashMap, redMap, max, conso, projects } = getViewData();
+
+    const pyramidEl = wrap.querySelector('#gp-pyramid');
+    const consoVal  = wrap.querySelector('#gp-conso-val');
+    const projectsEl = wrap.querySelector('#gp-projects');
+
+    if (activeGrades.length === 0) {
+      pyramidEl.innerHTML = '<div class="gp-empty">Sin ascensiones registradas</div>';
+      consoVal.textContent = '-';
+    } else {
+      pyramidEl.innerHTML = activeGrades.map(g => {
+        const flash = flashMap[g] || 0;
+        const red   = redMap[g]   || 0;
+        const total = flash + red;
+        const w     = Math.max(7, Math.round(total / max * 100));
+        let bars = '';
+        if (flash > 0) bars += `<div style="width:${Math.round(flash/total*100)}%;background:#1D9E75;height:100%;"></div>`;
+        if (red   > 0) bars += `<div style="width:${Math.round(red/total*100)}%;background:#378ADD;height:100%;"></div>`;
+        return `<div class="gp-row">
+          <span class="gp-label">${g}</span>
+          <div class="gp-bar-wrap"><div class="gp-bar" style="width:${w}%;">${bars}</div></div>
+          <span class="gp-count">${total}</span>
+        </div>`;
+      }).join('');
+      consoVal.textContent = conso || '-';
+    }
+
+    if (projects.length === 0) {
+      projectsEl.innerHTML = '<div class="gp-empty">Sin proyectos activos</div>';
+    } else {
+      projectsEl.innerHTML = projects.slice(0, 10).map(p => {
+        const g     = p.grade || '?';
+        const name  = p.routeName || p.name || 'Sin nombre';
+        const tries = p.attempts || p.tries || 0;
+        const best  = p.bestAttempt || p.best_attempt || '';
+        const sub   = tries > 0
+          ? `${tries} pegue${tries !== 1 ? 's' : ''}${best ? ' · Mejor: ' + best : ''}`
+          : 'Sin intentos registrados';
+        return `<div class="gp-project">
+          <span class="gp-proj-grade">${g}</span>
+          <div class="gp-proj-info">
+            <div class="gp-proj-name">${name}</div>
+            <div class="gp-proj-sub">${sub}</div>
+          </div>
+          <i class="ti ti-chevron-right gp-proj-chevron" aria-hidden="true"></i>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  wrap.innerHTML = `
+<div class="gp-root">
+  <div class="act-section-title">Pirámide de grados</div>
+  <div class="gp-seg" id="gp-seg">
+    <button class="gp-tab active" data-v="via">Vías indoor</button>
+    <button class="gp-tab" data-v="boulder">Boulder</button>
+  </div>
+  <div class="gp-legend">
+    <span class="gp-legend-dot" style="background:#1D9E75;"></span><span>Flash</span>
+    <span class="gp-legend-dot gp-legend-gap" style="background:#378ADD;"></span><span>Encadenada</span>
+  </div>
+  <div id="gp-pyramid"></div>
+  <div class="gp-conso">
+    <i class="ti ti-award gp-conso-icon" aria-hidden="true"></i>
+    <div>
+      <div class="gp-conso-label">Grado de consolidación</div>
+      <div class="gp-conso-val" id="gp-conso-val">-</div>
+      <div class="gp-conso-sub">≥5 vías encadenadas</div>
+    </div>
+  </div>
+  <div class="gp-proj-section">
+    <div class="gp-proj-title"><i class="ti ti-target-arrow" aria-hidden="true"></i> Proyectos activos</div>
+    <div id="gp-projects"></div>
+  </div>
+</div>`;
+
+  wrap.querySelector('#gp-seg').addEventListener('click', e => {
+    const tab = e.target.closest('.gp-tab');
+    if (!tab) return;
+    activeView = tab.dataset.v;
+    wrap.querySelectorAll('.gp-tab').forEach(t => t.classList.toggle('active', t === tab));
+    renderPyramid();
+  });
+
+  renderPyramid();
 }
 
 function buildGymStats(allAscents) {
