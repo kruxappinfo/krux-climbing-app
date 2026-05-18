@@ -4473,6 +4473,7 @@ button.secondary:hover {
 
 #activity-view {
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   display: block;
   background: var(--bg-primary);
