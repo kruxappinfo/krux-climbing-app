@@ -10054,7 +10054,11 @@ function initActivityView() {
   const fabBtn = document.getElementById('new-ascent-btn');
   if (fabBtn) {
     fabBtn.addEventListener('click', () => {
-      showToast('Funcionalidad de nueva ascensión próximamente', 'info');
+      if (currentActivityMode === 'rocodromo') {
+        openNewGymAscent();
+      } else {
+        showToast('Funcionalidad de nueva ascensión próximamente', 'info');
+      }
     });
   }
 
@@ -10987,6 +10991,7 @@ async function loadActivityData() {
       buildGymPyramid(allAscents);
       buildActivityHeatmap(allAscents);
       buildGymStats(allAscents);
+      buildGymMisRocodromos(allAscents);
       updateActivityRecords(allAscents);
       updateCombinedHistogram(allAscents);
       renderProgressCards(_pcCurrentPeriod || 'month', allAscents);
@@ -11019,6 +11024,348 @@ function isGymAscent(ascent) {
   const type = (ascent.climbType || ascent.type || '').toLowerCase();
   const school = (ascent.schoolName || ascent.school || '').toLowerCase();
   return type === 'indoor' || school.includes('rocódromo') || school.includes('rocodromo') || school.includes('gym') || school.includes('indoor');
+}
+
+// ============================================
+// GYM PICKER — selector de rocódromo para nueva ascensión libre
+// ============================================
+
+const MIN_GYM_NEARBY_M = 1000; // metros: distancia máxima para auto-detectar gym
+
+let _gymPickerSchoolsCache = null; // caché de pending_schools aprobados
+let _gymPickerSelectedId   = null;
+let _gymPickerSelectedName = null;
+let _gymPickerSelectedCity = null;
+
+function _haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function _loadPendingSchools() {
+  if (_gymPickerSchoolsCache) return _gymPickerSchoolsCache;
+  try {
+    const snap = await db.collection('pending_schools').where('status', '==', 'approved').get();
+    _gymPickerSchoolsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    _gymPickerSchoolsCache = [];
+  }
+  return _gymPickerSchoolsCache;
+}
+
+async function _reverseGeocodeCity(lat, lng) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=10&addressdetails=1`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
+    if (!res.ok) return '';
+    const data = await res.json();
+    return data.address?.city || data.address?.town || data.address?.village || data.address?.municipality || '';
+  } catch {
+    return '';
+  }
+}
+
+function _gymGradeOptions(type) {
+  const grades = type === 'boulder' ? GYM_BOULDER_GRADES : GYM_VIA_GRADES;
+  return grades.map(g => `<option value="${g}">${g}</option>`).join('');
+}
+
+function _populateGymGradeSelect(type) {
+  const sel = document.getElementById('gm-grade-select');
+  if (!sel) return;
+  sel.innerHTML = _gymGradeOptions(type);
+  // Default to a mid-range grade
+  const mid = type === 'boulder' ? '6B' : '6b';
+  if (sel.querySelector(`option[value="${mid}"]`)) sel.value = mid;
+}
+
+function openNewGymAscent() {
+  if (typeof openAscentModal !== 'function') return;
+
+  const modal  = document.getElementById('ascent-modal');
+  const form   = document.getElementById('ascent-form');
+  const title  = document.getElementById('ascent-modal-title');
+  if (!modal || !form) return;
+
+  // Reset the form first via a lightweight close
+  form.reset();
+  delete form.dataset.ascentId;
+  delete form.dataset.editMode;
+  delete form.dataset.routeId;
+
+  // Reset hidden fields
+  document.getElementById('ascent-school-id').value   = '';
+  document.getElementById('ascent-school-name').value  = '';
+  document.getElementById('ascent-route-name').value   = '';
+  document.getElementById('ascent-grade').value        = '';
+  document.getElementById('ascent-sector').value       = '';
+  document.getElementById('ascent-school-city').value  = '';
+  document.getElementById('ascent-climb-type').value   = 'indoor';
+
+  _gymPickerSelectedId   = null;
+  _gymPickerSelectedName = null;
+  _gymPickerSelectedCity = null;
+
+  // Gym mode flag
+  form.dataset.gymMode = 'true';
+
+  // Show gym fields, hide static route display
+  document.getElementById('route-display-group')?.classList.add('hidden');
+  ['gm-gym-group', 'gm-type-group', 'gm-grade-group', 'gm-route-group'].forEach(id => {
+    document.getElementById(id)?.classList.remove('hidden');
+  });
+
+  // Populate grade select (default: via)
+  _populateGymGradeSelect('via');
+
+  // Reset gym label
+  const lbl = document.getElementById('gm-gym-label');
+  if (lbl) lbl.textContent = 'Selecciona un rocódromo';
+
+  // Pre-fill today's date
+  const dateInput = document.getElementById('ascent-date');
+  if (dateInput) {
+    const today = new Date().toISOString().split('T')[0];
+    dateInput.max = today;
+    dateInput.value = today;
+  }
+
+  // Reset style dropdown to redpoint
+  document.getElementById('ascent-style').value = 'redpoint';
+  document.querySelectorAll('.style-dropdown-menu .style-option').forEach(o => {
+    o.classList.toggle('selected', o.dataset.value === 'redpoint');
+  });
+  const styleToggle = document.getElementById('style-dropdown-toggle');
+  if (styleToggle) {
+    styleToggle.querySelector('.style-icon').textContent = '🔴';
+    styleToggle.querySelector('.style-dropdown-label').innerHTML = '<strong>Redpoint</strong> — Encadenada tras haberla probado antes';
+  }
+
+  if (title) title.textContent = 'Nueva sesión rocódromo';
+
+  modal.classList.remove('hidden');
+
+  // Wire up gym picker trigger (once)
+  const trigger = document.getElementById('gm-gym-trigger');
+  if (trigger && !trigger._gymPickerWired) {
+    trigger._gymPickerWired = true;
+    trigger.addEventListener('click', openGymPickerSheet);
+  }
+
+  // Wire up type toggle (once)
+  const typeSeg = document.getElementById('gm-type-seg');
+  if (typeSeg && !typeSeg._wired) {
+    typeSeg._wired = true;
+    typeSeg.addEventListener('click', e => {
+      const btn = e.target.closest('.gm-type-btn');
+      if (!btn) return;
+      typeSeg.querySelectorAll('.gm-type-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const gtype = btn.dataset.gtype;
+      document.getElementById('ascent-climb-type').value = gtype === 'boulder' ? 'boulder' : 'indoor';
+      _populateGymGradeSelect(gtype);
+    });
+  }
+}
+
+function openGymPickerSheet() {
+  const sheet = document.getElementById('gym-picker-sheet');
+  if (!sheet) return;
+  sheet.classList.remove('hidden');
+
+  // Wire close button (once)
+  const closeBtn = document.getElementById('gym-picker-close');
+  if (closeBtn && !closeBtn._wired) {
+    closeBtn._wired = true;
+    closeBtn.addEventListener('click', closeGymPickerSheet);
+  }
+  sheet.addEventListener('click', e => {
+    if (e.target === sheet) closeGymPickerSheet();
+  }, { once: false });
+
+  // Wire GPS button (once)
+  const gpsBtn = document.getElementById('gym-picker-gps');
+  if (gpsBtn && !gpsBtn._wired) {
+    gpsBtn._wired = true;
+    gpsBtn.addEventListener('click', detectGymByGPS);
+  }
+
+  // Wire search input
+  const searchInput = document.getElementById('gym-picker-search');
+  if (searchInput) {
+    searchInput.value = '';
+    searchInput.focus();
+    if (!searchInput._wired) {
+      searchInput._wired = true;
+      searchInput.addEventListener('input', () => _renderGymPickerList(searchInput.value.trim()));
+      searchInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const q = searchInput.value.trim();
+          if (q) {
+            selectGymFromPicker(q.toLowerCase().replace(/\s+/g, '_'), q, '');
+          }
+        }
+      });
+    }
+  }
+
+  _renderGymPickerList('');
+}
+
+function closeGymPickerSheet() {
+  document.getElementById('gym-picker-sheet')?.classList.add('hidden');
+}
+
+async function _renderGymPickerList(query) {
+  const listEl = document.getElementById('gym-picker-list');
+  if (!listEl) return;
+
+  // Gyms from user's own ascents
+  const gymAscents = (_allActivityAscents || []).filter(a => isGymAscent(a));
+  const seenIds = new Map();
+  gymAscents.forEach(a => {
+    const id = a.schoolId || a.schoolName?.toLowerCase().replace(/\s+/g, '_') || '';
+    if (!id || seenIds.has(id)) return;
+    seenIds.set(id, { id, name: a.schoolName || id, city: a.schoolCity || '' });
+  });
+  const pastGyms = [...seenIds.values()];
+
+  // Schools from Firestore (load async, non-blocking)
+  const schools = await _loadPendingSchools();
+
+  // Merge: add Firestore schools not already in past gyms
+  const allGyms = [...pastGyms];
+  schools.forEach(s => {
+    if (!allGyms.some(g => g.id === s.id)) {
+      allGyms.push({ id: s.id, name: s.nombre || s.name || s.id, city: s.schoolCity || '' });
+    }
+  });
+
+  // Filter by query
+  const lq = query.toLowerCase();
+  const filtered = query
+    ? allGyms.filter(g => g.name.toLowerCase().includes(lq))
+    : allGyms;
+
+  if (filtered.length === 0 && !query) {
+    listEl.innerHTML = '<div class="gym-picker-empty">Sin rocódromos visitados aún.<br>Escribe el nombre para añadir uno.</div>';
+    return;
+  }
+
+  const items = filtered.map(g => {
+    const citySpan = g.city ? `<span class="gym-picker-city">${g.city}</span>` : '';
+    return `<div class="gym-picker-item" data-id="${g.id}" data-name="${g.name}" data-city="${g.city}">
+      <div class="gym-picker-item-avatar">${g.name.slice(0, 2).toUpperCase()}</div>
+      <div class="gym-picker-item-info">
+        <div class="gym-picker-item-name">${g.name}</div>
+        ${citySpan}
+      </div>
+    </div>`;
+  });
+
+  // If query doesn't match any, offer to create it
+  if (query && !filtered.some(g => g.name.toLowerCase() === lq)) {
+    items.push(`<div class="gym-picker-item gym-picker-add" data-id="" data-name="${query}" data-city="">
+      <div class="gym-picker-item-avatar gym-picker-add-icon">+</div>
+      <div class="gym-picker-item-info">
+        <div class="gym-picker-item-name">Añadir "<strong>${query}</strong>"</div>
+      </div>
+    </div>`);
+  }
+
+  listEl.innerHTML = items.join('');
+  listEl.querySelectorAll('.gym-picker-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const id   = item.dataset.id || item.dataset.name.toLowerCase().replace(/\s+/g, '_');
+      const name = item.dataset.name;
+      const city = item.dataset.city;
+      selectGymFromPicker(id, name, city);
+    });
+  });
+}
+
+function selectGymFromPicker(id, name, city) {
+  _gymPickerSelectedId   = id;
+  _gymPickerSelectedName = name;
+  _gymPickerSelectedCity = city;
+
+  document.getElementById('ascent-school-id').value  = id;
+  document.getElementById('ascent-school-name').value = name;
+  document.getElementById('ascent-school-city').value = city;
+
+  const lbl = document.getElementById('gm-gym-label');
+  if (lbl) lbl.textContent = name;
+
+  closeGymPickerSheet();
+}
+
+async function detectGymByGPS() {
+  const gpsBtn = document.getElementById('gym-picker-gps');
+  if (!navigator.geolocation) {
+    showToast('Geolocalización no disponible en este dispositivo', 'warning');
+    return;
+  }
+
+  if (gpsBtn) {
+    gpsBtn.disabled = true;
+    gpsBtn.textContent = 'Obteniendo ubicación…';
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    async pos => {
+      const { latitude: lat, longitude: lng } = pos.coords;
+
+      // Reverse geocode for city
+      const city = await _reverseGeocodeCity(lat, lng);
+
+      // Find nearest school from Firestore schools
+      const schools = await _loadPendingSchools();
+      let nearest = null;
+      let nearestDist = Infinity;
+      schools.forEach(s => {
+        if (!s.coordinates || s.coordinates.length < 2) return;
+        const d = _haversineMeters(lat, lng, s.coordinates[1], s.coordinates[0]);
+        if (d < nearestDist) { nearestDist = d; nearest = s; }
+      });
+
+      // Also check user's past gyms (no coords, skip)
+
+      if (gpsBtn) {
+        gpsBtn.disabled = false;
+        gpsBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v3.5M12 19.5V23M1 12h3.5M19.5 12H23"/><circle cx="12" cy="12" r="9" opacity=".25" stroke-width="1.5"/></svg> Detectar mi ubicación`;
+      }
+
+      if (nearest && nearestDist <= MIN_GYM_NEARBY_M) {
+        selectGymFromPicker(nearest.id, nearest.nombre || nearest.name || nearest.id, city || nearest.schoolCity || '');
+        showToast(`Rocódromo detectado: ${nearest.nombre || nearest.name}`, 'success');
+      } else {
+        // Pre-fill city in search and let user type the name
+        const searchInput = document.getElementById('gym-picker-search');
+        if (searchInput) {
+          searchInput.value = city ? `${city} ` : '';
+          searchInput.focus();
+          _renderGymPickerList(searchInput.value.trim());
+        }
+        document.getElementById('ascent-school-city').value = city;
+        _gymPickerSelectedCity = city;
+        if (city) showToast(`Ciudad detectada: ${city}. Elige o escribe el nombre del rocódromo`, 'info');
+        else showToast('Ubicación obtenida. Elige o escribe el rocódromo', 'info');
+      }
+    },
+    err => {
+      if (gpsBtn) {
+        gpsBtn.disabled = false;
+        gpsBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v3.5M12 19.5V23M1 12h3.5M19.5 12H23"/><circle cx="12" cy="12" r="9" opacity=".25" stroke-width="1.5"/></svg> Detectar mi ubicación`;
+      }
+      const msgs = { 1: 'Permiso de ubicación denegado', 2: 'Ubicación no disponible', 3: 'Tiempo de espera agotado' };
+      showToast(msgs[err.code] || 'Error al obtener ubicación', 'error');
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+  );
 }
 
 const HERO_MILESTONES = [
@@ -11575,6 +11922,239 @@ function buildGymStats(allAscents) {
 
   // Gym timeline
   renderGymTimeline(gymAscents.slice(0, 50));
+}
+
+// ============================================================
+// MIS ROCÓDROMOS — sección en tab Rocódromo de Actividad
+// ============================================================
+
+// Umbral mínimo de vías en cada gym para mostrar calibración
+const MIN_VIAS_CALIBRACION = 5;
+
+// Escala unificada: via indoor + boulder (normalizado a minúsculas)
+const GYM_ROCO_GRADE_SCALE = [
+  '3', '4', '4+', '5', '5+',
+  '5a', '5a+', '5b', '5b+', '5c', '5c+',
+  '6a', '6a+', '6b', '6b+', '6c', '6c+',
+  '7a', '7a+', '7b', '7b+', '7c', '7c+',
+  '8a', '8a+', '8b', '8b+', '8c', '8c+', '9a'
+];
+
+function _rocoGradeIndex(grade) {
+  if (!grade) return -1;
+  return GYM_ROCO_GRADE_SCALE.indexOf(grade.toLowerCase().trim());
+}
+
+function _rocoMaxGrade(grades) {
+  let max = -1;
+  let maxGrade = null;
+  grades.forEach(g => {
+    const idx = _rocoGradeIndex(g);
+    if (idx > max) { max = idx; maxGrade = GYM_ROCO_GRADE_SCALE[idx]; }
+  });
+  return maxGrade;
+}
+
+function _rocoAvgGrade(grades) {
+  const indices = grades.map(_rocoGradeIndex).filter(i => i >= 0);
+  if (!indices.length) return null;
+  const avg = Math.round(indices.reduce((s, i) => s + i, 0) / indices.length);
+  return GYM_ROCO_GRADE_SCALE[avg] || null;
+}
+
+function _rocoRelDate(date) {
+  const d = parseAscentDate(date);
+  if (!d) return '–';
+  const diffMs  = Date.now() - d.getTime();
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffDays === 0)  return 'hoy';
+  if (diffDays === 1)  return 'ayer';
+  if (diffDays < 7)   return `hace ${diffDays} d`;
+  const weeks = Math.floor(diffDays / 7);
+  if (weeks < 5)      return `hace ${weeks} sem`;
+  const months = Math.floor(diffDays / 30);
+  if (months < 12)    return `hace ${months} ${months === 1 ? 'mes' : 'meses'}`;
+  const years = Math.floor(diffDays / 365);
+  return `hace ${years} ${years === 1 ? 'año' : 'años'}`;
+}
+
+const _ROCO_AVATAR_COLORS = ['#534AB7', '#1D9E75', '#378ADD', '#E05A5A', '#BA7517', '#6B4E9E'];
+function _rocoAvatarColor(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return _ROCO_AVATAR_COLORS[h % _ROCO_AVATAR_COLORS.length];
+}
+
+function buildGymMisRocodromos(allAscents) {
+  const wrap = document.getElementById('gym-mis-rocodromos');
+  if (!wrap) return;
+
+  // Solo ascensos de gym, excluir proyectos sin encadenar
+  const gymSends = allAscents.filter(a => isGymAscent(a) && a.style !== 'project');
+
+  if (gymSends.length === 0) {
+    wrap.innerHTML = `
+<div class="roco-section">
+  <div class="roco-header">
+    <span class="roco-title">Mis rocódromos</span>
+    <button class="roco-map-btn" onclick="switchView('map-view')">Ver mapa</button>
+  </div>
+  <div class="roco-empty">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".4"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+    <p>Sin sesiones en rocódromo</p>
+    <span>Registra vías para ver tus estadísticas aquí</span>
+  </div>
+</div>`;
+    return;
+  }
+
+  // Agrupar por schoolId (fallback a nombre normalizado)
+  const gyms = new Map();
+  gymSends.forEach(a => {
+    const id   = a.schoolId || (a.schoolName || '').toLowerCase().replace(/\s+/g, '_') || 'unknown';
+    const name = a.schoolName || id;
+    const city = a.schoolCity || '';
+    if (!gyms.has(id)) gyms.set(id, { id, name, city, sends: [] });
+    gyms.get(id).sends.push(a);
+  });
+
+  // Métricas por gym  — orden: nº vías desc (criterio principal), luego última visita desc
+  const gymList = [...gyms.values()].map(g => {
+    const grades = g.sends.map(a => a.grade).filter(Boolean);
+    const dates  = g.sends.map(a => parseAscentDate(a.date)).filter(Boolean);
+    const lastDate = dates.length ? new Date(Math.max(...dates)) : null;
+    return {
+      id:        g.id,
+      name:      g.name,
+      city:      g.city,
+      count:     g.sends.length,
+      maxGrade:  _rocoMaxGrade(grades),
+      avgGrade:  _rocoAvgGrade(grades),
+      lastDate,
+      lastDateRel: _rocoRelDate(lastDate),
+      grades,
+    };
+  }).sort((a, b) => b.count - a.count || (b.lastDate || 0) - (a.lastDate || 0));
+
+  // Agregados globales
+  const allGrades = gymSends.map(a => a.grade).filter(Boolean);
+  const globalMax   = _rocoMaxGrade(allGrades) || '–';
+  const favoriteGym = gymList[0];
+  const totalSends  = gymSends.length;
+
+  // ── HTML de cards ──────────────────────────────────────────
+  const cards = gymList.map(g => {
+    const color    = _rocoAvatarColor(g.name);
+    const initials = g.name.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    const isFav    = g.id === favoriteGym.id;
+    const subLine  = [g.city, `${g.count} vía${g.count !== 1 ? 's' : ''}`].filter(Boolean).join(' · ');
+    const favStar  = isFav ? '<span class="roco-card-star" aria-label="Favorito">★</span>' : '';
+
+    return `<div class="roco-card" data-gym-id="${g.id}" role="button" tabindex="0">
+  <div class="roco-card-top">
+    <div class="roco-card-avatar" style="background:${color}">${initials}</div>
+    <div class="roco-card-info">
+      <div class="roco-card-name">${g.name}${favStar}</div>
+      <div class="roco-card-sub">${subLine}</div>
+    </div>
+    <svg class="roco-card-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+  </div>
+  <div class="roco-card-stats">
+    <div class="roco-stat"><div class="roco-stat-label">Más duro</div><div class="roco-stat-val">${g.maxGrade || '–'}</div></div>
+    <div class="roco-stat"><div class="roco-stat-label">Promedio</div><div class="roco-stat-val">${g.avgGrade || '–'}</div></div>
+    <div class="roco-stat"><div class="roco-stat-label">Última visita</div><div class="roco-stat-val">${g.lastDateRel}</div></div>
+  </div>
+</div>`;
+  }).join('');
+
+  // ── Calibración entre gimnasios ────────────────────────────
+  let calibHtml = '';
+  const calibGyms = gymList.filter(g => g.count >= MIN_VIAS_CALIBRACION && g.avgGrade);
+  if (calibGyms.length >= 2) {
+    const [a, b] = calibGyms;
+    const idxA = _rocoGradeIndex(a.avgGrade);
+    const idxB = _rocoGradeIndex(b.avgGrade);
+    const diff = idxA - idxB; // positivo: A es más difícil
+    if (Math.abs(diff) >= 1) {
+      const [harder, easier, adjIdx] = diff > 0
+        ? [a, b, idxA - diff]  // A más duro → un X en A = X-diff en B
+        : [b, a, idxB + diff];
+      const eqGrade = GYM_ROCO_GRADE_SCALE[Math.max(0, adjIdx)] || harder.avgGrade;
+      calibHtml = `<div class="roco-calib">
+  <div class="roco-calib-title">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    Calibración entre gimnasios
+  </div>
+  <div class="roco-calib-text">Tu <strong>${harder.avgGrade}</strong> en ${harder.name} equivale a un <strong>${eqGrade}</strong> en ${easier.name}</div>
+</div>`;
+    }
+  }
+
+  wrap.innerHTML = `
+<div class="roco-section">
+  <div class="roco-header">
+    <div>
+      <div class="roco-title">Mis rocódromos</div>
+      <div class="roco-subtitle">${gymList.length} visitado${gymList.length !== 1 ? 's' : ''} · ${totalSends} vías encadenadas</div>
+    </div>
+    <button class="roco-map-btn" onclick="switchView('map-view')">Ver mapa
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="11" r="3"/><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+    </button>
+  </div>
+
+  <div class="roco-summary">
+    <div class="roco-sum-card">
+      <div class="roco-sum-label">Grado tope</div>
+      <div class="roco-sum-val">${globalMax}</div>
+    </div>
+    <div class="roco-sum-card">
+      <div class="roco-sum-label">Favorito</div>
+      <div class="roco-sum-fav">${favoriteGym.name}</div>
+    </div>
+  </div>
+
+  <div class="roco-cards">${cards}</div>
+
+  ${calibHtml}
+</div>`;
+
+  // Tap en card → mapa centrado en el gym
+  wrap.querySelectorAll('.roco-card').forEach(card => {
+    card.addEventListener('click', () => _navigateToGymOnMap(card.dataset.gymId));
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') card.click();
+    });
+  });
+}
+
+// Navega al mapa y carga el gym. Reintenta hasta que el cache de
+// pending_schools esté disponible (se rellena async al iniciar el mapa).
+function _navigateToGymOnMap(gymId) {
+  switchView('map-view');
+  if (!gymId || typeof mlLoadSchool !== 'function') return;
+
+  let attempts = 0;
+  const MAX_ATTEMPTS = 8;   // ~2.8 s máx
+  const INTERVAL_MS  = 350;
+
+  const tryLoad = () => {
+    const inCache  = window.mlPendingSchoolsCache?.has(gymId);
+    const inStatic = typeof MAPLIBRE_SCHOOLS !== 'undefined' && !!MAPLIBRE_SCHOOLS[gymId];
+
+    if (inCache || inStatic) {
+      mlLoadSchool(gymId);
+      return;
+    }
+
+    attempts++;
+    if (attempts < MAX_ATTEMPTS) {
+      setTimeout(tryLoad, INTERVAL_MS);
+    }
+    // Si agota reintentos: el mapa ya está abierto, el usuario puede navegar manualmente
+  };
+
+  // Pequeño delay inicial para que mlEnsureMapReady() haya arrancado
+  setTimeout(tryLoad, 120);
 }
 
 // ============================================================

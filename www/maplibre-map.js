@@ -11107,6 +11107,7 @@ window.loadApprovedRoutesFromFirestore = loadApprovedRoutesFromFirestore;
 window.loadApprovedPOIFromFirestore = loadApprovedPOIFromFirestore;
 window.loadApprovedSectorsFromFirestore = loadApprovedSectorsFromFirestore;
 window.loadApprovedSchoolsFromFirestore = loadApprovedSchoolsFromFirestore;
+window.mlPendingSchoolsCache = mlPendingSchoolsCache;
 window.updateAscentTicksLayer = updateAscentTicksLayer;
 window.mlCloseRoutePopup = () => { if (mlRoutePopup) mlRoutePopup.remove(); };
 window.mlDeletePendingItem = mlDeletePendingItem;
