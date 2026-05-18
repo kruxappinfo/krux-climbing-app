@@ -32,6 +32,9 @@ function initAuthStateObserver() {
                 // User signed in - Create/update user document in Firestore
                 createUserDocument(user);
 
+                // Seed default gym tests on first login (defined by src/boot/gymBoot.ts)
+                window.__kruxSeedTests?.().catch(console.error);
+
                 // Load user favorites
                 if (typeof loadUserFavorites === 'function') {
                     loadUserFavorites();
