@@ -68,6 +68,7 @@
   <!-- Capacitor - debe cargarse primero para detectar plataforma -->
 
   <script src="./capacitor-init.js"></script>
+  <script src="./activity-heatmap.js"></script>
 
 
 
@@ -662,30 +663,7 @@
 
             <!-- Heatmap Rocódromo -->
             <div class="act-section-title">Consistencia anual</div>
-            <div class="act-heatmap-wrap">
-              <div class="act-heatmap-months" id="act-heatmap-months-gym"></div>
-              <div class="act-heatmap-grid">
-                <div class="act-heatmap-days">
-                  <div class="act-heatmap-day-label">L</div>
-                  <div class="act-heatmap-day-label">M</div>
-                  <div class="act-heatmap-day-label">X</div>
-                  <div class="act-heatmap-day-label">J</div>
-                  <div class="act-heatmap-day-label">V</div>
-                  <div class="act-heatmap-day-label">S</div>
-                  <div class="act-heatmap-day-label">D</div>
-                </div>
-                <div class="act-heatmap-weeks" id="act-heatmap-weeks-gym"></div>
-              </div>
-              <div class="act-heatmap-legend">
-                <span>Menos</span>
-                <div class="act-hl-cell hm-0"></div>
-                <div class="act-hl-cell hm-g1"></div>
-                <div class="act-hl-cell hm-g2"></div>
-                <div class="act-hl-cell hm-g3"></div>
-                <div class="act-hl-cell hm-g4"></div>
-                <span>Más</span>
-              </div>
-            </div>
+            <div id="gym-activity-heatmap"></div>
 
             <!-- Stats Rocódromo -->
             <div class="act-section-title">Estadísticas de entrenamiento</div>
