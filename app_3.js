@@ -11236,7 +11236,11 @@ function buildActivityPyramid(allAscents) {
 
 function buildActivityHeatmap(allAscents) {
   buildHeatmapFor(allAscents.filter(a => !isGymAscent(a)), 'act-heatmap-weeks-roca', 'act-heatmap-months-roca', 'hm-r');
-  buildHeatmapFor(allAscents.filter(a => isGymAscent(a)), 'act-heatmap-weeks-gym', 'act-heatmap-months-gym', 'hm-g');
+
+  const gymAscents = allAscents.filter(a => isGymAscent(a));
+  if (window._gymActivityHeatmap) window._gymActivityHeatmap.destroy();
+  window._gymActivityHeatmap = new ActivityHeatmap('gym-activity-heatmap');
+  window._gymActivityHeatmap.initWithData(gymAscents);
 }
 
 function getHmTooltip() {
