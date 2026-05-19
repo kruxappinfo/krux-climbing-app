@@ -22193,3 +22193,11 @@ body.map-active #btn-dev-editor {
 .pe-saved-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 28px; line-height: 1.5; }
 /* Prevent body scroll when editor open */
 body.plan-editor-open { overflow: hidden; }
+
+/* Train view rest day */
+.train-rest-day {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 20px 16px;
+}
