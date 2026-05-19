@@ -3267,7 +3267,7 @@ function switchView(viewId) {
     document.body.classList.remove('map-active');
   }
 
-  if (viewId === 'feed-view' || viewId === 'profile-view' || viewId === 'activity-view' || viewId === 'map-view' || viewId === 'search-view') {
+  if (viewId === 'feed-view' || viewId === 'profile-view' || viewId === 'activity-view' || viewId === 'map-view' || viewId === 'search-view' || viewId === 'train-view') {
     if (topBar) topBar.style.display = 'none';
     if (authContainer) authContainer.style.display = 'none';
   } else {
@@ -13352,7 +13352,219 @@ document.addEventListener('DOMContentLoaded', () => {
   initActivityView();
   initLogbook();
   initProgressCards();
+  initTrainView();
 });
+
+// ── Datos compartidos de sesión (train view ↔ session module) ──────────
+window.kruxTrainData = {
+  name: 'Fuerza en media llave',
+  exercises: [
+    { name: 'Max hang · 20mm',      sets: 4, workSec: 10, reps: 0,  weight: 20, restSec: 180, rpeTarget: 8, active: true  },
+    { name: 'Campus board · 1-5-9', sets: 3, workSec: 0,  reps: 5,  weight: 0,  restSec: 120, rpeTarget: 7, active: false },
+    { name: 'Pullover isométrico',  sets: 3, workSec: 7,  reps: 0,  weight: 0,  restSec: 120, rpeTarget: 6, active: false },
+    { name: 'Manguito rotador',     sets: 2, workSec: 0,  reps: 15, weight: 0,  restSec: 60,  rpeTarget: 0, active: false },
+  ]
+};
+
+// Genera la descripción corta a partir de los parámetros del ejercicio
+function buildExDetail(ex) {
+  let unit = '';
+  if (ex.workSec > 0)      unit = `${ex.workSec}s`;
+  else if (ex.reps > 0)    unit = `${ex.reps} rep`;
+
+  let setStr = unit ? `${ex.sets} × ${unit}` : `${ex.sets} series`;
+  if (ex.weight > 0) setStr += ` +${ex.weight}kg`;
+
+  const parts = [setStr];
+  if (ex.restSec > 0) {
+    const r = ex.restSec >= 60 ? `${Math.floor(ex.restSec / 60)} min` : `${ex.restSec}s`;
+    parts.push(`descanso ${r}`);
+  }
+  return parts.join(' — ');
+}
+
+// ================== TRAIN VIEW ==================
+function initTrainView() {
+  const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const session = window.kruxTrainData;
+
+  // Per-day schedule for current week (index 0=Mon…6=Sun): 'done'|'rest'|'today'|'scheduled'
+  const defaultSchedule = ['done', 'rest', 'done', 'rest', 'today', 'scheduled', 'rest'];
+
+  let weekOffset = 0;
+
+  function renderWeek() {
+    const daysRow = document.getElementById('train-days-row');
+    const weekTitle = document.getElementById('train-week-title');
+    if (!daysRow || !weekTitle) return;
+
+    const dayLabels = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+    const today = new Date();
+    const jsDay = today.getDay(); // 0=Sun
+    const mondayDelta = jsDay === 0 ? -6 : 1 - jsDay;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + mondayDelta + weekOffset * 7);
+
+    const weekNum = Math.ceil(monday.getDate() / 7);
+    weekTitle.textContent = `Semana ${weekNum} · ${MONTH_NAMES[monday.getMonth()]}`;
+
+    const checkSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
+    daysRow.innerHTML = dayLabels.map((label, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const state = weekOffset === 0 ? defaultSchedule[i] : 'rest';
+      let dotClass = 'train-day-dot ' + state;
+      let content = state === 'done' ? checkSvg : (state === 'rest' ? '–' : `${d.getDate()}`);
+      return `<div class="train-day-cell"><span class="train-day-name">${label}</span><div class="${dotClass}">${content}</div></div>`;
+    }).join('');
+  }
+
+  function renderExercises() {
+    const list = document.getElementById('train-exercise-list');
+    if (!list) return;
+    const playIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+    const circleIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"><circle cx="12" cy="12" r="9"></circle></svg>`;
+    list.innerHTML = session.exercises.map((ex, i) => `
+      <div class="train-ex-row${ex.active ? ' active-ex' : ''} train-ex-editable" data-idx="${i}">
+        <div class="train-ex-icon${ex.active ? ' active-icon' : ''}">${ex.active ? playIcon : circleIcon}</div>
+        <div class="train-ex-info">
+          <div class="train-ex-name${ex.active ? ' active-name' : ''}">${ex.name}</div>
+          <div class="train-ex-detail${ex.active ? ' active-detail' : ''}">${buildExDetail(ex)}</div>
+        </div>
+        ${ex.rpeTarget ? `<span class="train-ex-rpe">RPE ${ex.rpeTarget}</span>` : ''}
+      </div>`).join('');
+
+    // Click handlers para edición
+    list.querySelectorAll('.train-ex-editable').forEach(row => {
+      row.addEventListener('click', () => openExerciseEditor(parseInt(row.dataset.idx)));
+    });
+  }
+
+  // Plan chips
+  const chips = document.querySelectorAll('#train-plan-chips .train-chip');
+  chips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      if (chip.dataset.plan === 'new') {
+        if (typeof showToast === 'function') showToast('Crear plan — próximamente', 'info');
+        return;
+      }
+      chips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+    });
+  });
+
+  // Week navigation
+  const prevBtn = document.getElementById('train-week-prev');
+  const nextBtn = document.getElementById('train-week-next');
+  if (prevBtn) prevBtn.addEventListener('click', () => { weekOffset--; renderWeek(); });
+  if (nextBtn) nextBtn.addEventListener('click', () => { weekOffset++; renderWeek(); });
+
+  // Start button
+  const startBtn = document.getElementById('train-start-btn');
+  if (startBtn) startBtn.addEventListener('click', () => openActiveSession());
+
+  renderWeek();
+  renderExercises();
+}
+
+// ================== EXERCISE EDITOR ==================
+(function () {
+  let editingIdx = -1;
+  const $ = id => document.getElementById(id);
+
+  function readFields() {
+    return {
+      name:      $('ex-field-name').value.trim(),
+      sets:      Math.max(1, parseInt($('ex-field-sets').value)   || 1),
+      reps:      Math.max(0, parseInt($('ex-field-reps').value)   || 0),
+      workSec:   Math.max(0, parseInt($('ex-field-work').value)   || 0),
+      weight:    Math.max(0, parseInt($('ex-field-weight').value) || 0),
+      restSec:   Math.max(0, parseInt($('ex-field-rest').value)   || 0),
+      rpeTarget: Math.min(10, Math.max(0, parseInt($('ex-field-rpe').value) || 0)),
+    };
+  }
+
+  function updatePreview() {
+    const preview = $('ex-preview-text');
+    if (!preview) return;
+    const tmp = readFields();
+    preview.textContent = buildExDetail(tmp) || '—';
+  }
+
+  function open(idx) {
+    const ex = window.kruxTrainData && window.kruxTrainData.exercises[idx];
+    if (!ex) return;
+    editingIdx = idx;
+    $('ex-field-name').value   = ex.name;
+    $('ex-field-sets').value   = ex.sets;
+    $('ex-field-reps').value   = ex.reps   || 0;
+    $('ex-field-work').value   = ex.workSec;
+    $('ex-field-weight').value = ex.weight || 0;
+    $('ex-field-rest').value   = ex.restSec;
+    $('ex-field-rpe').value    = ex.rpeTarget;
+    updatePreview();
+    $('ex-editor-sheet').classList.remove('hidden');
+    setTimeout(() => $('ex-field-name').focus(), 320);
+  }
+
+  function close() {
+    $('ex-editor-sheet').classList.add('hidden');
+    editingIdx = -1;
+  }
+
+  function reRenderList() {
+    const listEl = document.getElementById('train-exercise-list');
+    if (!listEl || !window.kruxTrainData) return;
+    const playIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+    const circleIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"><circle cx="12" cy="12" r="9"></circle></svg>`;
+    listEl.innerHTML = window.kruxTrainData.exercises.map((e, i) => `
+      <div class="train-ex-row${e.active ? ' active-ex' : ''} train-ex-editable" data-idx="${i}">
+        <div class="train-ex-icon${e.active ? ' active-icon' : ''}">${e.active ? playIcon : circleIcon}</div>
+        <div class="train-ex-info">
+          <div class="train-ex-name${e.active ? ' active-name' : ''}">${e.name}</div>
+          <div class="train-ex-detail${e.active ? ' active-detail' : ''}">${buildExDetail(e)}</div>
+        </div>
+        ${e.rpeTarget ? `<span class="train-ex-rpe">RPE ${e.rpeTarget}</span>` : ''}
+      </div>`).join('');
+    listEl.querySelectorAll('.train-ex-editable').forEach(row => {
+      row.addEventListener('click', () => open(parseInt(row.dataset.idx)));
+    });
+  }
+
+  function save() {
+    if (editingIdx < 0 || !window.kruxTrainData) return;
+    const ex = window.kruxTrainData.exercises[editingIdx];
+    const f  = readFields();
+    if (f.name) ex.name = f.name;
+    ex.sets      = f.sets;
+    ex.reps      = f.reps;
+    ex.workSec   = f.workSec;
+    ex.weight    = f.weight;
+    ex.restSec   = f.restSec;
+    ex.rpeTarget = f.rpeTarget;
+    close();
+    reRenderList();
+    if (typeof showToast === 'function') showToast('Ejercicio actualizado', 'success');
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const liveFields = ['ex-field-sets','ex-field-reps','ex-field-work','ex-field-weight','ex-field-rest'];
+    liveFields.forEach(id => {
+      const el = $(id);
+      if (el) el.addEventListener('input', updatePreview);
+    });
+    const closeBtn = $('ex-editor-close');
+    const backdrop = $('ex-editor-backdrop');
+    const saveBtn  = $('ex-editor-save');
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    if (backdrop) backdrop.addEventListener('click', close);
+    if (saveBtn)  saveBtn.addEventListener('click', save);
+  });
+
+  window.openExerciseEditor = open;
+  window.closeExerciseEditor = close;
+})();
 
 // Re-initialize activity when user logs in
 firebase.auth().onAuthStateChanged(user => {
@@ -13708,3 +13920,469 @@ function makePcCard(d, isTop) {
   </div>`;
 }
 // ========== END PROGRESS CARDS ==========
+
+// ================== ACTIVE SESSION MODULE ==================
+(function () {
+  // Usa los datos compartidos para que las ediciones del train view se reflejen aquí
+  function EXERCISES() { return window.kruxTrainData ? window.kruxTrainData.exercises : []; }
+
+  const SVG = {
+    play:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
+    pause: `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`,
+    skip:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>`,
+  };
+
+  // ── Audio (Web Audio API, sin archivos externos) ──────────────────────
+  let audioCtx = null;
+
+  function getAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // Reanudar si fue suspendido por política de autoplay
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function beep({ freq = 880, duration = 0.08, volume = 0.4, type = 'sine', delay = 0 } = {}) {
+    try {
+      const ctx = getAudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+      gain.gain.setValueAtTime(volume, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + duration + 0.01);
+    } catch (_) { /* silencioso si el navegador bloquea audio */ }
+  }
+
+  // Tick sutil cada segundo durante trabajo
+  function soundTick()    { beep({ freq: 660, duration: 0.04, volume: 0.2 }); }
+  // Pitidos urgentes en los últimos 3 segundos de trabajo
+  function soundUrgent()  { beep({ freq: 1100, duration: 0.07, volume: 0.5, type: 'square' }); }
+  // Triple pitido al completar una serie / fin de trabajo
+  function soundDone() {
+    beep({ freq: 880,  duration: 0.1, volume: 0.6, delay: 0.0 });
+    beep({ freq: 1100, duration: 0.1, volume: 0.6, delay: 0.13 });
+    beep({ freq: 1320, duration: 0.18, volume: 0.7, delay: 0.26 });
+  }
+  // Pitido suave al terminar el descanso
+  function soundRestEnd() {
+    beep({ freq: 660,  duration: 0.12, volume: 0.5, delay: 0.0 });
+    beep({ freq: 880,  duration: 0.18, volume: 0.6, delay: 0.16 });
+  }
+  // ─────────────────────────────────────────────────────────────────────
+
+  let exIdx, setsDone, mode, timerSec, targetSec, intervalId, elapsedSec, elapsedId, selectedRpe;
+
+  function $ (id) { return document.getElementById(id); }
+
+  function open() {
+    exIdx = 0; setsDone = 0; mode = 'idle';
+    timerSec = 0; targetSec = 0; intervalId = null;
+    elapsedSec = 0; elapsedId = null; selectedRpe = 0;
+
+    const modal = $('session-modal');
+    if (!modal) return;
+
+    // Restore session-screen in case it was replaced by completion
+    const screen = $('session-screen');
+    if (screen && !screen.querySelector('.session-topbar')) location.reload();
+
+    modal.classList.remove('hidden');
+    document.body.classList.add('session-open');
+
+    elapsedId = setInterval(() => {
+      elapsedSec++;
+      const el = $('session-elapsed');
+      if (el) el.textContent = fmt2(Math.floor(elapsedSec / 60)) + ':' + fmt2(elapsedSec % 60);
+    }, 1000);
+
+    // Update session name/date
+    const now = new Date();
+    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const sub = $('session-session-sub');
+    if (sub) sub.textContent = `${days[now.getDay()]} · ${months[now.getMonth()]}`;
+
+    renderExercise();
+  }
+
+  function close() {
+    clearInterval(intervalId);
+    clearInterval(elapsedId);
+    const modal = $('session-modal');
+    if (modal) modal.classList.add('hidden');
+    document.body.classList.remove('session-open');
+  }
+
+  function fmt2(n) { return String(n).padStart(2, '0'); }
+
+  function renderExercise() {
+    const ex = EXERCISES()[exIdx];
+    $('session-ex-counter').textContent = `EJERCICIO ${exIdx + 1} DE ${EXERCISES().length}`;
+    $('session-ex-name').textContent = ex.name;
+    $('session-ex-detail').textContent = typeof buildExDetail === 'function' ? buildExDetail(ex) : (ex.detail || '');
+    $('session-progress-bar').style.width = Math.round((exIdx / EXERCISES().length) * 100) + '%';
+
+    const next = exIdx + 1 < EXERCISES().length ? EXERCISES()[exIdx + 1] : null;
+    $('session-next-label').textContent = next ? 'SIGUIENTE' : 'ÚLTIMO EJERCICIO';
+    $('session-next-name').textContent = next ? next.name : '¡Último ejercicio!';
+    $('session-next-detail').textContent = next ? next.detail : 'Dale todo';
+
+    renderDots();
+    setMode('idle');
+  }
+
+  function renderDots() {
+    const ex = EXERCISES()[exIdx];
+    const row = $('session-sets-row');
+    if (!row) return;
+    let html = '';
+    for (let i = 0; i < ex.sets; i++) {
+      const cls = i < setsDone ? 'done' : i === setsDone ? 'current' : '';
+      const label = i < setsDone
+        ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
+        : (i + 1);
+      html += `<div class="session-set-dot ${cls}">${label}</div>`;
+    }
+    row.innerHTML = html;
+  }
+
+  function setMode(m) {
+    mode = m;
+    clearInterval(intervalId);
+    const ex = EXERCISES()[exIdx];
+    const block  = $('session-timer-block');
+    const label  = $('session-timer-label');
+    const btnMain  = $('session-btn-main');
+    const btnLabel = $('session-btn-label');
+    const btnIcon  = $('session-btn-icon');
+    const ringArc  = $('session-ring-arc');
+    const ringTime = $('session-ring-time');
+    const ringLbl  = $('session-ring-lbl');
+
+    block.classList.remove('rest-mode');
+    ringArc.style.stroke = '#1D9E75';
+    ringTime.className = 'session-ring-time';
+    $('session-rpe-section').style.display = 'none';
+
+    if (m === 'idle') {
+      label.textContent = ex.workSec > 0 ? 'CRONÓMETRO DE TRABAJO' : 'LISTO';
+      ringArc.style.strokeDashoffset = '314';
+      ringTime.textContent = ex.workSec > 0 ? '0:' + fmt2(ex.workSec) : '—';
+      ringLbl.textContent = ex.workSec > 0 ? 'objetivo' : '';
+      btnIcon.innerHTML = SVG.play;
+      btnLabel.textContent = ex.workSec > 0 ? 'Iniciar' : 'Marcar serie';
+      btnMain.className = 'session-ctrl-btn session-ctrl-primary';
+
+    } else if (m === 'work') {
+      label.textContent = 'TRABAJANDO';
+      timerSec = 0; targetSec = ex.workSec;
+      btnIcon.innerHTML = SVG.pause;
+      btnLabel.textContent = 'Pausar';
+      intervalId = setInterval(tickWork, 1000);
+
+    } else if (m === 'rest') {
+      label.textContent = 'DESCANSO';
+      block.classList.add('rest-mode');
+      ringTime.className = 'session-ring-time green';
+      timerSec = ex.restSec; targetSec = ex.restSec;
+      ringTime.textContent = Math.floor(timerSec / 60) + ':' + fmt2(timerSec % 60);
+      ringLbl.textContent = 'descanso';
+      btnIcon.innerHTML = SVG.skip;
+      btnLabel.textContent = 'Saltarme';
+      btnMain.className = 'session-ctrl-btn';
+      updateRing(timerSec, targetSec);
+      intervalId = setInterval(tickRest, 1000);
+      showRpe();
+    }
+  }
+
+  function tickWork() {
+    timerSec++;
+    const pct = timerSec / targetSec;
+    $('session-ring-arc').style.strokeDashoffset = Math.max(0, 314 - 314 * pct);
+    const remaining = targetSec - timerSec;
+    $('session-ring-time').textContent = '0:' + fmt2(remaining);
+    if (remaining <= 3 && remaining > 0) {
+      $('session-ring-time').className = 'session-ring-time red';
+      soundUrgent();
+    } else if (remaining > 3) {
+      soundTick();
+    }
+    if (timerSec >= targetSec) completeSet();
+  }
+
+  function tickRest() {
+    timerSec--;
+    updateRing(timerSec, targetSec);
+    $('session-ring-time').textContent = Math.floor(timerSec / 60) + ':' + fmt2(timerSec % 60);
+    if (timerSec <= 3 && timerSec > 0) {
+      $('session-ring-time').className = 'session-ring-time red';
+      soundUrgent();
+    } else if (timerSec <= 10) {
+      $('session-ring-time').className = 'session-ring-time red';
+    }
+    if (timerSec <= 0) {
+      clearInterval(intervalId);
+      soundRestEnd();
+      $('session-ring-time').textContent = '¡Ya!';
+      setMode('idle');
+    }
+  }
+
+  function updateRing(cur, total) {
+    $('session-ring-arc').style.strokeDashoffset = Math.max(0, 314 - 314 * (cur / total));
+  }
+
+  function toggleTimer() {
+    const ex = EXERCISES()[exIdx];
+    if (mode === 'idle') {
+      if (ex.workSec > 0) setMode('work'); else completeSet();
+    } else if (mode === 'work') {
+      clearInterval(intervalId);
+      mode = 'paused';
+      $('session-btn-label').textContent = 'Reanudar';
+      $('session-btn-icon').innerHTML = SVG.play;
+    } else if (mode === 'paused') {
+      mode = 'work';
+      $('session-btn-label').textContent = 'Pausar';
+      $('session-btn-icon').innerHTML = SVG.pause;
+      intervalId = setInterval(tickWork, 1000);
+    } else if (mode === 'rest') {
+      setMode('idle');
+    }
+  }
+
+  function completeSet() {
+    soundDone();
+    setsDone++;
+    renderDots();
+    if (setsDone >= EXERCISES()[exIdx].sets) {
+      setTimeout(nextExercise, 350);
+    } else {
+      setMode('rest');
+    }
+  }
+
+  function nextExercise() {
+    clearInterval(intervalId);
+    exIdx++;
+    setsDone = 0;
+    selectedRpe = 0;
+    if (exIdx >= EXERCISES().length) {
+      showCompletion();
+      return;
+    }
+    renderExercise();
+  }
+
+  function showCompletion() {
+    clearInterval(elapsedId);
+    $('session-progress-bar').style.width = '100%';
+    const totalSets = EXERCISES().reduce((a, e) => a + e.sets, 0);
+    const mins = Math.floor(elapsedSec / 60);
+    const exCount = EXERCISES().length;
+    const screen = $('session-screen');
+    if (!screen) return;
+
+    let logFeel = null, logRpe = null;
+    const logTags = new Set();
+    const PRESET_TAGS = ['Poleas tensas', 'Buena adherencia', 'Sin dolor', 'Hombro cargado', 'Mucho calor', 'Bien descansado', 'Sin energía'];
+
+    function updateSaveBtn() {
+      const btn = document.getElementById('plog-save-btn');
+      if (btn) btn.disabled = !(logFeel && logRpe);
+    }
+
+    function buildFeel() {
+      document.querySelectorAll('.plog-feel-btn').forEach(btn => {
+        const f = btn.dataset.feel;
+        const clsMap = { beast: 'sel-beast', great: 'sel-great', ok: 'sel-ok', bad: 'sel-bad' };
+        btn.className = 'plog-feel-btn' + (f === logFeel ? ' ' + clsMap[f] : '');
+        btn.onclick = () => { logFeel = f; buildFeel(); updateSaveBtn(); };
+      });
+    }
+
+    function buildRpe() {
+      const row = document.getElementById('plog-rpe-row');
+      if (!row) return;
+      row.innerHTML = '';
+      [5, 6, 7, 8, 9, 10].forEach(v => {
+        const btn = document.createElement('button');
+        const colorCls = v >= 9 ? ' hi' : v >= 8 ? ' warn' : '';
+        btn.className = 'plog-rpe-num' + colorCls + (v === logRpe ? ' sel' : '');
+        btn.textContent = v;
+        btn.onclick = () => {
+          logRpe = v;
+          const avg = document.getElementById('plog-rpe-avg');
+          if (avg) avg.textContent = v;
+          buildRpe();
+          updateSaveBtn();
+        };
+        row.appendChild(btn);
+      });
+    }
+
+    function buildTags() {
+      const row = document.getElementById('plog-tags-row');
+      if (!row) return;
+      row.innerHTML = '';
+      PRESET_TAGS.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'plog-tag' + (logTags.has(t) ? ' sel' : '');
+        btn.textContent = t;
+        btn.onclick = () => { logTags.has(t) ? logTags.delete(t) : logTags.add(t); buildTags(); };
+        row.appendChild(btn);
+      });
+    }
+
+    function buildHeatmap() {
+      const container = document.getElementById('plog-heatmap');
+      if (!container) return;
+      container.innerHTML = '';
+      const today = new Date();
+      const dow = (today.getDay() + 6) % 7; // 0=Mon
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - dow - 49); // 8 weeks ago (Monday)
+      const dummy = [0,0,1,0,2,0,0, 0,2,0,1,0,2,0, 1,0,2,0,0,1,0, 0,3,0,1,0,2,0, 1,0,2,0,1,0,0, 0,2,0,3,0,1,0, 2,0,1,0,2,0,1, 0,0,0,0,0,0,0];
+      for (let i = 0; i < 56; i++) {
+        const d = new Date(startDate);
+        d.setDate(startDate.getDate() + i);
+        const isToday = d.toDateString() === today.toDateString();
+        const cell = document.createElement('div');
+        const lvl = isToday ? 3 : (dummy[i] || 0);
+        cell.className = 'plog-hm-cell' + (lvl > 0 ? ' hm-l' + lvl : '') + (isToday ? ' hm-today' : '');
+        container.appendChild(cell);
+      }
+    }
+
+    function showSaved() {
+      const notes = (document.getElementById('plog-notes') || {}).value || '';
+      const feelLabel = { beast: 'Bestia', great: 'Bien', ok: 'Normal', bad: 'Cansado' }[logFeel] || '';
+      screen.innerHTML = `
+        <div class="session-topbar">
+          <div class="session-topbar-left">
+            <span class="plog-title">Sesión guardada</span>
+          </div>
+        </div>
+        <div class="plog-scroll plog-done-center">
+          <div class="plog-done-icon">🏆</div>
+          <div class="plog-done-title">¡Bien hecho!</div>
+          <div class="plog-done-sub">${mins} min · ${feelLabel} · RPE ${logRpe}</div>
+          ${notes ? `<div class="plog-done-notes">"${notes}"</div>` : ''}
+          <div class="plog-progress-banner">
+            <div class="plog-progress-label">SUGERENCIA PARA PRÓXIMA SESIÓN</div>
+            <div class="plog-progress-text">Max hang +22kg · Campus 1-5-9 mantén carga</div>
+          </div>
+          <button class="plog-save-btn" id="plog-close-done">Cerrar</button>
+        </div>`;
+      document.getElementById('plog-close-done').addEventListener('click', close);
+    }
+
+    screen.innerHTML = `
+      <div class="session-topbar">
+        <div class="session-topbar-left">
+          <span class="plog-title">Log post-sesión</span>
+        </div>
+        <button class="plog-skip" id="plog-skip">Omitir</button>
+      </div>
+      <div class="plog-scroll">
+        <div class="plog-sec">
+          <div class="plog-sec-label">RESUMEN</div>
+          <div class="plog-stats-grid">
+            <div class="plog-stat"><div class="plog-stat-val">${mins} min</div><div class="plog-stat-lbl">Duración</div></div>
+            <div class="plog-stat"><div class="plog-stat-val">${totalSets}</div><div class="plog-stat-lbl">Series completadas</div></div>
+            <div class="plog-stat"><div class="plog-stat-val">${exCount} / ${exCount}</div><div class="plog-stat-lbl">Ejercicios</div></div>
+            <div class="plog-stat"><div class="plog-stat-val" id="plog-rpe-avg">—</div><div class="plog-stat-lbl">RPE medio</div></div>
+          </div>
+        </div>
+        <div class="plog-sec">
+          <div class="plog-sec-label">¿CÓMO TE SIENTES?</div>
+          <div class="plog-feel-row" id="plog-feel-row">
+            <button class="plog-feel-btn" data-feel="beast"><span class="plog-feel-icon">🔥</span><span class="plog-feel-lbl">Bestia</span></button>
+            <button class="plog-feel-btn" data-feel="great"><span class="plog-feel-icon">😊</span><span class="plog-feel-lbl">Bien</span></button>
+            <button class="plog-feel-btn" data-feel="ok"><span class="plog-feel-icon">😐</span><span class="plog-feel-lbl">Normal</span></button>
+            <button class="plog-feel-btn" data-feel="bad"><span class="plog-feel-icon">😔</span><span class="plog-feel-lbl">Cansado</span></button>
+          </div>
+        </div>
+        <div class="plog-sec">
+          <div class="plog-sec-label">RPE GLOBAL DE LA SESIÓN</div>
+          <div class="plog-rpe-row" id="plog-rpe-row"></div>
+        </div>
+        <div class="plog-sec">
+          <div class="plog-sec-label">NOTAS</div>
+          <textarea class="plog-notes" id="plog-notes" rows="3" placeholder="Sensaciones, lesiones, contexto... (opcional)"></textarea>
+          <div class="plog-tags-row" id="plog-tags-row"></div>
+        </div>
+        <div class="plog-sec plog-sec-last">
+          <div class="plog-sec-label">ACTIVIDAD — ÚLTIMAS 8 SEMANAS</div>
+          <div class="plog-day-headers"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+          <div class="plog-heatmap" id="plog-heatmap"></div>
+          <div class="plog-hm-legend">
+            <span class="plog-hm-lbl">Menos</span>
+            <div class="plog-hm-cell"></div><div class="plog-hm-cell hm-l1"></div><div class="plog-hm-cell hm-l2"></div><div class="plog-hm-cell hm-l3"></div><div class="plog-hm-cell hm-l4"></div>
+            <span class="plog-hm-lbl">Más</span>
+          </div>
+        </div>
+      </div>
+      <div class="plog-footer">
+        <button class="plog-save-btn" id="plog-save-btn" disabled>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Guardar sesión
+        </button>
+      </div>`;
+
+    buildFeel();
+    buildRpe();
+    buildTags();
+    buildHeatmap();
+    document.getElementById('plog-skip').addEventListener('click', close);
+    document.getElementById('plog-save-btn').addEventListener('click', () => { if (logFeel && logRpe) showSaved(); });
+  }
+
+  function showRpe() {
+    const ex = EXERCISES()[exIdx];
+    if (!ex.rpeTarget) return;
+    const sec = $('session-rpe-section');
+    sec.style.display = 'block';
+    const dots = $('session-rpe-dots');
+    const values = [6, 7, 8, 9, 10];
+    dots.innerHTML = values.map(v => {
+      const colorCls = v <= 7 ? '' : v <= 8 ? ' warn' : ' hi';
+      const selCls = v === selectedRpe ? ' selected' : '';
+      return `<button class="session-rpe-dot${colorCls}${selCls}" data-v="${v}">${v}</button>`;
+    }).join('');
+    dots.querySelectorAll('.session-rpe-dot').forEach(btn => {
+      btn.addEventListener('click', () => {
+        selectedRpe = parseInt(btn.dataset.v);
+        dots.querySelectorAll('.session-rpe-dot').forEach((b, i) => {
+          const val = values[i];
+          const cc = val <= 7 ? '' : val <= 8 ? ' warn' : ' hi';
+          const sc = val === selectedRpe ? ' selected' : '';
+          b.className = `session-rpe-dot${cc}${sc}`;
+        });
+      });
+    });
+  }
+
+  // Wire up static buttons
+  document.addEventListener('DOMContentLoaded', () => {
+    const closeBtn = $('session-close-btn');
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    const btnMain = $('session-btn-main');
+    if (btnMain) btnMain.addEventListener('click', toggleTimer);
+    const btnReset = $('session-btn-reset');
+    if (btnReset) btnReset.addEventListener('click', () => setMode('idle'));
+    const btnSet = $('session-btn-set');
+    if (btnSet) btnSet.addEventListener('click', completeSet);
+    const skipBtn = $('session-skip-btn');
+    if (skipBtn) skipBtn.addEventListener('click', nextExercise);
+  });
+
+  window.openActiveSession = open;
+  window.closeActiveSession = close;
+})();
