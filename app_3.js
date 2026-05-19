@@ -13446,7 +13446,7 @@ function initTrainView() {
   chips.forEach(chip => {
     chip.addEventListener('click', () => {
       if (chip.dataset.plan === 'new') {
-        if (typeof showToast === 'function') showToast('Crear plan — próximamente', 'info');
+        if (typeof window.openPlanEditor === 'function') window.openPlanEditor();
         return;
       }
       chips.forEach(c => c.classList.remove('active'));
@@ -14385,4 +14385,317 @@ function makePcCard(d, isTop) {
 
   window.openActiveSession = open;
   window.closeActiveSession = close;
+})();
+
+// ================== PLAN EDITOR MODULE ==================
+(function () {
+  const DAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const TEMPLATES = ['Fuerza máxima', 'Resistencia', 'Periodización lineal', 'Bloque-específico', 'Desde cero'];
+  const WEEK_OPTIONS = [2, 4, 6, 8, 12];
+  const SESS_OPTIONS = [2, 3, 4, 5];
+
+  const LIBRARY = [
+    { name: 'Max hang', detail: 'Suspensión en media llave', cat: 'str' },
+    { name: 'Campus board 1-5-9', detail: 'Explosividad de dedos', cat: 'pow' },
+    { name: 'Block pull · máx', detail: 'Fuerza en bloque', cat: 'str' },
+    { name: 'Dynos a dedo', detail: 'Potencia explosiva', cat: 'pow' },
+    { name: 'ARC en panel', detail: 'Resistencia aeróbica', cat: 'str' },
+    { name: 'Pullover isométrico', detail: 'Fuerza hombro', cat: 'str' },
+    { name: 'Manguito rotador', detail: 'Antagonista hombro', cat: 'ant' },
+    { name: 'Core · plancha', detail: 'Estabilización central', cat: 'ant' },
+    { name: 'Estiramiento muñecas', detail: 'Flexores y extensores', cat: 'ant' },
+  ];
+
+  const SVG = {
+    back: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>`,
+    close: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
+    chevDown: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`,
+    chevUp: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>`,
+    grip: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" opacity="0.35"><circle cx="9" cy="5" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="9" cy="19" r="1.3"/><circle cx="15" cy="5" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="15" cy="19" r="1.3"/></svg>`,
+    x: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
+    plus: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+    save: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
+  };
+
+  let planData = null;
+  let libForSession = -1;
+
+  function defaultPlan() {
+    return {
+      name: '',
+      templateIdx: 0,
+      weekIdx: 1,
+      sessIdx: 1,
+      activeDays: [true, false, true, false, true, false, false],
+      sessions: [
+        {
+          name: 'Fuerza dedos', expanded: true, exercises: [
+            { name: 'Max hang · 20mm', sets: 4, workSec: 10, reps: 0, weight: 20, restSec: 180, rpeTarget: 8 },
+            { name: 'Campus board · 1-5-9', sets: 3, workSec: 0, reps: 5, weight: 0, restSec: 120, rpeTarget: 7 },
+            { name: 'Pullover isométrico', sets: 3, workSec: 7, reps: 0, weight: 0, restSec: 120, rpeTarget: 6 },
+          ]
+        },
+        {
+          name: 'Potencia', expanded: false, exercises: [
+            { name: 'Dynos a dedo', sets: 5, workSec: 0, reps: 3, weight: 0, restSec: 180, rpeTarget: 8 },
+          ]
+        },
+        {
+          name: 'Resistencia + antagonistas', expanded: false, exercises: [
+            { name: 'ARC · panel 45°', sets: 2, workSec: 1200, reps: 0, weight: 0, restSec: 300, rpeTarget: 6 },
+            { name: 'Manguito rotador', sets: 3, workSec: 0, reps: 15, weight: 0, restSec: 60, rpeTarget: 5 },
+          ]
+        },
+      ]
+    };
+  }
+
+  function getSessionDay(idx) {
+    const active = DAYS.filter((_, i) => planData.activeDays[i]);
+    return active[idx] || '?';
+  }
+
+  function open() {
+    planData = defaultPlan();
+    const modal = document.getElementById('plan-editor-modal');
+    if (!modal) return;
+    renderModal();
+    document.body.classList.add('plan-editor-open');
+    modal.classList.remove('hidden');
+    requestAnimationFrame(() => modal.classList.add('pe-open'));
+  }
+
+  function close() {
+    closeLibrary();
+    const modal = document.getElementById('plan-editor-modal');
+    if (!modal) return;
+    modal.classList.remove('pe-open');
+    document.body.classList.remove('plan-editor-open');
+    setTimeout(() => modal.classList.add('hidden'), 280);
+  }
+
+  function renderModal() {
+    const modal = document.getElementById('plan-editor-modal');
+    modal.innerHTML = `
+      <div class="pe-screen">
+        <div class="pe-topbar">
+          <div class="pe-topbar-left">
+            <button class="pe-back-btn" id="pe-back-btn" aria-label="Volver">${SVG.back}</button>
+            <span class="pe-title">Nuevo plan</span>
+          </div>
+          <button class="pe-save-top" id="pe-save-top">Guardar</button>
+        </div>
+        <div class="pe-scroll">
+          <div class="pe-sec">
+            <div class="pe-sec-label">NOMBRE DEL PLAN</div>
+            <input class="pe-name-input" id="pe-name-input" type="text" placeholder="Ej: Fuerza máx. 4 semanas" value="${planData.name}" autocomplete="off">
+          </div>
+          <div class="pe-sec">
+            <div class="pe-sec-label">EMPEZAR DESDE PLANTILLA</div>
+            <div class="pe-tpl-row" id="pe-tpl-row">
+              ${TEMPLATES.map((t, i) => `<button class="pe-tpl-chip${i === planData.templateIdx ? ' active' : ''}" data-tidx="${i}">${t}</button>`).join('')}
+            </div>
+          </div>
+          <div class="pe-sec">
+            <div class="pe-sec-label">CONFIGURACIÓN</div>
+            <div class="pe-meta-row">
+              <div class="pe-meta-item" id="pe-meta-weeks">
+                <div class="pe-meta-key">Duración</div>
+                <div class="pe-meta-val" id="pe-weeks-val">${WEEK_OPTIONS[planData.weekIdx]} semanas ${SVG.chevDown}</div>
+              </div>
+              <div class="pe-meta-item" id="pe-meta-sess">
+                <div class="pe-meta-key">Sesiones / semana</div>
+                <div class="pe-meta-val" id="pe-sess-val">${SESS_OPTIONS[planData.sessIdx]} días ${SVG.chevDown}</div>
+              </div>
+            </div>
+          </div>
+          <div class="pe-sec">
+            <div class="pe-sec-label">DÍAS DE ENTRENAMIENTO</div>
+            <div class="pe-days-grid" id="pe-days-grid"></div>
+          </div>
+          <div class="pe-sec">
+            <div class="pe-sec-label">SESIONES</div>
+            <div class="pe-session-list" id="pe-session-list"></div>
+            <button class="pe-add-session-btn" id="pe-add-session-btn">${SVG.plus} Añadir sesión</button>
+          </div>
+          <div class="pe-sec pe-sec-last">
+            <button class="pe-save-bottom" id="pe-save-bottom">${SVG.save} Guardar plan</button>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('pe-back-btn').addEventListener('click', close);
+    document.getElementById('pe-save-top').addEventListener('click', savePlan);
+    document.getElementById('pe-save-bottom').addEventListener('click', savePlan);
+    document.getElementById('pe-name-input').addEventListener('input', e => { planData.name = e.target.value; });
+
+    document.getElementById('pe-tpl-row').addEventListener('click', e => {
+      const chip = e.target.closest('.pe-tpl-chip');
+      if (!chip) return;
+      planData.templateIdx = parseInt(chip.dataset.tidx);
+      document.querySelectorAll('.pe-tpl-chip').forEach((c, i) => c.classList.toggle('active', i === planData.templateIdx));
+    });
+
+    document.getElementById('pe-meta-weeks').addEventListener('click', () => {
+      planData.weekIdx = (planData.weekIdx + 1) % WEEK_OPTIONS.length;
+      document.getElementById('pe-weeks-val').innerHTML = `${WEEK_OPTIONS[planData.weekIdx]} semanas ${SVG.chevDown}`;
+    });
+
+    document.getElementById('pe-meta-sess').addEventListener('click', () => {
+      planData.sessIdx = (planData.sessIdx + 1) % SESS_OPTIONS.length;
+      document.getElementById('pe-sess-val').innerHTML = `${SESS_OPTIONS[planData.sessIdx]} días ${SVG.chevDown}`;
+    });
+
+    document.getElementById('pe-add-session-btn').addEventListener('click', () => {
+      planData.sessions.push({ name: 'Nueva sesión', expanded: true, exercises: [] });
+      renderDays();
+      renderSessions();
+    });
+
+    renderDays();
+    renderSessions();
+  }
+
+  function renderDays() {
+    const grid = document.getElementById('pe-days-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    DAYS.forEach((d, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'pe-day-pill' + (planData.activeDays[i] ? ' on' : '');
+      btn.textContent = d;
+      btn.onclick = () => { planData.activeDays[i] = !planData.activeDays[i]; renderDays(); renderSessions(); };
+      grid.appendChild(btn);
+    });
+  }
+
+  function renderSessions() {
+    const list = document.getElementById('pe-session-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    planData.sessions.forEach((s, si) => {
+      const dayLabel = getSessionDay(si);
+      const rpeColorCls = rpe => rpe >= 9 ? ' hi' : rpe >= 8 ? ' warn' : '';
+      const rpeTag = rpe => rpe ? `<span class="pe-ex-rpe${rpeColorCls(rpe)}">RPE ${rpe}</span>` : '';
+
+      const exHTML = s.expanded ? `
+        <div class="pe-ex-list">
+          ${s.exercises.map((ex, ei) => `
+            <div class="pe-ex-row">
+              <span class="pe-ex-drag">${SVG.grip}</span>
+              <div class="pe-ex-info">
+                <div class="pe-ex-name">${ex.name}</div>
+                <div class="pe-ex-detail">${typeof buildExDetail === 'function' ? buildExDetail(ex) : ''}</div>
+              </div>
+              ${rpeTag(ex.rpeTarget)}
+              <button class="pe-ex-del" data-si="${si}" data-ei="${ei}" aria-label="Eliminar">${SVG.x}</button>
+            </div>`).join('')}
+          <button class="pe-add-ex-btn" data-si="${si}">${SVG.plus} Añadir ejercicio</button>
+        </div>` : '';
+
+      const card = document.createElement('div');
+      card.className = 'pe-session-card';
+      card.innerHTML = `
+        <div class="pe-session-header" data-si="${si}">
+          <div class="pe-session-badge">${dayLabel}</div>
+          <div class="pe-session-info">
+            <div class="pe-session-name">${s.name}</div>
+            <div class="pe-session-count">${s.exercises.length} ejercicio${s.exercises.length !== 1 ? 's' : ''}</div>
+          </div>
+          <span class="pe-session-chev">${s.expanded ? SVG.chevUp : SVG.chevDown}</span>
+        </div>
+        ${exHTML}`;
+      list.appendChild(card);
+    });
+
+    list.addEventListener('click', e => {
+      const hdr = e.target.closest('.pe-session-header');
+      if (hdr) {
+        const si = parseInt(hdr.dataset.si);
+        planData.sessions[si].expanded = !planData.sessions[si].expanded;
+        renderSessions();
+        return;
+      }
+      const del = e.target.closest('.pe-ex-del');
+      if (del) {
+        planData.sessions[parseInt(del.dataset.si)].exercises.splice(parseInt(del.dataset.ei), 1);
+        renderSessions();
+        return;
+      }
+      const add = e.target.closest('.pe-add-ex-btn');
+      if (add) { openLibrary(parseInt(add.dataset.si)); }
+    });
+  }
+
+  function openLibrary(si) {
+    libForSession = si;
+    closeLibrary();
+    const catLabel = { str: 'Fuerza', pow: 'Potencia', ant: 'Antag.' };
+    const sheet = document.createElement('div');
+    sheet.id = 'pe-lib-sheet';
+    sheet.className = 'pe-lib-sheet';
+    sheet.innerHTML = `
+      <div class="pe-lib-backdrop" id="pe-lib-backdrop"></div>
+      <div class="pe-lib-panel">
+        <div class="pe-lib-handle"></div>
+        <div class="pe-lib-head">
+          <span class="pe-lib-title">Biblioteca de ejercicios</span>
+          <button class="pe-lib-close" id="pe-lib-close" aria-label="Cerrar">${SVG.close}</button>
+        </div>
+        <div class="pe-lib-list">
+          ${LIBRARY.map((ex, i) => `
+            <div class="pe-lib-item" data-lidx="${i}">
+              <span class="pe-lib-cat ${ex.cat}">${catLabel[ex.cat]}</span>
+              <div class="pe-lib-info">
+                <div class="pe-lib-name">${ex.name}</div>
+                <div class="pe-lib-detail">${ex.detail}</div>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    document.getElementById('plan-editor-modal').appendChild(sheet);
+    requestAnimationFrame(() => sheet.classList.add('pe-lib-open'));
+    document.getElementById('pe-lib-backdrop').addEventListener('click', closeLibrary);
+    document.getElementById('pe-lib-close').addEventListener('click', closeLibrary);
+    sheet.querySelector('.pe-lib-list').addEventListener('click', e => {
+      const item = e.target.closest('.pe-lib-item');
+      if (!item) return;
+      const ex = LIBRARY[parseInt(item.dataset.lidx)];
+      planData.sessions[libForSession].exercises.push({ name: ex.name, sets: 3, workSec: 0, reps: 10, weight: 0, restSec: 120, rpeTarget: 7 });
+      closeLibrary();
+      renderSessions();
+    });
+  }
+
+  function closeLibrary() {
+    const sheet = document.getElementById('pe-lib-sheet');
+    if (!sheet) return;
+    sheet.classList.remove('pe-lib-open');
+    setTimeout(() => { if (sheet.parentNode) sheet.remove(); }, 250);
+  }
+
+  function savePlan() {
+    const name = planData.name || 'Mi plan';
+    const activeDayLabels = DAYS.filter((_, i) => planData.activeDays[i]);
+    const totalEx = planData.sessions.reduce((a, s) => a + s.exercises.length, 0);
+    const screen = document.querySelector('#plan-editor-modal .pe-screen');
+    if (!screen) return;
+    screen.innerHTML = `
+      <div class="pe-topbar">
+        <div class="pe-topbar-left">
+          <button class="pe-back-btn" id="pe-saved-back" aria-label="Cerrar">${SVG.back}</button>
+        </div>
+      </div>
+      <div class="pe-saved-wrap">
+        <div class="pe-saved-icon">✅</div>
+        <div class="pe-saved-title">${name}</div>
+        <div class="pe-saved-sub">${planData.sessions.length} sesiones · ${activeDayLabels.join(', ')} · ${totalEx} ejercicios</div>
+        <button class="pe-save-bottom" id="pe-saved-done">Empezar plan →</button>
+      </div>`;
+    document.getElementById('pe-saved-back').addEventListener('click', close);
+    document.getElementById('pe-saved-done').addEventListener('click', close);
+  }
+
+  window.openPlanEditor = open;
 })();
