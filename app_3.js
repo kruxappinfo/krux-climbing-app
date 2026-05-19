@@ -13507,11 +13507,32 @@ function initTrainView() {
     });
   }
 
-  // Header gear → open plan editor
-  const newPlanBtn = document.getElementById('train-new-plan-btn');
-  if (newPlanBtn) newPlanBtn.addEventListener('click', () => {
-    if (typeof window.openPlanEditor === 'function') window.openPlanEditor();
-  });
+  // Gear button → dropdown menu
+  const gearBtn = document.getElementById('train-new-plan-btn');
+  const gearMenu = document.getElementById('train-gear-menu');
+
+  function closeGearMenu() {
+    if (gearMenu) gearMenu.classList.add('hidden');
+  }
+
+  if (gearBtn && gearMenu) {
+    gearBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      gearMenu.classList.toggle('hidden');
+    });
+    document.getElementById('train-gear-new').addEventListener('click', () => {
+      closeGearMenu();
+      if (typeof window.openPlanEditor === 'function') window.openPlanEditor();
+    });
+    document.getElementById('train-gear-edit').addEventListener('click', () => {
+      closeGearMenu();
+      if (typeof window.openPlanEditor === 'function') window.openPlanEditor();
+    });
+    // Close on outside click
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.train-gear-wrap')) closeGearMenu();
+    });
+  }
 
   // Week navigation
   const prevBtn = document.getElementById('train-week-prev');
