@@ -14495,7 +14495,6 @@ function makePcCard(d, isTop) {
   let planData = null;
   let templateIdx = 0;
   let libForSession = -1;
-  let openDayPickerSi = -1;
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -14570,7 +14569,7 @@ function makePcCard(d, isTop) {
           <div class="pe-sec">
             <div class="pe-sec-label">DÍAS DE ENTRENAMIENTO <span class="pe-sec-meta" id="pe-days-count"></span></div>
             <div class="pe-days-grid" id="pe-days-grid"></div>
-            <div class="pe-tpl-hint">Toca un día para activarlo. Las sesiones pueden asignarse a cualquiera de estos días.</div>
+            <div class="pe-tpl-hint">Toca un día para activarlo/desactivarlo. Las sesiones se reasignan automáticamente.</div>
           </div>
 
           <div class="pe-sec">
@@ -14618,24 +14617,14 @@ function makePcCard(d, isTop) {
     };
 
     document.getElementById('pe-add-session-btn').onclick = () => {
-      const active = DAYS.filter((_, i) => planData.activeDays[i]);
-      const usedSet = new Set(planData.sessions.map(s => s.day));
-      const freeDay = active.find(d => !usedSet.has(d)) || active[0] || 'L';
-      planData.sessions.push({ day: freeDay, name: 'Nueva sesión', expanded: true, exercises: [] });
+      planData.sessions.push({ day: '?', name: 'Nueva sesión', expanded: true, exercises: [] });
+      syncSessionDays();
       renderSessions();
     };
 
     // Single delegated handler on session list (no accumulation)
     const list = document.getElementById('pe-session-list');
     list.onclick = handleSessionListClick;
-
-    // Close day picker on outside click
-    document.getElementById('plan-editor-modal').onclick = e => {
-      if (openDayPickerSi !== -1 && !e.target.closest('.pe-day-picker') && !e.target.closest('.pe-session-badge')) {
-        openDayPickerSi = -1;
-        renderSessions();
-      }
-    };
 
     renderDays();
     renderSessions();
@@ -14644,31 +14633,6 @@ function makePcCard(d, isTop) {
   function handleSessionListClick(e) {
     // Editable name input — don't bubble
     if (e.target.closest('.pe-session-name-input')) return;
-
-    // Day picker option
-    const dayOpt = e.target.closest('.pe-day-opt');
-    if (dayOpt) {
-      e.stopPropagation();
-      const si = parseInt(dayOpt.dataset.si);
-      const d = dayOpt.dataset.d;
-      const dIdx = DAYS.indexOf(d);
-      if (dIdx >= 0 && !planData.activeDays[dIdx]) planData.activeDays[dIdx] = true; // auto-activate
-      planData.sessions[si].day = d;
-      openDayPickerSi = -1;
-      renderDays();
-      renderSessions();
-      return;
-    }
-
-    // Session day badge — toggle picker
-    const badge = e.target.closest('.pe-session-badge');
-    if (badge) {
-      e.stopPropagation();
-      const si = parseInt(badge.dataset.si);
-      openDayPickerSi = openDayPickerSi === si ? -1 : si;
-      renderSessions();
-      return;
-    }
 
     // Delete exercise
     const delBtn = e.target.closest('.pe-ex-del');
@@ -14724,6 +14688,11 @@ function makePcCard(d, isTop) {
     }
   }
 
+  function syncSessionDays() {
+    const active = DAYS.filter((_, i) => planData.activeDays[i]);
+    planData.sessions.forEach((s, i) => { s.day = active[i] || '?'; });
+  }
+
   function renderDays() {
     const grid = document.getElementById('pe-days-grid');
     if (!grid) return;
@@ -14732,7 +14701,12 @@ function makePcCard(d, isTop) {
       const btn = document.createElement('button');
       btn.className = 'pe-day-pill' + (planData.activeDays[i] ? ' on' : '');
       btn.textContent = d;
-      btn.onclick = () => { planData.activeDays[i] = !planData.activeDays[i]; renderDays(); renderSessions(); };
+      btn.onclick = () => {
+        planData.activeDays[i] = !planData.activeDays[i];
+        syncSessionDays();
+        renderDays();
+        renderSessions();
+      };
       grid.appendChild(btn);
     });
     const count = planData.activeDays.filter(Boolean).length;
@@ -14755,18 +14729,8 @@ function makePcCard(d, isTop) {
     const rpeTag = rpe => rpe ? `<span class="pe-ex-rpe${rpeColorCls(rpe)}">RPE ${rpe}</span>` : '';
 
     list.innerHTML = planData.sessions.map((s, si) => {
-      const dIdx = DAYS.indexOf(s.day);
-      const isOrphan = dIdx === -1 || !planData.activeDays[dIdx];
-      const badgeCls = 'pe-session-badge' + (isOrphan ? ' orphan' : '');
-
-      const picker = openDayPickerSi === si ? `
-        <div class="pe-day-picker" data-si="${si}">
-          ${DAYS.map(d => {
-            const active = planData.activeDays[DAYS.indexOf(d)];
-            const sel = d === s.day;
-            return `<button class="pe-day-opt${sel ? ' sel' : ''}${active ? '' : ' inactive'}" data-si="${si}" data-d="${d}">${d}</button>`;
-          }).join('')}
-        </div>` : '';
+      const hasDay = s.day && s.day !== '?';
+      const badgeCls = 'pe-session-badge' + (hasDay ? '' : ' orphan');
 
       const exHTML = s.expanded ? `
         <div class="pe-ex-list">
@@ -14786,13 +14750,10 @@ function makePcCard(d, isTop) {
       return `
         <div class="pe-session-card" data-si="${si}">
           <div class="pe-session-header" data-si="${si}">
-            <div class="pe-badge-wrap">
-              <button class="${badgeCls}" data-si="${si}" title="Cambiar día">${s.day}</button>
-              ${picker}
-            </div>
+            <div class="${badgeCls}">${hasDay ? s.day : '?'}</div>
             <div class="pe-session-info">
               <div class="pe-session-name">${s.name}</div>
-              <div class="pe-session-count">${s.exercises.length} ejercicio${s.exercises.length !== 1 ? 's' : ''}${isOrphan ? ' · ⚠️ día inactivo' : ''}</div>
+              <div class="pe-session-count">${s.exercises.length} ejercicio${s.exercises.length !== 1 ? 's' : ''}</div>
             </div>
             <button class="pe-session-edit" data-si="${si}" aria-label="Renombrar">${SVG.edit}</button>
             <button class="pe-session-del" data-si="${si}" aria-label="Eliminar sesión">${SVG.x}</button>
