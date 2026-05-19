@@ -20894,6 +20894,29 @@ body.map-active #btn-dev-editor {
 .ex-field-input:focus { border-color: #1D9E75; background: #fff; }
 .ex-field-num { text-align: center; font-weight: 600; }
 
+.ex-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #f0faf6;
+  border: 1px solid #9FDFCA;
+  border-radius: var(--radius-sm);
+}
+.ex-preview-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1D9E75;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.ex-preview-text {
+  font-size: 13px;
+  color: #0F6E56;
+  font-weight: 500;
+}
+
 .ex-editor-footer {
   padding: 4px 16px 16px;
 }

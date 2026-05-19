@@ -13359,12 +13359,29 @@ document.addEventListener('DOMContentLoaded', () => {
 window.kruxTrainData = {
   name: 'Fuerza en media llave',
   exercises: [
-    { name: 'Max hang · 20mm',      detail: '4 × 10s — descanso 3 min', sets: 4, workSec: 10, restSec: 180, rpeTarget: 8,  active: true  },
-    { name: 'Campus board · 1-5-9', detail: '3 × 5 intentos',           sets: 3, workSec: 0,  restSec: 120, rpeTarget: 7,  active: false },
-    { name: 'Pullover isométrico',  detail: '3 × 7s — descanso 2 min',  sets: 3, workSec: 7,  restSec: 120, rpeTarget: 6,  active: false },
-    { name: 'Manguito rotador',     detail: '2 × 15 · antagonistas',    sets: 2, workSec: 0,  restSec: 60,  rpeTarget: 0,  active: false },
+    { name: 'Max hang · 20mm',      sets: 4, workSec: 10, reps: 0,  weight: 20, restSec: 180, rpeTarget: 8, active: true  },
+    { name: 'Campus board · 1-5-9', sets: 3, workSec: 0,  reps: 5,  weight: 0,  restSec: 120, rpeTarget: 7, active: false },
+    { name: 'Pullover isométrico',  sets: 3, workSec: 7,  reps: 0,  weight: 0,  restSec: 120, rpeTarget: 6, active: false },
+    { name: 'Manguito rotador',     sets: 2, workSec: 0,  reps: 15, weight: 0,  restSec: 60,  rpeTarget: 0, active: false },
   ]
 };
+
+// Genera la descripción corta a partir de los parámetros del ejercicio
+function buildExDetail(ex) {
+  let unit = '';
+  if (ex.workSec > 0)      unit = `${ex.workSec}s`;
+  else if (ex.reps > 0)    unit = `${ex.reps} rep`;
+
+  let setStr = unit ? `${ex.sets} × ${unit}` : `${ex.sets} series`;
+  if (ex.weight > 0) setStr += ` +${ex.weight}kg`;
+
+  const parts = [setStr];
+  if (ex.restSec > 0) {
+    const r = ex.restSec >= 60 ? `${Math.floor(ex.restSec / 60)} min` : `${ex.restSec}s`;
+    parts.push(`descanso ${r}`);
+  }
+  return parts.join(' — ');
+}
 
 // ================== TRAIN VIEW ==================
 function initTrainView() {
@@ -13413,7 +13430,7 @@ function initTrainView() {
         <div class="train-ex-icon${ex.active ? ' active-icon' : ''}">${ex.active ? playIcon : circleIcon}</div>
         <div class="train-ex-info">
           <div class="train-ex-name${ex.active ? ' active-name' : ''}">${ex.name}</div>
-          <div class="train-ex-detail${ex.active ? ' active-detail' : ''}">${ex.detail}</div>
+          <div class="train-ex-detail${ex.active ? ' active-detail' : ''}">${buildExDetail(ex)}</div>
         </div>
         ${ex.rpeTarget ? `<span class="train-ex-rpe">RPE ${ex.rpeTarget}</span>` : ''}
       </div>`).join('');
@@ -13456,16 +13473,37 @@ function initTrainView() {
   let editingIdx = -1;
   const $ = id => document.getElementById(id);
 
+  function readFields() {
+    return {
+      name:      $('ex-field-name').value.trim(),
+      sets:      Math.max(1, parseInt($('ex-field-sets').value)   || 1),
+      reps:      Math.max(0, parseInt($('ex-field-reps').value)   || 0),
+      workSec:   Math.max(0, parseInt($('ex-field-work').value)   || 0),
+      weight:    Math.max(0, parseInt($('ex-field-weight').value) || 0),
+      restSec:   Math.max(0, parseInt($('ex-field-rest').value)   || 0),
+      rpeTarget: Math.min(10, Math.max(0, parseInt($('ex-field-rpe').value) || 0)),
+    };
+  }
+
+  function updatePreview() {
+    const preview = $('ex-preview-text');
+    if (!preview) return;
+    const tmp = readFields();
+    preview.textContent = buildExDetail(tmp) || '—';
+  }
+
   function open(idx) {
     const ex = window.kruxTrainData && window.kruxTrainData.exercises[idx];
     if (!ex) return;
     editingIdx = idx;
     $('ex-field-name').value   = ex.name;
-    $('ex-field-detail').value = ex.detail;
     $('ex-field-sets').value   = ex.sets;
+    $('ex-field-reps').value   = ex.reps   || 0;
     $('ex-field-work').value   = ex.workSec;
+    $('ex-field-weight').value = ex.weight || 0;
     $('ex-field-rest').value   = ex.restSec;
     $('ex-field-rpe').value    = ex.rpeTarget;
+    updatePreview();
     $('ex-editor-sheet').classList.remove('hidden');
     setTimeout(() => $('ex-field-name').focus(), 320);
   }
@@ -13475,44 +13513,53 @@ function initTrainView() {
     editingIdx = -1;
   }
 
+  function reRenderList() {
+    const listEl = document.getElementById('train-exercise-list');
+    if (!listEl || !window.kruxTrainData) return;
+    const playIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+    const circleIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"><circle cx="12" cy="12" r="9"></circle></svg>`;
+    listEl.innerHTML = window.kruxTrainData.exercises.map((e, i) => `
+      <div class="train-ex-row${e.active ? ' active-ex' : ''} train-ex-editable" data-idx="${i}">
+        <div class="train-ex-icon${e.active ? ' active-icon' : ''}">${e.active ? playIcon : circleIcon}</div>
+        <div class="train-ex-info">
+          <div class="train-ex-name${e.active ? ' active-name' : ''}">${e.name}</div>
+          <div class="train-ex-detail${e.active ? ' active-detail' : ''}">${buildExDetail(e)}</div>
+        </div>
+        ${e.rpeTarget ? `<span class="train-ex-rpe">RPE ${e.rpeTarget}</span>` : ''}
+      </div>`).join('');
+    listEl.querySelectorAll('.train-ex-editable').forEach(row => {
+      row.addEventListener('click', () => open(parseInt(row.dataset.idx)));
+    });
+  }
+
   function save() {
     if (editingIdx < 0 || !window.kruxTrainData) return;
     const ex = window.kruxTrainData.exercises[editingIdx];
-    ex.name      = $('ex-field-name').value.trim()   || ex.name;
-    ex.detail    = $('ex-field-detail').value.trim() || ex.detail;
-    ex.sets      = Math.max(1, parseInt($('ex-field-sets').value) || ex.sets);
-    ex.workSec   = Math.max(0, parseInt($('ex-field-work').value) || 0);
-    ex.restSec   = Math.max(0, parseInt($('ex-field-rest').value) || 0);
-    ex.rpeTarget = Math.min(10, Math.max(0, parseInt($('ex-field-rpe').value) || 0));
+    const f  = readFields();
+    if (f.name) ex.name = f.name;
+    ex.sets      = f.sets;
+    ex.reps      = f.reps;
+    ex.workSec   = f.workSec;
+    ex.weight    = f.weight;
+    ex.restSec   = f.restSec;
+    ex.rpeTarget = f.rpeTarget;
     close();
-    // Re-render lista en train view
-    const listEl = document.getElementById('train-exercise-list');
-    if (listEl) {
-      const playIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
-      const circleIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"><circle cx="12" cy="12" r="9"></circle></svg>`;
-      listEl.innerHTML = window.kruxTrainData.exercises.map((e, i) => `
-        <div class="train-ex-row${e.active ? ' active-ex' : ''} train-ex-editable" data-idx="${i}">
-          <div class="train-ex-icon${e.active ? ' active-icon' : ''}">${e.active ? playIcon : circleIcon}</div>
-          <div class="train-ex-info">
-            <div class="train-ex-name${e.active ? ' active-name' : ''}">${e.name}</div>
-            <div class="train-ex-detail${e.active ? ' active-detail' : ''}">${e.detail}</div>
-          </div>
-          ${e.rpeTarget ? `<span class="train-ex-rpe">RPE ${e.rpeTarget}</span>` : ''}
-        </div>`).join('');
-      listEl.querySelectorAll('.train-ex-editable').forEach(row => {
-        row.addEventListener('click', () => open(parseInt(row.dataset.idx)));
-      });
-    }
+    reRenderList();
     if (typeof showToast === 'function') showToast('Ejercicio actualizado', 'success');
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    const liveFields = ['ex-field-sets','ex-field-reps','ex-field-work','ex-field-weight','ex-field-rest'];
+    liveFields.forEach(id => {
+      const el = $(id);
+      if (el) el.addEventListener('input', updatePreview);
+    });
     const closeBtn = $('ex-editor-close');
     const backdrop = $('ex-editor-backdrop');
     const saveBtn  = $('ex-editor-save');
-    if (closeBtn)  closeBtn.addEventListener('click', close);
-    if (backdrop)  backdrop.addEventListener('click', close);
-    if (saveBtn)   saveBtn.addEventListener('click', save);
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    if (backdrop) backdrop.addEventListener('click', close);
+    if (saveBtn)  saveBtn.addEventListener('click', save);
   });
 
   window.openExerciseEditor = open;
@@ -13977,7 +14024,7 @@ function makePcCard(d, isTop) {
     const ex = EXERCISES()[exIdx];
     $('session-ex-counter').textContent = `EJERCICIO ${exIdx + 1} DE ${EXERCISES().length}`;
     $('session-ex-name').textContent = ex.name;
-    $('session-ex-detail').textContent = ex.detail;
+    $('session-ex-detail').textContent = typeof buildExDetail === 'function' ? buildExDetail(ex) : (ex.detail || '');
     $('session-progress-bar').style.width = Math.round((exIdx / EXERCISES().length) * 100) + '%';
 
     const next = exIdx + 1 < EXERCISES().length ? EXERCISES()[exIdx + 1] : null;
