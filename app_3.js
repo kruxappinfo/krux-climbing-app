@@ -13355,21 +13355,21 @@ document.addEventListener('DOMContentLoaded', () => {
   initTrainView();
 });
 
+// ── Datos compartidos de sesión (train view ↔ session module) ──────────
+window.kruxTrainData = {
+  name: 'Fuerza en media llave',
+  exercises: [
+    { name: 'Max hang · 20mm',      detail: '4 × 10s — descanso 3 min', sets: 4, workSec: 10, restSec: 180, rpeTarget: 8,  active: true  },
+    { name: 'Campus board · 1-5-9', detail: '3 × 5 intentos',           sets: 3, workSec: 0,  restSec: 120, rpeTarget: 7,  active: false },
+    { name: 'Pullover isométrico',  detail: '3 × 7s — descanso 2 min',  sets: 3, workSec: 7,  restSec: 120, rpeTarget: 6,  active: false },
+    { name: 'Manguito rotador',     detail: '2 × 15 · antagonistas',    sets: 2, workSec: 0,  restSec: 60,  rpeTarget: 0,  active: false },
+  ]
+};
+
 // ================== TRAIN VIEW ==================
 function initTrainView() {
   const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-
-  // Demo session data
-  const session = {
-    name: 'Fuerza en media llave',
-    meta: '4 ejercicios · ~60 min',
-    exercises: [
-      { name: 'Max hang · 20mm',      detail: '4 × 10s — descanso 3 min', rpe: 8, active: true  },
-      { name: 'Campus board · 1-5-9', detail: '3 × 5 intentos',           rpe: 7, active: false },
-      { name: 'Pullover isométrico',  detail: '3 × 7s — descanso 2 min',  rpe: 6, active: false },
-      { name: 'Manguito rotador',     detail: '2 × 15 · antagonistas',    rpe: null, active: false },
-    ]
-  };
+  const session = window.kruxTrainData;
 
   // Per-day schedule for current week (index 0=Mon…6=Sun): 'done'|'rest'|'today'|'scheduled'
   const defaultSchedule = ['done', 'rest', 'done', 'rest', 'today', 'scheduled', 'rest'];
@@ -13408,15 +13408,20 @@ function initTrainView() {
     if (!list) return;
     const playIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
     const circleIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"><circle cx="12" cy="12" r="9"></circle></svg>`;
-    list.innerHTML = session.exercises.map(ex => `
-      <div class="train-ex-row${ex.active ? ' active-ex' : ''}">
+    list.innerHTML = session.exercises.map((ex, i) => `
+      <div class="train-ex-row${ex.active ? ' active-ex' : ''} train-ex-editable" data-idx="${i}">
         <div class="train-ex-icon${ex.active ? ' active-icon' : ''}">${ex.active ? playIcon : circleIcon}</div>
         <div class="train-ex-info">
           <div class="train-ex-name${ex.active ? ' active-name' : ''}">${ex.name}</div>
           <div class="train-ex-detail${ex.active ? ' active-detail' : ''}">${ex.detail}</div>
         </div>
-        ${ex.rpe ? `<span class="train-ex-rpe">RPE ${ex.rpe}</span>` : ''}
+        ${ex.rpeTarget ? `<span class="train-ex-rpe">RPE ${ex.rpeTarget}</span>` : ''}
       </div>`).join('');
+
+    // Click handlers para edición
+    list.querySelectorAll('.train-ex-editable').forEach(row => {
+      row.addEventListener('click', () => openExerciseEditor(parseInt(row.dataset.idx)));
+    });
   }
 
   // Plan chips
@@ -13445,6 +13450,74 @@ function initTrainView() {
   renderWeek();
   renderExercises();
 }
+
+// ================== EXERCISE EDITOR ==================
+(function () {
+  let editingIdx = -1;
+  const $ = id => document.getElementById(id);
+
+  function open(idx) {
+    const ex = window.kruxTrainData && window.kruxTrainData.exercises[idx];
+    if (!ex) return;
+    editingIdx = idx;
+    $('ex-field-name').value   = ex.name;
+    $('ex-field-detail').value = ex.detail;
+    $('ex-field-sets').value   = ex.sets;
+    $('ex-field-work').value   = ex.workSec;
+    $('ex-field-rest').value   = ex.restSec;
+    $('ex-field-rpe').value    = ex.rpeTarget;
+    $('ex-editor-sheet').classList.remove('hidden');
+    setTimeout(() => $('ex-field-name').focus(), 320);
+  }
+
+  function close() {
+    $('ex-editor-sheet').classList.add('hidden');
+    editingIdx = -1;
+  }
+
+  function save() {
+    if (editingIdx < 0 || !window.kruxTrainData) return;
+    const ex = window.kruxTrainData.exercises[editingIdx];
+    ex.name      = $('ex-field-name').value.trim()   || ex.name;
+    ex.detail    = $('ex-field-detail').value.trim() || ex.detail;
+    ex.sets      = Math.max(1, parseInt($('ex-field-sets').value) || ex.sets);
+    ex.workSec   = Math.max(0, parseInt($('ex-field-work').value) || 0);
+    ex.restSec   = Math.max(0, parseInt($('ex-field-rest').value) || 0);
+    ex.rpeTarget = Math.min(10, Math.max(0, parseInt($('ex-field-rpe').value) || 0));
+    close();
+    // Re-render lista en train view
+    const listEl = document.getElementById('train-exercise-list');
+    if (listEl) {
+      const playIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+      const circleIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"><circle cx="12" cy="12" r="9"></circle></svg>`;
+      listEl.innerHTML = window.kruxTrainData.exercises.map((e, i) => `
+        <div class="train-ex-row${e.active ? ' active-ex' : ''} train-ex-editable" data-idx="${i}">
+          <div class="train-ex-icon${e.active ? ' active-icon' : ''}">${e.active ? playIcon : circleIcon}</div>
+          <div class="train-ex-info">
+            <div class="train-ex-name${e.active ? ' active-name' : ''}">${e.name}</div>
+            <div class="train-ex-detail${e.active ? ' active-detail' : ''}">${e.detail}</div>
+          </div>
+          ${e.rpeTarget ? `<span class="train-ex-rpe">RPE ${e.rpeTarget}</span>` : ''}
+        </div>`).join('');
+      listEl.querySelectorAll('.train-ex-editable').forEach(row => {
+        row.addEventListener('click', () => open(parseInt(row.dataset.idx)));
+      });
+    }
+    if (typeof showToast === 'function') showToast('Ejercicio actualizado', 'success');
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const closeBtn = $('ex-editor-close');
+    const backdrop = $('ex-editor-backdrop');
+    const saveBtn  = $('ex-editor-save');
+    if (closeBtn)  closeBtn.addEventListener('click', close);
+    if (backdrop)  backdrop.addEventListener('click', close);
+    if (saveBtn)   saveBtn.addEventListener('click', save);
+  });
+
+  window.openExerciseEditor = open;
+  window.closeExerciseEditor = close;
+})();
 
 // Re-initialize activity when user logs in
 firebase.auth().onAuthStateChanged(user => {
@@ -13803,12 +13876,8 @@ function makePcCard(d, isTop) {
 
 // ================== ACTIVE SESSION MODULE ==================
 (function () {
-  const EXERCISES = [
-    { name: 'Max hang · 20mm',      detail: '10 seg · descanso 3 min',  sets: 4, workSec: 10, restSec: 180, rpeTarget: 8 },
-    { name: 'Campus board · 1-5-9', detail: '3 × 5 intentos',           sets: 3, workSec: 0,  restSec: 120, rpeTarget: 7 },
-    { name: 'Pullover isométrico',  detail: '3 × 7s · descanso 2 min',  sets: 3, workSec: 7,  restSec: 120, rpeTarget: 6 },
-    { name: 'Manguito rotador',     detail: '2 × 15 · antagonistas',    sets: 2, workSec: 0,  restSec: 60,  rpeTarget: 0 },
-  ];
+  // Usa los datos compartidos para que las ediciones del train view se reflejen aquí
+  function EXERCISES() { return window.kruxTrainData ? window.kruxTrainData.exercises : []; }
 
   const SVG = {
     play:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
@@ -13905,13 +13974,13 @@ function makePcCard(d, isTop) {
   function fmt2(n) { return String(n).padStart(2, '0'); }
 
   function renderExercise() {
-    const ex = EXERCISES[exIdx];
-    $('session-ex-counter').textContent = `EJERCICIO ${exIdx + 1} DE ${EXERCISES.length}`;
+    const ex = EXERCISES()[exIdx];
+    $('session-ex-counter').textContent = `EJERCICIO ${exIdx + 1} DE ${EXERCISES().length}`;
     $('session-ex-name').textContent = ex.name;
     $('session-ex-detail').textContent = ex.detail;
-    $('session-progress-bar').style.width = Math.round((exIdx / EXERCISES.length) * 100) + '%';
+    $('session-progress-bar').style.width = Math.round((exIdx / EXERCISES().length) * 100) + '%';
 
-    const next = exIdx + 1 < EXERCISES.length ? EXERCISES[exIdx + 1] : null;
+    const next = exIdx + 1 < EXERCISES().length ? EXERCISES()[exIdx + 1] : null;
     $('session-next-label').textContent = next ? 'SIGUIENTE' : 'ÚLTIMO EJERCICIO';
     $('session-next-name').textContent = next ? next.name : '¡Último ejercicio!';
     $('session-next-detail').textContent = next ? next.detail : 'Dale todo';
@@ -13921,7 +13990,7 @@ function makePcCard(d, isTop) {
   }
 
   function renderDots() {
-    const ex = EXERCISES[exIdx];
+    const ex = EXERCISES()[exIdx];
     const row = $('session-sets-row');
     if (!row) return;
     let html = '';
@@ -13938,7 +14007,7 @@ function makePcCard(d, isTop) {
   function setMode(m) {
     mode = m;
     clearInterval(intervalId);
-    const ex = EXERCISES[exIdx];
+    const ex = EXERCISES()[exIdx];
     const block  = $('session-timer-block');
     const label  = $('session-timer-label');
     const btnMain  = $('session-btn-main');
@@ -14023,7 +14092,7 @@ function makePcCard(d, isTop) {
   }
 
   function toggleTimer() {
-    const ex = EXERCISES[exIdx];
+    const ex = EXERCISES()[exIdx];
     if (mode === 'idle') {
       if (ex.workSec > 0) setMode('work'); else completeSet();
     } else if (mode === 'work') {
@@ -14045,7 +14114,7 @@ function makePcCard(d, isTop) {
     soundDone();
     setsDone++;
     renderDots();
-    if (setsDone >= EXERCISES[exIdx].sets) {
+    if (setsDone >= EXERCISES()[exIdx].sets) {
       setTimeout(nextExercise, 350);
     } else {
       setMode('rest');
@@ -14057,7 +14126,7 @@ function makePcCard(d, isTop) {
     exIdx++;
     setsDone = 0;
     selectedRpe = 0;
-    if (exIdx >= EXERCISES.length) {
+    if (exIdx >= EXERCISES().length) {
       showCompletion();
       return;
     }
@@ -14067,7 +14136,7 @@ function makePcCard(d, isTop) {
   function showCompletion() {
     clearInterval(elapsedId);
     $('session-progress-bar').style.width = '100%';
-    const totalSets = EXERCISES.reduce((a, e) => a + e.sets, 0);
+    const totalSets = EXERCISES().reduce((a, e) => a + e.sets, 0);
     const mins = Math.floor(elapsedSec / 60);
     const screen = $('session-screen');
     if (!screen) return;
@@ -14082,7 +14151,7 @@ function makePcCard(d, isTop) {
       <div class="session-done-wrap">
         <div class="session-done-icon">🏆</div>
         <div class="session-done-title">¡Sesión completada!</div>
-        <div class="session-done-meta">${EXERCISES.length} ejercicios · ${mins} min</div>
+        <div class="session-done-meta">${EXERCISES().length} ejercicios · ${mins} min</div>
         <div class="session-done-stats">
           <div class="session-done-stat">
             <div class="session-done-stat-label">Series</div>
@@ -14094,7 +14163,7 @@ function makePcCard(d, isTop) {
           </div>
           <div class="session-done-stat">
             <div class="session-done-stat-label">Ejercicios</div>
-            <div class="session-done-stat-value">${EXERCISES.length}</div>
+            <div class="session-done-stat-value">${EXERCISES().length}</div>
           </div>
           <div class="session-done-stat">
             <div class="session-done-stat-label">Volumen</div>
@@ -14110,7 +14179,7 @@ function makePcCard(d, isTop) {
   }
 
   function showRpe() {
-    const ex = EXERCISES[exIdx];
+    const ex = EXERCISES()[exIdx];
     if (!ex.rpeTarget) return;
     const sec = $('session-rpe-section');
     sec.style.display = 'block';
