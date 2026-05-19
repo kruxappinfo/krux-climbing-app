@@ -20955,9 +20955,9 @@ body.map-active #btn-dev-editor {
 
 .session-ring-wrap {
   position: relative;
-  width: 172px;
-  height: 172px;
-  margin: 0 auto 14px;
+  width: 210px;
+  height: 210px;
+  margin: 0 auto 16px;
 }
 #session-ring-arc {
   transition: stroke-dashoffset 0.25s linear, stroke 0.25s;
@@ -20970,7 +20970,7 @@ body.map-active #btn-dev-editor {
   text-align: center;
 }
 .session-ring-time {
-  font-size: 38px;
+  font-size: 46px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);

@@ -13816,6 +13816,49 @@ function makePcCard(d, isTop) {
     skip:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>`,
   };
 
+  // ── Audio (Web Audio API, sin archivos externos) ──────────────────────
+  let audioCtx = null;
+
+  function getAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // Reanudar si fue suspendido por política de autoplay
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function beep({ freq = 880, duration = 0.08, volume = 0.4, type = 'sine', delay = 0 } = {}) {
+    try {
+      const ctx = getAudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+      gain.gain.setValueAtTime(volume, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + duration + 0.01);
+    } catch (_) { /* silencioso si el navegador bloquea audio */ }
+  }
+
+  // Tick sutil cada segundo durante trabajo
+  function soundTick()    { beep({ freq: 660, duration: 0.04, volume: 0.2 }); }
+  // Pitidos urgentes en los últimos 3 segundos de trabajo
+  function soundUrgent()  { beep({ freq: 1100, duration: 0.07, volume: 0.5, type: 'square' }); }
+  // Triple pitido al completar una serie / fin de trabajo
+  function soundDone() {
+    beep({ freq: 880,  duration: 0.1, volume: 0.6, delay: 0.0 });
+    beep({ freq: 1100, duration: 0.1, volume: 0.6, delay: 0.13 });
+    beep({ freq: 1320, duration: 0.18, volume: 0.7, delay: 0.26 });
+  }
+  // Pitido suave al terminar el descanso
+  function soundRestEnd() {
+    beep({ freq: 660,  duration: 0.12, volume: 0.5, delay: 0.0 });
+    beep({ freq: 880,  duration: 0.18, volume: 0.6, delay: 0.16 });
+  }
+  // ─────────────────────────────────────────────────────────────────────
+
   let exIdx, setsDone, mode, timerSec, targetSec, intervalId, elapsedSec, elapsedId, selectedRpe;
 
   function $ (id) { return document.getElementById(id); }
@@ -13943,13 +13986,17 @@ function makePcCard(d, isTop) {
   }
 
   function tickWork() {
-    const ex = EXERCISES[exIdx];
     timerSec++;
     const pct = timerSec / targetSec;
     $('session-ring-arc').style.strokeDashoffset = Math.max(0, 314 - 314 * pct);
     const remaining = targetSec - timerSec;
     $('session-ring-time').textContent = '0:' + fmt2(remaining);
-    if (remaining <= 3) $('session-ring-time').className = 'session-ring-time red';
+    if (remaining <= 3 && remaining > 0) {
+      $('session-ring-time').className = 'session-ring-time red';
+      soundUrgent();
+    } else if (remaining > 3) {
+      soundTick();
+    }
     if (timerSec >= targetSec) completeSet();
   }
 
@@ -13957,9 +14004,15 @@ function makePcCard(d, isTop) {
     timerSec--;
     updateRing(timerSec, targetSec);
     $('session-ring-time').textContent = Math.floor(timerSec / 60) + ':' + fmt2(timerSec % 60);
-    if (timerSec <= 10) $('session-ring-time').className = 'session-ring-time red';
+    if (timerSec <= 3 && timerSec > 0) {
+      $('session-ring-time').className = 'session-ring-time red';
+      soundUrgent();
+    } else if (timerSec <= 10) {
+      $('session-ring-time').className = 'session-ring-time red';
+    }
     if (timerSec <= 0) {
       clearInterval(intervalId);
+      soundRestEnd();
       $('session-ring-time').textContent = '¡Ya!';
       setMode('idle');
     }
@@ -13989,6 +14042,7 @@ function makePcCard(d, isTop) {
   }
 
   function completeSet() {
+    soundDone();
     setsDone++;
     renderDots();
     if (setsDone >= EXERCISES[exIdx].sets) {
