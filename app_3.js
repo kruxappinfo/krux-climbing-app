@@ -14185,44 +14185,163 @@ function makePcCard(d, isTop) {
     $('session-progress-bar').style.width = '100%';
     const totalSets = EXERCISES().reduce((a, e) => a + e.sets, 0);
     const mins = Math.floor(elapsedSec / 60);
+    const exCount = EXERCISES().length;
     const screen = $('session-screen');
     if (!screen) return;
+
+    let logFeel = null, logRpe = null;
+    const logTags = new Set();
+    const PRESET_TAGS = ['Poleas tensas', 'Buena adherencia', 'Sin dolor', 'Hombro cargado', 'Mucho calor', 'Bien descansado', 'Sin energía'];
+
+    function updateSaveBtn() {
+      const btn = document.getElementById('plog-save-btn');
+      if (btn) btn.disabled = !(logFeel && logRpe);
+    }
+
+    function buildFeel() {
+      document.querySelectorAll('.plog-feel-btn').forEach(btn => {
+        const f = btn.dataset.feel;
+        const clsMap = { beast: 'sel-beast', great: 'sel-great', ok: 'sel-ok', bad: 'sel-bad' };
+        btn.className = 'plog-feel-btn' + (f === logFeel ? ' ' + clsMap[f] : '');
+        btn.onclick = () => { logFeel = f; buildFeel(); updateSaveBtn(); };
+      });
+    }
+
+    function buildRpe() {
+      const row = document.getElementById('plog-rpe-row');
+      if (!row) return;
+      row.innerHTML = '';
+      [5, 6, 7, 8, 9, 10].forEach(v => {
+        const btn = document.createElement('button');
+        const colorCls = v >= 9 ? ' hi' : v >= 8 ? ' warn' : '';
+        btn.className = 'plog-rpe-num' + colorCls + (v === logRpe ? ' sel' : '');
+        btn.textContent = v;
+        btn.onclick = () => {
+          logRpe = v;
+          const avg = document.getElementById('plog-rpe-avg');
+          if (avg) avg.textContent = v;
+          buildRpe();
+          updateSaveBtn();
+        };
+        row.appendChild(btn);
+      });
+    }
+
+    function buildTags() {
+      const row = document.getElementById('plog-tags-row');
+      if (!row) return;
+      row.innerHTML = '';
+      PRESET_TAGS.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'plog-tag' + (logTags.has(t) ? ' sel' : '');
+        btn.textContent = t;
+        btn.onclick = () => { logTags.has(t) ? logTags.delete(t) : logTags.add(t); buildTags(); };
+        row.appendChild(btn);
+      });
+    }
+
+    function buildHeatmap() {
+      const container = document.getElementById('plog-heatmap');
+      if (!container) return;
+      container.innerHTML = '';
+      const today = new Date();
+      const dow = (today.getDay() + 6) % 7; // 0=Mon
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - dow - 49); // 8 weeks ago (Monday)
+      const dummy = [0,0,1,0,2,0,0, 0,2,0,1,0,2,0, 1,0,2,0,0,1,0, 0,3,0,1,0,2,0, 1,0,2,0,1,0,0, 0,2,0,3,0,1,0, 2,0,1,0,2,0,1, 0,0,0,0,0,0,0];
+      for (let i = 0; i < 56; i++) {
+        const d = new Date(startDate);
+        d.setDate(startDate.getDate() + i);
+        const isToday = d.toDateString() === today.toDateString();
+        const cell = document.createElement('div');
+        const lvl = isToday ? 3 : (dummy[i] || 0);
+        cell.className = 'plog-hm-cell' + (lvl > 0 ? ' hm-l' + lvl : '') + (isToday ? ' hm-today' : '');
+        container.appendChild(cell);
+      }
+    }
+
+    function showSaved() {
+      const notes = (document.getElementById('plog-notes') || {}).value || '';
+      const feelLabel = { beast: 'Bestia', great: 'Bien', ok: 'Normal', bad: 'Cansado' }[logFeel] || '';
+      screen.innerHTML = `
+        <div class="session-topbar">
+          <div class="session-topbar-left">
+            <span class="plog-title">Sesión guardada</span>
+          </div>
+        </div>
+        <div class="plog-scroll plog-done-center">
+          <div class="plog-done-icon">🏆</div>
+          <div class="plog-done-title">¡Bien hecho!</div>
+          <div class="plog-done-sub">${mins} min · ${feelLabel} · RPE ${logRpe}</div>
+          ${notes ? `<div class="plog-done-notes">"${notes}"</div>` : ''}
+          <div class="plog-progress-banner">
+            <div class="plog-progress-label">SUGERENCIA PARA PRÓXIMA SESIÓN</div>
+            <div class="plog-progress-text">Max hang +22kg · Campus 1-5-9 mantén carga</div>
+          </div>
+          <button class="plog-save-btn" id="plog-close-done">Cerrar</button>
+        </div>`;
+      document.getElementById('plog-close-done').addEventListener('click', close);
+    }
+
     screen.innerHTML = `
       <div class="session-topbar">
         <div class="session-topbar-left">
-          <button class="session-close-btn" id="session-close-btn-done" aria-label="Cerrar">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          </button>
+          <span class="plog-title">Log post-sesión</span>
+        </div>
+        <button class="plog-skip" id="plog-skip">Omitir</button>
+      </div>
+      <div class="plog-scroll">
+        <div class="plog-sec">
+          <div class="plog-sec-label">RESUMEN</div>
+          <div class="plog-stats-grid">
+            <div class="plog-stat"><div class="plog-stat-val">${mins} min</div><div class="plog-stat-lbl">Duración</div></div>
+            <div class="plog-stat"><div class="plog-stat-val">${totalSets}</div><div class="plog-stat-lbl">Series completadas</div></div>
+            <div class="plog-stat"><div class="plog-stat-val">${exCount} / ${exCount}</div><div class="plog-stat-lbl">Ejercicios</div></div>
+            <div class="plog-stat"><div class="plog-stat-val" id="plog-rpe-avg">—</div><div class="plog-stat-lbl">RPE medio</div></div>
+          </div>
+        </div>
+        <div class="plog-sec">
+          <div class="plog-sec-label">¿CÓMO TE SIENTES?</div>
+          <div class="plog-feel-row" id="plog-feel-row">
+            <button class="plog-feel-btn" data-feel="beast"><span class="plog-feel-icon">🔥</span><span class="plog-feel-lbl">Bestia</span></button>
+            <button class="plog-feel-btn" data-feel="great"><span class="plog-feel-icon">😊</span><span class="plog-feel-lbl">Bien</span></button>
+            <button class="plog-feel-btn" data-feel="ok"><span class="plog-feel-icon">😐</span><span class="plog-feel-lbl">Normal</span></button>
+            <button class="plog-feel-btn" data-feel="bad"><span class="plog-feel-icon">😔</span><span class="plog-feel-lbl">Cansado</span></button>
+          </div>
+        </div>
+        <div class="plog-sec">
+          <div class="plog-sec-label">RPE GLOBAL DE LA SESIÓN</div>
+          <div class="plog-rpe-row" id="plog-rpe-row"></div>
+        </div>
+        <div class="plog-sec">
+          <div class="plog-sec-label">NOTAS</div>
+          <textarea class="plog-notes" id="plog-notes" rows="3" placeholder="Sensaciones, lesiones, contexto... (opcional)"></textarea>
+          <div class="plog-tags-row" id="plog-tags-row"></div>
+        </div>
+        <div class="plog-sec plog-sec-last">
+          <div class="plog-sec-label">ACTIVIDAD — ÚLTIMAS 8 SEMANAS</div>
+          <div class="plog-day-headers"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+          <div class="plog-heatmap" id="plog-heatmap"></div>
+          <div class="plog-hm-legend">
+            <span class="plog-hm-lbl">Menos</span>
+            <div class="plog-hm-cell"></div><div class="plog-hm-cell hm-l1"></div><div class="plog-hm-cell hm-l2"></div><div class="plog-hm-cell hm-l3"></div><div class="plog-hm-cell hm-l4"></div>
+            <span class="plog-hm-lbl">Más</span>
+          </div>
         </div>
       </div>
-      <div class="session-done-wrap">
-        <div class="session-done-icon">🏆</div>
-        <div class="session-done-title">¡Sesión completada!</div>
-        <div class="session-done-meta">${EXERCISES().length} ejercicios · ${mins} min</div>
-        <div class="session-done-stats">
-          <div class="session-done-stat">
-            <div class="session-done-stat-label">Series</div>
-            <div class="session-done-stat-value">${totalSets}</div>
-          </div>
-          <div class="session-done-stat">
-            <div class="session-done-stat-label">Duración</div>
-            <div class="session-done-stat-value">${mins} min</div>
-          </div>
-          <div class="session-done-stat">
-            <div class="session-done-stat-label">Ejercicios</div>
-            <div class="session-done-stat-value">${EXERCISES().length}</div>
-          </div>
-          <div class="session-done-stat">
-            <div class="session-done-stat-label">Volumen</div>
-            <div class="session-done-stat-value">✓</div>
-          </div>
-        </div>
-        <button class="session-done-cta" id="session-done-close">Cerrar sesión</button>
+      <div class="plog-footer">
+        <button class="plog-save-btn" id="plog-save-btn" disabled>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Guardar sesión
+        </button>
       </div>`;
-    const closeBtn = document.getElementById('session-close-btn-done');
-    if (closeBtn) closeBtn.addEventListener('click', close);
-    const doneCta = document.getElementById('session-done-close');
-    if (doneCta) doneCta.addEventListener('click', close);
+
+    buildFeel();
+    buildRpe();
+    buildTags();
+    buildHeatmap();
+    document.getElementById('plog-skip').addEventListener('click', close);
+    document.getElementById('plog-save-btn').addEventListener('click', () => { if (logFeel && logRpe) showSaved(); });
   }
 
   function showRpe() {
