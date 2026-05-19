@@ -20461,3 +20461,312 @@ body.map-active #btn-dev-editor {
 }
 .roco-empty p { font-size: 15px; font-weight: 500; margin: 8px 0 4px; color: #555; }
 .roco-empty span { font-size: 13px; }
+
+/* ================================
+   TRAIN VIEW
+   ================================ */
+.train-scroll {
+  overflow-y: auto;
+  height: 100%;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 80px;
+}
+
+.train-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  background: var(--bg-primary);
+  z-index: 10;
+}
+
+.train-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.train-settings-btn {
+  background: none;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+}
+
+.train-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.train-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+/* Plan chips */
+.train-plan-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.train-plan-chips::-webkit-scrollbar { display: none; }
+
+.train-chip {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.train-chip.active {
+  background: #1D9E75;
+  color: #E1F5EE;
+  border-color: #0F6E56;
+}
+.train-chip--new {
+  color: var(--text-muted);
+}
+
+/* Week calendar */
+.train-week-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.train-week-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.train-week-nav {
+  display: flex;
+  gap: 4px;
+}
+.train-week-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0;
+}
+
+.train-days-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.train-day-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.train-day-name {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.train-day-dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.train-day-dot.today {
+  background: #1D9E75;
+  color: #E1F5EE;
+  border-color: #0F6E56;
+}
+.train-day-dot.done {
+  background: #E1F5EE;
+  color: #1D9E75;
+  border-color: #9FDFCA;
+}
+.train-day-dot.scheduled {
+  border-color: var(--border-color);
+}
+.train-day-dot.rest {
+  color: var(--text-muted);
+  font-size: 16px;
+  font-weight: 400;
+}
+
+/* Auto-progresión */
+.train-suggestion {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #FFFBEB;
+  border: 1px solid #FDE68A;
+  border-radius: var(--radius-md);
+}
+.train-suggestion-icon {
+  color: #D97706;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.train-suggestion-text {
+  font-size: 12px;
+  color: #92400E;
+  line-height: 1.45;
+}
+.train-suggestion-text strong {
+  font-weight: 600;
+}
+
+/* Session card */
+.train-session-card {
+  background: #f8f9fb;
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border-color);
+}
+.train-session-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.train-session-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.train-session-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+.train-session-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: #EFF6FF;
+  color: #2563EB;
+  border: 1px solid #BFDBFE;
+  flex-shrink: 0;
+}
+
+/* Exercise list */
+.train-exercise-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.train-ex-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  background: #fff;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.train-ex-row.active-ex {
+  border-color: #1D9E75;
+  background: #E1F5EE;
+}
+.train-ex-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #EFF6FF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #2563EB;
+}
+.train-ex-icon.active-icon {
+  background: #1D9E75;
+  color: #E1F5EE;
+}
+.train-ex-info {
+  flex: 1;
+  min-width: 0;
+}
+.train-ex-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.train-ex-name.active-name { color: #0F6E56; }
+.train-ex-detail {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+.train-ex-detail.active-detail { color: #1D9E75; }
+.train-ex-rpe {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: #FFFBEB;
+  color: #D97706;
+  border: 1px solid #FDE68A;
+  flex-shrink: 0;
+}
+
+/* Start button */
+.train-start-btn {
+  width: 100%;
+  padding: 14px;
+  background: #1D9E75;
+  color: #E1F5EE;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: opacity 0.15s;
+}
+.train-start-btn:active { opacity: 0.82; }

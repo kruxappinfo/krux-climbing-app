@@ -13352,7 +13352,101 @@ document.addEventListener('DOMContentLoaded', () => {
   initActivityView();
   initLogbook();
   initProgressCards();
+  initTrainView();
 });
+
+// ================== TRAIN VIEW ==================
+function initTrainView() {
+  const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+  // Demo session data
+  const session = {
+    name: 'Fuerza en media llave',
+    meta: '4 ejercicios · ~60 min',
+    exercises: [
+      { name: 'Max hang · 20mm',      detail: '4 × 10s — descanso 3 min', rpe: 8, active: true  },
+      { name: 'Campus board · 1-5-9', detail: '3 × 5 intentos',           rpe: 7, active: false },
+      { name: 'Pullover isométrico',  detail: '3 × 7s — descanso 2 min',  rpe: 6, active: false },
+      { name: 'Manguito rotador',     detail: '2 × 15 · antagonistas',    rpe: null, active: false },
+    ]
+  };
+
+  // Per-day schedule for current week (index 0=Mon…6=Sun): 'done'|'rest'|'today'|'scheduled'
+  const defaultSchedule = ['done', 'rest', 'done', 'rest', 'today', 'scheduled', 'rest'];
+
+  let weekOffset = 0;
+
+  function renderWeek() {
+    const daysRow = document.getElementById('train-days-row');
+    const weekTitle = document.getElementById('train-week-title');
+    if (!daysRow || !weekTitle) return;
+
+    const dayLabels = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+    const today = new Date();
+    const jsDay = today.getDay(); // 0=Sun
+    const mondayDelta = jsDay === 0 ? -6 : 1 - jsDay;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + mondayDelta + weekOffset * 7);
+
+    const weekNum = Math.ceil(monday.getDate() / 7);
+    weekTitle.textContent = `Semana ${weekNum} · ${MONTH_NAMES[monday.getMonth()]}`;
+
+    const checkSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
+    daysRow.innerHTML = dayLabels.map((label, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const state = weekOffset === 0 ? defaultSchedule[i] : 'rest';
+      let dotClass = 'train-day-dot ' + state;
+      let content = state === 'done' ? checkSvg : (state === 'rest' ? '–' : `${d.getDate()}`);
+      return `<div class="train-day-cell"><span class="train-day-name">${label}</span><div class="${dotClass}">${content}</div></div>`;
+    }).join('');
+  }
+
+  function renderExercises() {
+    const list = document.getElementById('train-exercise-list');
+    if (!list) return;
+    const playIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+    const circleIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"><circle cx="12" cy="12" r="9"></circle></svg>`;
+    list.innerHTML = session.exercises.map(ex => `
+      <div class="train-ex-row${ex.active ? ' active-ex' : ''}">
+        <div class="train-ex-icon${ex.active ? ' active-icon' : ''}">${ex.active ? playIcon : circleIcon}</div>
+        <div class="train-ex-info">
+          <div class="train-ex-name${ex.active ? ' active-name' : ''}">${ex.name}</div>
+          <div class="train-ex-detail${ex.active ? ' active-detail' : ''}">${ex.detail}</div>
+        </div>
+        ${ex.rpe ? `<span class="train-ex-rpe">RPE ${ex.rpe}</span>` : ''}
+      </div>`).join('');
+  }
+
+  // Plan chips
+  const chips = document.querySelectorAll('#train-plan-chips .train-chip');
+  chips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      if (chip.dataset.plan === 'new') {
+        if (typeof showToast === 'function') showToast('Crear plan — próximamente', 'info');
+        return;
+      }
+      chips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+    });
+  });
+
+  // Week navigation
+  const prevBtn = document.getElementById('train-week-prev');
+  const nextBtn = document.getElementById('train-week-next');
+  if (prevBtn) prevBtn.addEventListener('click', () => { weekOffset--; renderWeek(); });
+  if (nextBtn) nextBtn.addEventListener('click', () => { weekOffset++; renderWeek(); });
+
+  // Start button
+  const startBtn = document.getElementById('train-start-btn');
+  if (startBtn) startBtn.addEventListener('click', () => {
+    if (typeof showToast === 'function') showToast('Modo sesión activa — próximamente', 'info');
+  });
+
+  renderWeek();
+  renderExercises();
+}
 
 // Re-initialize activity when user logs in
 firebase.auth().onAuthStateChanged(user => {
