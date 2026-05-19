@@ -13524,10 +13524,6 @@ function initTrainView() {
       closeGearMenu();
       if (typeof window.openPlanEditor === 'function') window.openPlanEditor();
     });
-    document.getElementById('train-gear-edit').addEventListener('click', () => {
-      closeGearMenu();
-      if (typeof window.openPlanEditor === 'function') window.openPlanEditor();
-    });
     // Close on outside click
     document.addEventListener('click', e => {
       if (!e.target.closest('.train-gear-wrap')) closeGearMenu();
