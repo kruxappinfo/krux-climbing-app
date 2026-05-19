@@ -13440,9 +13440,7 @@ function initTrainView() {
 
   // Start button
   const startBtn = document.getElementById('train-start-btn');
-  if (startBtn) startBtn.addEventListener('click', () => {
-    if (typeof showToast === 'function') showToast('Modo sesión activa — próximamente', 'info');
-  });
+  if (startBtn) startBtn.addEventListener('click', () => openActiveSession());
 
   renderWeek();
   renderExercises();
@@ -13802,3 +13800,300 @@ function makePcCard(d, isTop) {
   </div>`;
 }
 // ========== END PROGRESS CARDS ==========
+
+// ================== ACTIVE SESSION MODULE ==================
+(function () {
+  const EXERCISES = [
+    { name: 'Max hang · 20mm',      detail: '10 seg · descanso 3 min',  sets: 4, workSec: 10, restSec: 180, rpeTarget: 8 },
+    { name: 'Campus board · 1-5-9', detail: '3 × 5 intentos',           sets: 3, workSec: 0,  restSec: 120, rpeTarget: 7 },
+    { name: 'Pullover isométrico',  detail: '3 × 7s · descanso 2 min',  sets: 3, workSec: 7,  restSec: 120, rpeTarget: 6 },
+    { name: 'Manguito rotador',     detail: '2 × 15 · antagonistas',    sets: 2, workSec: 0,  restSec: 60,  rpeTarget: 0 },
+  ];
+
+  const SVG = {
+    play:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
+    pause: `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`,
+    skip:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>`,
+  };
+
+  let exIdx, setsDone, mode, timerSec, targetSec, intervalId, elapsedSec, elapsedId, selectedRpe;
+
+  function $ (id) { return document.getElementById(id); }
+
+  function open() {
+    exIdx = 0; setsDone = 0; mode = 'idle';
+    timerSec = 0; targetSec = 0; intervalId = null;
+    elapsedSec = 0; elapsedId = null; selectedRpe = 0;
+
+    const modal = $('session-modal');
+    if (!modal) return;
+
+    // Restore session-screen in case it was replaced by completion
+    const screen = $('session-screen');
+    if (screen && !screen.querySelector('.session-topbar')) location.reload();
+
+    modal.classList.remove('hidden');
+    document.body.classList.add('session-open');
+
+    elapsedId = setInterval(() => {
+      elapsedSec++;
+      const el = $('session-elapsed');
+      if (el) el.textContent = fmt2(Math.floor(elapsedSec / 60)) + ':' + fmt2(elapsedSec % 60);
+    }, 1000);
+
+    // Update session name/date
+    const now = new Date();
+    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const sub = $('session-session-sub');
+    if (sub) sub.textContent = `${days[now.getDay()]} · ${months[now.getMonth()]}`;
+
+    renderExercise();
+  }
+
+  function close() {
+    clearInterval(intervalId);
+    clearInterval(elapsedId);
+    const modal = $('session-modal');
+    if (modal) modal.classList.add('hidden');
+    document.body.classList.remove('session-open');
+  }
+
+  function fmt2(n) { return String(n).padStart(2, '0'); }
+
+  function renderExercise() {
+    const ex = EXERCISES[exIdx];
+    $('session-ex-counter').textContent = `EJERCICIO ${exIdx + 1} DE ${EXERCISES.length}`;
+    $('session-ex-name').textContent = ex.name;
+    $('session-ex-detail').textContent = ex.detail;
+    $('session-progress-bar').style.width = Math.round((exIdx / EXERCISES.length) * 100) + '%';
+
+    const next = exIdx + 1 < EXERCISES.length ? EXERCISES[exIdx + 1] : null;
+    $('session-next-label').textContent = next ? 'SIGUIENTE' : 'ÚLTIMO EJERCICIO';
+    $('session-next-name').textContent = next ? next.name : '¡Último ejercicio!';
+    $('session-next-detail').textContent = next ? next.detail : 'Dale todo';
+
+    renderDots();
+    setMode('idle');
+  }
+
+  function renderDots() {
+    const ex = EXERCISES[exIdx];
+    const row = $('session-sets-row');
+    if (!row) return;
+    let html = '';
+    for (let i = 0; i < ex.sets; i++) {
+      const cls = i < setsDone ? 'done' : i === setsDone ? 'current' : '';
+      const label = i < setsDone
+        ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
+        : (i + 1);
+      html += `<div class="session-set-dot ${cls}">${label}</div>`;
+    }
+    row.innerHTML = html;
+  }
+
+  function setMode(m) {
+    mode = m;
+    clearInterval(intervalId);
+    const ex = EXERCISES[exIdx];
+    const block  = $('session-timer-block');
+    const label  = $('session-timer-label');
+    const btnMain  = $('session-btn-main');
+    const btnLabel = $('session-btn-label');
+    const btnIcon  = $('session-btn-icon');
+    const ringArc  = $('session-ring-arc');
+    const ringTime = $('session-ring-time');
+    const ringLbl  = $('session-ring-lbl');
+
+    block.classList.remove('rest-mode');
+    ringArc.style.stroke = '#1D9E75';
+    ringTime.className = 'session-ring-time';
+    $('session-rpe-section').style.display = 'none';
+
+    if (m === 'idle') {
+      label.textContent = ex.workSec > 0 ? 'CRONÓMETRO DE TRABAJO' : 'LISTO';
+      ringArc.style.strokeDashoffset = '314';
+      ringTime.textContent = ex.workSec > 0 ? '0:' + fmt2(ex.workSec) : '—';
+      ringLbl.textContent = ex.workSec > 0 ? 'objetivo' : '';
+      btnIcon.innerHTML = SVG.play;
+      btnLabel.textContent = ex.workSec > 0 ? 'Iniciar' : 'Marcar serie';
+      btnMain.className = 'session-ctrl-btn session-ctrl-primary';
+
+    } else if (m === 'work') {
+      label.textContent = 'TRABAJANDO';
+      timerSec = 0; targetSec = ex.workSec;
+      btnIcon.innerHTML = SVG.pause;
+      btnLabel.textContent = 'Pausar';
+      intervalId = setInterval(tickWork, 1000);
+
+    } else if (m === 'rest') {
+      label.textContent = 'DESCANSO';
+      block.classList.add('rest-mode');
+      ringTime.className = 'session-ring-time green';
+      timerSec = ex.restSec; targetSec = ex.restSec;
+      ringTime.textContent = Math.floor(timerSec / 60) + ':' + fmt2(timerSec % 60);
+      ringLbl.textContent = 'descanso';
+      btnIcon.innerHTML = SVG.skip;
+      btnLabel.textContent = 'Saltarme';
+      btnMain.className = 'session-ctrl-btn';
+      updateRing(timerSec, targetSec);
+      intervalId = setInterval(tickRest, 1000);
+      showRpe();
+    }
+  }
+
+  function tickWork() {
+    const ex = EXERCISES[exIdx];
+    timerSec++;
+    const pct = timerSec / targetSec;
+    $('session-ring-arc').style.strokeDashoffset = Math.max(0, 314 - 314 * pct);
+    const remaining = targetSec - timerSec;
+    $('session-ring-time').textContent = '0:' + fmt2(remaining);
+    if (remaining <= 3) $('session-ring-time').className = 'session-ring-time red';
+    if (timerSec >= targetSec) completeSet();
+  }
+
+  function tickRest() {
+    timerSec--;
+    updateRing(timerSec, targetSec);
+    $('session-ring-time').textContent = Math.floor(timerSec / 60) + ':' + fmt2(timerSec % 60);
+    if (timerSec <= 10) $('session-ring-time').className = 'session-ring-time red';
+    if (timerSec <= 0) {
+      clearInterval(intervalId);
+      $('session-ring-time').textContent = '¡Ya!';
+      setMode('idle');
+    }
+  }
+
+  function updateRing(cur, total) {
+    $('session-ring-arc').style.strokeDashoffset = Math.max(0, 314 - 314 * (cur / total));
+  }
+
+  function toggleTimer() {
+    const ex = EXERCISES[exIdx];
+    if (mode === 'idle') {
+      if (ex.workSec > 0) setMode('work'); else completeSet();
+    } else if (mode === 'work') {
+      clearInterval(intervalId);
+      mode = 'paused';
+      $('session-btn-label').textContent = 'Reanudar';
+      $('session-btn-icon').innerHTML = SVG.play;
+    } else if (mode === 'paused') {
+      mode = 'work';
+      $('session-btn-label').textContent = 'Pausar';
+      $('session-btn-icon').innerHTML = SVG.pause;
+      intervalId = setInterval(tickWork, 1000);
+    } else if (mode === 'rest') {
+      setMode('idle');
+    }
+  }
+
+  function completeSet() {
+    setsDone++;
+    renderDots();
+    if (setsDone >= EXERCISES[exIdx].sets) {
+      setTimeout(nextExercise, 350);
+    } else {
+      setMode('rest');
+    }
+  }
+
+  function nextExercise() {
+    clearInterval(intervalId);
+    exIdx++;
+    setsDone = 0;
+    selectedRpe = 0;
+    if (exIdx >= EXERCISES.length) {
+      showCompletion();
+      return;
+    }
+    renderExercise();
+  }
+
+  function showCompletion() {
+    clearInterval(elapsedId);
+    $('session-progress-bar').style.width = '100%';
+    const totalSets = EXERCISES.reduce((a, e) => a + e.sets, 0);
+    const mins = Math.floor(elapsedSec / 60);
+    const screen = $('session-screen');
+    if (!screen) return;
+    screen.innerHTML = `
+      <div class="session-topbar">
+        <div class="session-topbar-left">
+          <button class="session-close-btn" id="session-close-btn-done" aria-label="Cerrar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+      </div>
+      <div class="session-done-wrap">
+        <div class="session-done-icon">🏆</div>
+        <div class="session-done-title">¡Sesión completada!</div>
+        <div class="session-done-meta">${EXERCISES.length} ejercicios · ${mins} min</div>
+        <div class="session-done-stats">
+          <div class="session-done-stat">
+            <div class="session-done-stat-label">Series</div>
+            <div class="session-done-stat-value">${totalSets}</div>
+          </div>
+          <div class="session-done-stat">
+            <div class="session-done-stat-label">Duración</div>
+            <div class="session-done-stat-value">${mins} min</div>
+          </div>
+          <div class="session-done-stat">
+            <div class="session-done-stat-label">Ejercicios</div>
+            <div class="session-done-stat-value">${EXERCISES.length}</div>
+          </div>
+          <div class="session-done-stat">
+            <div class="session-done-stat-label">Volumen</div>
+            <div class="session-done-stat-value">✓</div>
+          </div>
+        </div>
+        <button class="session-done-cta" id="session-done-close">Cerrar sesión</button>
+      </div>`;
+    const closeBtn = document.getElementById('session-close-btn-done');
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    const doneCta = document.getElementById('session-done-close');
+    if (doneCta) doneCta.addEventListener('click', close);
+  }
+
+  function showRpe() {
+    const ex = EXERCISES[exIdx];
+    if (!ex.rpeTarget) return;
+    const sec = $('session-rpe-section');
+    sec.style.display = 'block';
+    const dots = $('session-rpe-dots');
+    const values = [6, 7, 8, 9, 10];
+    dots.innerHTML = values.map(v => {
+      const colorCls = v <= 7 ? '' : v <= 8 ? ' warn' : ' hi';
+      const selCls = v === selectedRpe ? ' selected' : '';
+      return `<button class="session-rpe-dot${colorCls}${selCls}" data-v="${v}">${v}</button>`;
+    }).join('');
+    dots.querySelectorAll('.session-rpe-dot').forEach(btn => {
+      btn.addEventListener('click', () => {
+        selectedRpe = parseInt(btn.dataset.v);
+        dots.querySelectorAll('.session-rpe-dot').forEach((b, i) => {
+          const val = values[i];
+          const cc = val <= 7 ? '' : val <= 8 ? ' warn' : ' hi';
+          const sc = val === selectedRpe ? ' selected' : '';
+          b.className = `session-rpe-dot${cc}${sc}`;
+        });
+      });
+    });
+  }
+
+  // Wire up static buttons
+  document.addEventListener('DOMContentLoaded', () => {
+    const closeBtn = $('session-close-btn');
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    const btnMain = $('session-btn-main');
+    if (btnMain) btnMain.addEventListener('click', toggleTimer);
+    const btnReset = $('session-btn-reset');
+    if (btnReset) btnReset.addEventListener('click', () => setMode('idle'));
+    const btnSet = $('session-btn-set');
+    if (btnSet) btnSet.addEventListener('click', completeSet);
+    const skipBtn = $('session-skip-btn');
+    if (skipBtn) skipBtn.addEventListener('click', nextExercise);
+  });
+
+  window.openActiveSession = open;
+  window.closeActiveSession = close;
+})();
