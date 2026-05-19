@@ -3506,18 +3506,24 @@
           <label class="ex-field-label">Nombre del ejercicio</label>
           <input class="ex-field-input" id="ex-field-name" type="text" placeholder="Ej: Max hang · 20mm">
         </div>
-        <div class="ex-field ex-field--full">
-          <label class="ex-field-label">Detalle (descripción corta)</label>
-          <input class="ex-field-input" id="ex-field-detail" type="text" placeholder="Ej: 4 × 10s — descanso 3 min">
-        </div>
         <div class="ex-field-row">
           <div class="ex-field">
             <label class="ex-field-label">Series</label>
             <input class="ex-field-input ex-field-num" id="ex-field-sets" type="number" min="1" max="20" inputmode="numeric">
           </div>
           <div class="ex-field">
+            <label class="ex-field-label">Repeticiones</label>
+            <input class="ex-field-input ex-field-num" id="ex-field-reps" type="number" min="0" max="200" inputmode="numeric" placeholder="0">
+          </div>
+        </div>
+        <div class="ex-field-row">
+          <div class="ex-field">
             <label class="ex-field-label">Tiempo trabajo (seg)</label>
-            <input class="ex-field-input ex-field-num" id="ex-field-work" type="number" min="0" max="600" inputmode="numeric" placeholder="0 = libre">
+            <input class="ex-field-input ex-field-num" id="ex-field-work" type="number" min="0" max="600" inputmode="numeric" placeholder="0">
+          </div>
+          <div class="ex-field">
+            <label class="ex-field-label">Peso adicional (kg)</label>
+            <input class="ex-field-input ex-field-num" id="ex-field-weight" type="number" min="0" max="200" inputmode="numeric" placeholder="0">
           </div>
         </div>
         <div class="ex-field-row">
@@ -3529,6 +3535,11 @@
             <label class="ex-field-label">RPE objetivo (0 = ninguno)</label>
             <input class="ex-field-input ex-field-num" id="ex-field-rpe" type="number" min="0" max="10" inputmode="numeric">
           </div>
+        </div>
+        <!-- Preview generado automáticamente -->
+        <div class="ex-preview">
+          <span class="ex-preview-label">Vista previa</span>
+          <span class="ex-preview-text" id="ex-preview-text">—</span>
         </div>
       </div>
       <div class="ex-editor-footer">
