@@ -3275,6 +3275,11 @@ function switchView(viewId) {
     if (authContainer) authContainer.style.display = 'block';
   }
 
+  // Refresh train view when navigating to it
+  if (viewId === 'train-view') {
+    if (typeof window.refreshTrainView === 'function') window.refreshTrainView();
+  }
+
   // Reload activity data when switching to activity view
   if (viewId === 'activity-view') {
     loadActivityData();
@@ -13520,7 +13525,8 @@ function initTrainView() {
       e.stopPropagation();
       gearMenu.classList.toggle('hidden');
     });
-    document.getElementById('train-gear-new').addEventListener('click', () => {
+    const gearNew = document.getElementById('train-gear-new');
+    if (gearNew) gearNew.addEventListener('click', () => {
       closeGearMenu();
       if (typeof window.openPlanEditor === 'function') window.openPlanEditor();
     });
