@@ -13386,21 +13386,69 @@ function buildExDetail(ex) {
 // ================== TRAIN VIEW ==================
 function initTrainView() {
   const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-  const session = window.kruxTrainData;
-
-  // Per-day schedule for current week (index 0=Mon…6=Sun): 'done'|'rest'|'today'|'scheduled'
-  const defaultSchedule = ['done', 'rest', 'done', 'rest', 'today', 'scheduled', 'rest'];
+  const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
   let weekOffset = 0;
+
+  function getTodayLabel() {
+    // getDay(): 0=Sun,1=Mon...6=Sat → map to L=0,M=1,X=2,J=3,V=4,S=5,D=6
+    return ['D', 'L', 'M', 'X', 'J', 'V', 'S'][new Date().getDay()];
+  }
+
+  function getTodaySession() {
+    const plan = window.kruxActivePlan;
+    if (!plan || !plan.sessions) return null;
+    const todayLabel = getTodayLabel();
+    return plan.sessions.find(s => s.day === todayLabel) || null;
+  }
+
+  function getNextSession() {
+    const plan = window.kruxActivePlan;
+    if (!plan || !plan.sessions || plan.sessions.length === 0) return null;
+    const todayIdx = DAY_LABELS.indexOf(getTodayLabel());
+    for (let i = 1; i <= 7; i++) {
+      const d = DAY_LABELS[(todayIdx + i) % 7];
+      const s = plan.sessions.find(sess => sess.day === d);
+      if (s) return s;
+    }
+    return null;
+  }
+
+  function loadTodaySession() {
+    const todaySess = getTodaySession();
+    const nameEl = document.getElementById('train-session-name');
+    const metaEl = document.getElementById('train-session-meta');
+    const badgeEl = document.getElementById('train-session-badge');
+
+    if (todaySess) {
+      // Sync exercises into shared data for the session module
+      window.kruxTrainData.name = todaySess.name;
+      window.kruxTrainData.exercises = todaySess.exercises.map((ex, i) => ({ ...ex, active: i === 0 }));
+      if (nameEl) nameEl.textContent = todaySess.name;
+      const exCount = todaySess.exercises.length;
+      if (metaEl) metaEl.textContent = `${exCount} ejercicio${exCount !== 1 ? 's' : ''} · ~${Math.ceil(exCount * 12)} min`;
+      if (badgeEl) { badgeEl.textContent = 'Hoy'; badgeEl.style.display = ''; }
+    } else if (window.kruxActivePlan) {
+      // Rest day — show next session info
+      const next = getNextSession();
+      if (nameEl) nameEl.textContent = 'Descanso hoy';
+      if (metaEl) metaEl.textContent = next ? `Próxima sesión: ${next.day} · ${next.name}` : 'Sin sesiones programadas';
+      if (badgeEl) { badgeEl.textContent = 'Descanso'; badgeEl.style.cssText = 'background:#f8f9fb;color:var(--text-muted);border-color:var(--border-color);'; }
+      const list = document.getElementById('train-exercise-list');
+      if (list) list.innerHTML = '<div class="train-rest-day">💤 Día de descanso — disfruta la recuperación</div>';
+      return;
+    }
+    // else: no active plan, use default kruxTrainData as-is
+    renderExercises();
+  }
 
   function renderWeek() {
     const daysRow = document.getElementById('train-days-row');
     const weekTitle = document.getElementById('train-week-title');
     if (!daysRow || !weekTitle) return;
 
-    const dayLabels = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
     const today = new Date();
-    const jsDay = today.getDay(); // 0=Sun
+    const jsDay = today.getDay();
     const mondayDelta = jsDay === 0 ? -6 : 1 - jsDay;
     const monday = new Date(today);
     monday.setDate(today.getDate() + mondayDelta + weekOffset * 7);
@@ -13408,24 +13456,43 @@ function initTrainView() {
     const weekNum = Math.ceil(monday.getDate() / 7);
     weekTitle.textContent = `Semana ${weekNum} · ${MONTH_NAMES[monday.getMonth()]}`;
 
+    const plan = window.kruxActivePlan;
+    const activePlanDays = plan ? new Set(plan.sessions.map(s => s.day)) : null;
     const checkSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    const todayLabel = getTodayLabel();
 
-    daysRow.innerHTML = dayLabels.map((label, i) => {
+    daysRow.innerHTML = DAY_LABELS.map((label, i) => {
       const d = new Date(monday);
       d.setDate(monday.getDate() + i);
-      const state = weekOffset === 0 ? defaultSchedule[i] : 'rest';
-      let dotClass = 'train-day-dot ' + state;
-      let content = state === 'done' ? checkSvg : (state === 'rest' ? '–' : `${d.getDate()}`);
-      return `<div class="train-day-cell"><span class="train-day-name">${label}</span><div class="${dotClass}">${content}</div></div>`;
+      const isToday = weekOffset === 0 && label === todayLabel;
+      const hasSession = activePlanDays ? activePlanDays.has(label) : [0, 2, 4].includes(i); // fallback L,X,V
+      let state, content;
+      if (weekOffset === 0) {
+        // Past days with session = done (simplified: Mon/Wed before today)
+        const isPast = i < DAY_LABELS.indexOf(todayLabel);
+        if (isToday) { state = 'today'; content = `${d.getDate()}`; }
+        else if (isPast && hasSession) { state = 'done'; content = checkSvg; }
+        else if (hasSession) { state = 'scheduled'; content = `${d.getDate()}`; }
+        else { state = 'rest'; content = '–'; }
+      } else {
+        state = hasSession ? 'scheduled' : 'rest';
+        content = hasSession ? `${d.getDate()}` : '–';
+      }
+      return `<div class="train-day-cell"><span class="train-day-name">${label}</span><div class="train-day-dot ${state}">${content}</div></div>`;
     }).join('');
   }
 
   function renderExercises() {
     const list = document.getElementById('train-exercise-list');
     if (!list) return;
+    const data = window.kruxTrainData;
+    if (!data || !data.exercises || data.exercises.length === 0) {
+      list.innerHTML = '<div class="train-rest-day">Sin ejercicios configurados</div>';
+      return;
+    }
     const playIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
     const circleIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"><circle cx="12" cy="12" r="9"></circle></svg>`;
-    list.innerHTML = session.exercises.map((ex, i) => `
+    list.innerHTML = data.exercises.map((ex, i) => `
       <div class="train-ex-row${ex.active ? ' active-ex' : ''} train-ex-editable" data-idx="${i}">
         <div class="train-ex-icon${ex.active ? ' active-icon' : ''}">${ex.active ? playIcon : circleIcon}</div>
         <div class="train-ex-info">
@@ -13435,23 +13502,15 @@ function initTrainView() {
         ${ex.rpeTarget ? `<span class="train-ex-rpe">RPE ${ex.rpeTarget}</span>` : ''}
       </div>`).join('');
 
-    // Click handlers para edición
     list.querySelectorAll('.train-ex-editable').forEach(row => {
       row.addEventListener('click', () => openExerciseEditor(parseInt(row.dataset.idx)));
     });
   }
 
-  // Plan chips
-  const chips = document.querySelectorAll('#train-plan-chips .train-chip');
-  chips.forEach(chip => {
-    chip.addEventListener('click', () => {
-      if (chip.dataset.plan === 'new') {
-        if (typeof window.openPlanEditor === 'function') window.openPlanEditor();
-        return;
-      }
-      chips.forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-    });
+  // Header gear → open plan editor
+  const newPlanBtn = document.getElementById('train-new-plan-btn');
+  if (newPlanBtn) newPlanBtn.addEventListener('click', () => {
+    if (typeof window.openPlanEditor === 'function') window.openPlanEditor();
   });
 
   // Week navigation
@@ -13464,8 +13523,11 @@ function initTrainView() {
   const startBtn = document.getElementById('train-start-btn');
   if (startBtn) startBtn.addEventListener('click', () => openActiveSession());
 
+  // Expose refresh so plan editor can trigger it after saving
+  window.refreshTrainView = () => { loadTodaySession(); renderWeek(); };
+
   renderWeek();
-  renderExercises();
+  loadTodaySession();
 }
 
 // ================== EXERCISE EDITOR ==================
@@ -14858,6 +14920,11 @@ function makePcCard(d, isTop) {
     const name = planData.name || 'Mi plan';
     const activeDayLabels = DAYS.filter((_, i) => planData.activeDays[i]);
     const totalEx = planData.sessions.reduce((a, s) => a + s.exercises.length, 0);
+
+    // Persist to global active plan + refresh train view
+    window.kruxActivePlan = { name, sessions: planData.sessions, activeDays: planData.activeDays, weeks: planData.weeks };
+    if (typeof window.refreshTrainView === 'function') window.refreshTrainView();
+
     const screen = document.querySelector('#plan-editor-modal .pe-screen');
     if (!screen) return;
     screen.innerHTML = `
