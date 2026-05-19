@@ -14390,9 +14390,95 @@ function makePcCard(d, isTop) {
 // ================== PLAN EDITOR MODULE ==================
 (function () {
   const DAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-  const TEMPLATES = ['Fuerza máxima', 'Resistencia', 'Periodización lineal', 'Bloque-específico', 'Desde cero'];
-  const WEEK_OPTIONS = [2, 4, 6, 8, 12];
-  const SESS_OPTIONS = [2, 3, 4, 5];
+  const MIN_WEEKS = 1;
+  const MAX_WEEKS = 16;
+
+  const SVG = {
+    back: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>`,
+    close: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
+    chevDown: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`,
+    chevUp: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>`,
+    grip: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" opacity="0.35"><circle cx="9" cy="5" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="9" cy="19" r="1.3"/><circle cx="15" cy="5" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="15" cy="19" r="1.3"/></svg>`,
+    x: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
+    plus: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+    minus: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+    save: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
+    edit: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+  };
+
+  const TEMPLATES = [
+    {
+      label: 'Fuerza máxima', name: 'Fuerza máx. 4 semanas', weeks: 4,
+      activeDays: [true, false, true, false, true, false, false],
+      sessions: [
+        { day: 'L', name: 'Fuerza dedos', expanded: true, exercises: [
+          { name: 'Max hang · 20mm', sets: 4, workSec: 10, reps: 0, weight: 20, restSec: 180, rpeTarget: 8 },
+          { name: 'Campus board · 1-5-9', sets: 3, workSec: 0, reps: 5, weight: 0, restSec: 120, rpeTarget: 7 },
+          { name: 'Pullover isométrico', sets: 3, workSec: 7, reps: 0, weight: 0, restSec: 120, rpeTarget: 6 },
+        ]},
+        { day: 'X', name: 'Potencia', expanded: false, exercises: [
+          { name: 'Dynos a dedo', sets: 5, workSec: 0, reps: 3, weight: 0, restSec: 180, rpeTarget: 8 },
+        ]},
+        { day: 'V', name: 'Resistencia + antagonistas', expanded: false, exercises: [
+          { name: 'ARC · panel 45°', sets: 2, workSec: 1200, reps: 0, weight: 0, restSec: 300, rpeTarget: 6 },
+          { name: 'Manguito rotador', sets: 3, workSec: 0, reps: 15, weight: 0, restSec: 60, rpeTarget: 5 },
+        ]},
+      ]
+    },
+    {
+      label: 'Resistencia', name: 'Resistencia 6 sem', weeks: 6,
+      activeDays: [false, true, false, true, false, true, false],
+      sessions: [
+        { day: 'M', name: 'ARC largo', expanded: true, exercises: [
+          { name: 'ARC · panel 30°', sets: 2, workSec: 1800, reps: 0, weight: 0, restSec: 300, rpeTarget: 5 },
+        ]},
+        { day: 'J', name: '4×4 bloque', expanded: false, exercises: [
+          { name: '4×4 bloque', sets: 4, workSec: 0, reps: 4, weight: 0, restSec: 240, rpeTarget: 7 },
+        ]},
+        { day: 'S', name: 'Capacidad aeróbica', expanded: false, exercises: [
+          { name: 'Travesías largas', sets: 3, workSec: 600, reps: 0, weight: 0, restSec: 300, rpeTarget: 6 },
+        ]},
+      ]
+    },
+    {
+      label: 'Periodización lineal', name: 'Periodización lineal 8 sem', weeks: 8,
+      activeDays: [true, true, false, true, true, false, false],
+      sessions: [
+        { day: 'L', name: 'Hipertrofia tracción', expanded: true, exercises: [
+          { name: 'Dominadas lastradas', sets: 4, workSec: 0, reps: 8, weight: 10, restSec: 120, rpeTarget: 7 },
+        ]},
+        { day: 'M', name: 'Fuerza dedos', expanded: false, exercises: [
+          { name: 'Max hang · 20mm', sets: 4, workSec: 10, reps: 0, weight: 15, restSec: 180, rpeTarget: 8 },
+        ]},
+        { day: 'J', name: 'Potencia', expanded: false, exercises: [
+          { name: 'Campus 1-5-9', sets: 4, workSec: 0, reps: 4, weight: 0, restSec: 180, rpeTarget: 8 },
+        ]},
+        { day: 'V', name: 'Resistencia específica', expanded: false, exercises: [
+          { name: '4×4', sets: 4, workSec: 0, reps: 4, weight: 0, restSec: 240, rpeTarget: 7 },
+        ]},
+      ]
+    },
+    {
+      label: 'Bloque específico', name: 'Bloque proyecto', weeks: 3,
+      activeDays: [true, false, true, false, true, false, false],
+      sessions: [
+        { day: 'L', name: 'Pegues del proyecto', expanded: true, exercises: [
+          { name: 'Intentos al proyecto', sets: 5, workSec: 0, reps: 1, weight: 0, restSec: 600, rpeTarget: 9 },
+        ]},
+        { day: 'X', name: 'Trabajo de movimientos', expanded: false, exercises: [
+          { name: 'Repetir secciones clave', sets: 4, workSec: 0, reps: 3, weight: 0, restSec: 300, rpeTarget: 8 },
+        ]},
+        { day: 'V', name: 'Mantenimiento + antagonistas', expanded: false, exercises: [
+          { name: 'Manguito rotador', sets: 3, workSec: 0, reps: 15, weight: 0, restSec: 60, rpeTarget: 5 },
+        ]},
+      ]
+    },
+    {
+      label: 'Desde cero', name: '', weeks: 4,
+      activeDays: [true, false, true, false, true, false, false],
+      sessions: []
+    },
+  ];
 
   const LIBRARY = [
     { name: 'Max hang', detail: 'Suspensión en media llave', cat: 'str' },
@@ -14406,57 +14492,26 @@ function makePcCard(d, isTop) {
     { name: 'Estiramiento muñecas', detail: 'Flexores y extensores', cat: 'ant' },
   ];
 
-  const SVG = {
-    back: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>`,
-    close: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
-    chevDown: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`,
-    chevUp: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>`,
-    grip: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" opacity="0.35"><circle cx="9" cy="5" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="9" cy="19" r="1.3"/><circle cx="15" cy="5" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="15" cy="19" r="1.3"/></svg>`,
-    x: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
-    plus: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
-    save: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
-  };
-
   let planData = null;
+  let templateIdx = 0;
   let libForSession = -1;
+  let openDayPickerSi = -1;
 
-  function defaultPlan() {
-    return {
-      name: '',
-      templateIdx: 0,
-      weekIdx: 1,
-      sessIdx: 1,
-      activeDays: [true, false, true, false, true, false, false],
-      sessions: [
-        {
-          name: 'Fuerza dedos', expanded: true, exercises: [
-            { name: 'Max hang · 20mm', sets: 4, workSec: 10, reps: 0, weight: 20, restSec: 180, rpeTarget: 8 },
-            { name: 'Campus board · 1-5-9', sets: 3, workSec: 0, reps: 5, weight: 0, restSec: 120, rpeTarget: 7 },
-            { name: 'Pullover isométrico', sets: 3, workSec: 7, reps: 0, weight: 0, restSec: 120, rpeTarget: 6 },
-          ]
-        },
-        {
-          name: 'Potencia', expanded: false, exercises: [
-            { name: 'Dynos a dedo', sets: 5, workSec: 0, reps: 3, weight: 0, restSec: 180, rpeTarget: 8 },
-          ]
-        },
-        {
-          name: 'Resistencia + antagonistas', expanded: false, exercises: [
-            { name: 'ARC · panel 45°', sets: 2, workSec: 1200, reps: 0, weight: 0, restSec: 300, rpeTarget: 6 },
-            { name: 'Manguito rotador', sets: 3, workSec: 0, reps: 15, weight: 0, restSec: 60, rpeTarget: 5 },
-          ]
-        },
-      ]
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+  function loadTemplate(idx) {
+    templateIdx = idx;
+    const t = clone(TEMPLATES[idx]);
+    planData = {
+      name: t.name,
+      weeks: t.weeks,
+      activeDays: t.activeDays,
+      sessions: t.sessions,
     };
   }
 
-  function getSessionDay(idx) {
-    const active = DAYS.filter((_, i) => planData.activeDays[i]);
-    return active[idx] || '?';
-  }
-
   function open() {
-    planData = defaultPlan();
+    loadTemplate(0);
     const modal = document.getElementById('plan-editor-modal');
     if (!modal) return;
     renderModal();
@@ -14467,6 +14522,7 @@ function makePcCard(d, isTop) {
 
   function close() {
     closeLibrary();
+    openDayPickerSi = -1;
     const modal = document.getElementById('plan-editor-modal');
     if (!modal) return;
     modal.classList.remove('pe-open');
@@ -14490,70 +14546,182 @@ function makePcCard(d, isTop) {
             <div class="pe-sec-label">NOMBRE DEL PLAN</div>
             <input class="pe-name-input" id="pe-name-input" type="text" placeholder="Ej: Fuerza máx. 4 semanas" value="${planData.name}" autocomplete="off">
           </div>
+
           <div class="pe-sec">
             <div class="pe-sec-label">EMPEZAR DESDE PLANTILLA</div>
             <div class="pe-tpl-row" id="pe-tpl-row">
-              ${TEMPLATES.map((t, i) => `<button class="pe-tpl-chip${i === planData.templateIdx ? ' active' : ''}" data-tidx="${i}">${t}</button>`).join('')}
+              ${TEMPLATES.map((t, i) => `<button class="pe-tpl-chip${i === templateIdx ? ' active' : ''}" data-tidx="${i}">${t.label}</button>`).join('')}
+            </div>
+            <div class="pe-tpl-hint">Aplicar una plantilla reemplaza las sesiones actuales.</div>
+          </div>
+
+          <div class="pe-sec">
+            <div class="pe-sec-label">DURACIÓN</div>
+            <div class="pe-stepper" id="pe-stepper">
+              <button class="pe-step-btn" id="pe-step-minus" aria-label="Menos">${SVG.minus}</button>
+              <div class="pe-step-val">
+                <span id="pe-step-num">${planData.weeks}</span>
+                <span class="pe-step-unit">semanas</span>
+              </div>
+              <button class="pe-step-btn" id="pe-step-plus" aria-label="Más">${SVG.plus}</button>
             </div>
           </div>
+
           <div class="pe-sec">
-            <div class="pe-sec-label">CONFIGURACIÓN</div>
-            <div class="pe-meta-row">
-              <div class="pe-meta-item" id="pe-meta-weeks">
-                <div class="pe-meta-key">Duración</div>
-                <div class="pe-meta-val" id="pe-weeks-val">${WEEK_OPTIONS[planData.weekIdx]} semanas ${SVG.chevDown}</div>
-              </div>
-              <div class="pe-meta-item" id="pe-meta-sess">
-                <div class="pe-meta-key">Sesiones / semana</div>
-                <div class="pe-meta-val" id="pe-sess-val">${SESS_OPTIONS[planData.sessIdx]} días ${SVG.chevDown}</div>
-              </div>
-            </div>
-          </div>
-          <div class="pe-sec">
-            <div class="pe-sec-label">DÍAS DE ENTRENAMIENTO</div>
+            <div class="pe-sec-label">DÍAS DE ENTRENAMIENTO <span class="pe-sec-meta" id="pe-days-count"></span></div>
             <div class="pe-days-grid" id="pe-days-grid"></div>
+            <div class="pe-tpl-hint">Toca un día para activarlo. Las sesiones pueden asignarse a cualquiera de estos días.</div>
           </div>
+
           <div class="pe-sec">
-            <div class="pe-sec-label">SESIONES</div>
+            <div class="pe-sec-label">SESIONES <span class="pe-sec-meta" id="pe-sess-count"></span></div>
             <div class="pe-session-list" id="pe-session-list"></div>
             <button class="pe-add-session-btn" id="pe-add-session-btn">${SVG.plus} Añadir sesión</button>
           </div>
+
           <div class="pe-sec pe-sec-last">
             <button class="pe-save-bottom" id="pe-save-bottom">${SVG.save} Guardar plan</button>
           </div>
         </div>
       </div>`;
 
-    document.getElementById('pe-back-btn').addEventListener('click', close);
-    document.getElementById('pe-save-top').addEventListener('click', savePlan);
-    document.getElementById('pe-save-bottom').addEventListener('click', savePlan);
-    document.getElementById('pe-name-input').addEventListener('input', e => { planData.name = e.target.value; });
+    // Static events (rendered once)
+    document.getElementById('pe-back-btn').onclick = close;
+    document.getElementById('pe-save-top').onclick = savePlan;
+    document.getElementById('pe-save-bottom').onclick = savePlan;
+    document.getElementById('pe-name-input').oninput = e => { planData.name = e.target.value; };
 
-    document.getElementById('pe-tpl-row').addEventListener('click', e => {
+    document.getElementById('pe-tpl-row').onclick = e => {
       const chip = e.target.closest('.pe-tpl-chip');
       if (!chip) return;
-      planData.templateIdx = parseInt(chip.dataset.tidx);
-      document.querySelectorAll('.pe-tpl-chip').forEach((c, i) => c.classList.toggle('active', i === planData.templateIdx));
-    });
-
-    document.getElementById('pe-meta-weeks').addEventListener('click', () => {
-      planData.weekIdx = (planData.weekIdx + 1) % WEEK_OPTIONS.length;
-      document.getElementById('pe-weeks-val').innerHTML = `${WEEK_OPTIONS[planData.weekIdx]} semanas ${SVG.chevDown}`;
-    });
-
-    document.getElementById('pe-meta-sess').addEventListener('click', () => {
-      planData.sessIdx = (planData.sessIdx + 1) % SESS_OPTIONS.length;
-      document.getElementById('pe-sess-val').innerHTML = `${SESS_OPTIONS[planData.sessIdx]} días ${SVG.chevDown}`;
-    });
-
-    document.getElementById('pe-add-session-btn').addEventListener('click', () => {
-      planData.sessions.push({ name: 'Nueva sesión', expanded: true, exercises: [] });
+      const idx = parseInt(chip.dataset.tidx);
+      loadTemplate(idx);
+      const input = document.getElementById('pe-name-input');
+      if (input) input.value = planData.name;
+      document.getElementById('pe-step-num').textContent = planData.weeks;
+      document.querySelectorAll('.pe-tpl-chip').forEach((c, i) => c.classList.toggle('active', i === templateIdx));
       renderDays();
       renderSessions();
-    });
+    };
+
+    document.getElementById('pe-step-minus').onclick = () => {
+      if (planData.weeks > MIN_WEEKS) {
+        planData.weeks--;
+        document.getElementById('pe-step-num').textContent = planData.weeks;
+      }
+    };
+    document.getElementById('pe-step-plus').onclick = () => {
+      if (planData.weeks < MAX_WEEKS) {
+        planData.weeks++;
+        document.getElementById('pe-step-num').textContent = planData.weeks;
+      }
+    };
+
+    document.getElementById('pe-add-session-btn').onclick = () => {
+      const active = DAYS.filter((_, i) => planData.activeDays[i]);
+      const usedSet = new Set(planData.sessions.map(s => s.day));
+      const freeDay = active.find(d => !usedSet.has(d)) || active[0] || 'L';
+      planData.sessions.push({ day: freeDay, name: 'Nueva sesión', expanded: true, exercises: [] });
+      renderSessions();
+    };
+
+    // Single delegated handler on session list (no accumulation)
+    const list = document.getElementById('pe-session-list');
+    list.onclick = handleSessionListClick;
+
+    // Close day picker on outside click
+    document.getElementById('plan-editor-modal').onclick = e => {
+      if (openDayPickerSi !== -1 && !e.target.closest('.pe-day-picker') && !e.target.closest('.pe-session-badge')) {
+        openDayPickerSi = -1;
+        renderSessions();
+      }
+    };
 
     renderDays();
     renderSessions();
+  }
+
+  function handleSessionListClick(e) {
+    // Editable name input — don't bubble
+    if (e.target.closest('.pe-session-name-input')) return;
+
+    // Day picker option
+    const dayOpt = e.target.closest('.pe-day-opt');
+    if (dayOpt) {
+      e.stopPropagation();
+      const si = parseInt(dayOpt.dataset.si);
+      const d = dayOpt.dataset.d;
+      const dIdx = DAYS.indexOf(d);
+      if (dIdx >= 0 && !planData.activeDays[dIdx]) planData.activeDays[dIdx] = true; // auto-activate
+      planData.sessions[si].day = d;
+      openDayPickerSi = -1;
+      renderDays();
+      renderSessions();
+      return;
+    }
+
+    // Session day badge — toggle picker
+    const badge = e.target.closest('.pe-session-badge');
+    if (badge) {
+      e.stopPropagation();
+      const si = parseInt(badge.dataset.si);
+      openDayPickerSi = openDayPickerSi === si ? -1 : si;
+      renderSessions();
+      return;
+    }
+
+    // Delete exercise
+    const delBtn = e.target.closest('.pe-ex-del');
+    if (delBtn) {
+      planData.sessions[parseInt(delBtn.dataset.si)].exercises.splice(parseInt(delBtn.dataset.ei), 1);
+      renderSessions();
+      return;
+    }
+
+    // Add exercise
+    const addBtn = e.target.closest('.pe-add-ex-btn');
+    if (addBtn) {
+      openLibrary(parseInt(addBtn.dataset.si));
+      return;
+    }
+
+    // Delete session
+    const delSess = e.target.closest('.pe-session-del');
+    if (delSess) {
+      e.stopPropagation();
+      planData.sessions.splice(parseInt(delSess.dataset.si), 1);
+      renderSessions();
+      return;
+    }
+
+    // Edit session name button
+    const editName = e.target.closest('.pe-session-edit');
+    if (editName) {
+      e.stopPropagation();
+      const si = parseInt(editName.dataset.si);
+      const nameEl = document.querySelector(`.pe-session-card[data-si="${si}"] .pe-session-name`);
+      if (!nameEl) return;
+      const current = planData.sessions[si].name;
+      nameEl.innerHTML = `<input class="pe-session-name-input" type="text" value="${current.replace(/"/g, '&quot;')}" maxlength="40">`;
+      const inp = nameEl.querySelector('input');
+      inp.focus();
+      inp.select();
+      const commit = () => {
+        planData.sessions[si].name = inp.value.trim() || 'Sin nombre';
+        renderSessions();
+      };
+      inp.onblur = commit;
+      inp.onkeydown = ev => { if (ev.key === 'Enter') inp.blur(); if (ev.key === 'Escape') { inp.value = current; inp.blur(); } };
+      return;
+    }
+
+    // Header toggle expand (lowest priority — runs only if nothing above matched)
+    const hdr = e.target.closest('.pe-session-header');
+    if (hdr) {
+      const si = parseInt(hdr.dataset.si);
+      planData.sessions[si].expanded = !planData.sessions[si].expanded;
+      renderSessions();
+    }
   }
 
   function renderDays() {
@@ -14567,21 +14735,42 @@ function makePcCard(d, isTop) {
       btn.onclick = () => { planData.activeDays[i] = !planData.activeDays[i]; renderDays(); renderSessions(); };
       grid.appendChild(btn);
     });
+    const count = planData.activeDays.filter(Boolean).length;
+    const countEl = document.getElementById('pe-days-count');
+    if (countEl) countEl.textContent = `· ${count} ${count === 1 ? 'día' : 'días'}/sem`;
   }
 
   function renderSessions() {
     const list = document.getElementById('pe-session-list');
     if (!list) return;
-    list.innerHTML = '';
+    const sessCount = document.getElementById('pe-sess-count');
+    if (sessCount) sessCount.textContent = `· ${planData.sessions.length}`;
 
-    planData.sessions.forEach((s, si) => {
-      const dayLabel = getSessionDay(si);
-      const rpeColorCls = rpe => rpe >= 9 ? ' hi' : rpe >= 8 ? ' warn' : '';
-      const rpeTag = rpe => rpe ? `<span class="pe-ex-rpe${rpeColorCls(rpe)}">RPE ${rpe}</span>` : '';
+    if (planData.sessions.length === 0) {
+      list.innerHTML = `<div class="pe-empty">Aún no hay sesiones. Toca "Añadir sesión" para empezar.</div>`;
+      return;
+    }
+
+    const rpeColorCls = rpe => rpe >= 9 ? ' hi' : rpe >= 8 ? ' warn' : '';
+    const rpeTag = rpe => rpe ? `<span class="pe-ex-rpe${rpeColorCls(rpe)}">RPE ${rpe}</span>` : '';
+
+    list.innerHTML = planData.sessions.map((s, si) => {
+      const dIdx = DAYS.indexOf(s.day);
+      const isOrphan = dIdx === -1 || !planData.activeDays[dIdx];
+      const badgeCls = 'pe-session-badge' + (isOrphan ? ' orphan' : '');
+
+      const picker = openDayPickerSi === si ? `
+        <div class="pe-day-picker" data-si="${si}">
+          ${DAYS.map(d => {
+            const active = planData.activeDays[DAYS.indexOf(d)];
+            const sel = d === s.day;
+            return `<button class="pe-day-opt${sel ? ' sel' : ''}${active ? '' : ' inactive'}" data-si="${si}" data-d="${d}">${d}</button>`;
+          }).join('')}
+        </div>` : '';
 
       const exHTML = s.expanded ? `
         <div class="pe-ex-list">
-          ${s.exercises.map((ex, ei) => `
+          ${s.exercises.length === 0 ? '<div class="pe-ex-empty">Sin ejercicios todavía</div>' : s.exercises.map((ex, ei) => `
             <div class="pe-ex-row">
               <span class="pe-ex-drag">${SVG.grip}</span>
               <div class="pe-ex-info">
@@ -14594,38 +14783,24 @@ function makePcCard(d, isTop) {
           <button class="pe-add-ex-btn" data-si="${si}">${SVG.plus} Añadir ejercicio</button>
         </div>` : '';
 
-      const card = document.createElement('div');
-      card.className = 'pe-session-card';
-      card.innerHTML = `
-        <div class="pe-session-header" data-si="${si}">
-          <div class="pe-session-badge">${dayLabel}</div>
-          <div class="pe-session-info">
-            <div class="pe-session-name">${s.name}</div>
-            <div class="pe-session-count">${s.exercises.length} ejercicio${s.exercises.length !== 1 ? 's' : ''}</div>
+      return `
+        <div class="pe-session-card" data-si="${si}">
+          <div class="pe-session-header" data-si="${si}">
+            <div class="pe-badge-wrap">
+              <button class="${badgeCls}" data-si="${si}" title="Cambiar día">${s.day}</button>
+              ${picker}
+            </div>
+            <div class="pe-session-info">
+              <div class="pe-session-name">${s.name}</div>
+              <div class="pe-session-count">${s.exercises.length} ejercicio${s.exercises.length !== 1 ? 's' : ''}${isOrphan ? ' · ⚠️ día inactivo' : ''}</div>
+            </div>
+            <button class="pe-session-edit" data-si="${si}" aria-label="Renombrar">${SVG.edit}</button>
+            <button class="pe-session-del" data-si="${si}" aria-label="Eliminar sesión">${SVG.x}</button>
+            <span class="pe-session-chev">${s.expanded ? SVG.chevUp : SVG.chevDown}</span>
           </div>
-          <span class="pe-session-chev">${s.expanded ? SVG.chevUp : SVG.chevDown}</span>
-        </div>
-        ${exHTML}`;
-      list.appendChild(card);
-    });
-
-    list.addEventListener('click', e => {
-      const hdr = e.target.closest('.pe-session-header');
-      if (hdr) {
-        const si = parseInt(hdr.dataset.si);
-        planData.sessions[si].expanded = !planData.sessions[si].expanded;
-        renderSessions();
-        return;
-      }
-      const del = e.target.closest('.pe-ex-del');
-      if (del) {
-        planData.sessions[parseInt(del.dataset.si)].exercises.splice(parseInt(del.dataset.ei), 1);
-        renderSessions();
-        return;
-      }
-      const add = e.target.closest('.pe-add-ex-btn');
-      if (add) { openLibrary(parseInt(add.dataset.si)); }
-    });
+          ${exHTML}
+        </div>`;
+    }).join('');
   }
 
   function openLibrary(si) {
@@ -14656,16 +14831,16 @@ function makePcCard(d, isTop) {
       </div>`;
     document.getElementById('plan-editor-modal').appendChild(sheet);
     requestAnimationFrame(() => sheet.classList.add('pe-lib-open'));
-    document.getElementById('pe-lib-backdrop').addEventListener('click', closeLibrary);
-    document.getElementById('pe-lib-close').addEventListener('click', closeLibrary);
-    sheet.querySelector('.pe-lib-list').addEventListener('click', e => {
+    document.getElementById('pe-lib-backdrop').onclick = closeLibrary;
+    document.getElementById('pe-lib-close').onclick = closeLibrary;
+    sheet.querySelector('.pe-lib-list').onclick = e => {
       const item = e.target.closest('.pe-lib-item');
       if (!item) return;
       const ex = LIBRARY[parseInt(item.dataset.lidx)];
       planData.sessions[libForSession].exercises.push({ name: ex.name, sets: 3, workSec: 0, reps: 10, weight: 0, restSec: 120, rpeTarget: 7 });
       closeLibrary();
       renderSessions();
-    });
+    };
   }
 
   function closeLibrary() {
@@ -14690,11 +14865,11 @@ function makePcCard(d, isTop) {
       <div class="pe-saved-wrap">
         <div class="pe-saved-icon">✅</div>
         <div class="pe-saved-title">${name}</div>
-        <div class="pe-saved-sub">${planData.sessions.length} sesiones · ${activeDayLabels.join(', ')} · ${totalEx} ejercicios</div>
+        <div class="pe-saved-sub">${planData.weeks} semanas · ${planData.sessions.length} sesiones · ${activeDayLabels.join(', ')} · ${totalEx} ejercicios</div>
         <button class="pe-save-bottom" id="pe-saved-done">Empezar plan →</button>
       </div>`;
-    document.getElementById('pe-saved-back').addEventListener('click', close);
-    document.getElementById('pe-saved-done').addEventListener('click', close);
+    document.getElementById('pe-saved-back').onclick = close;
+    document.getElementById('pe-saved-done').onclick = close;
   }
 
   window.openPlanEditor = open;
