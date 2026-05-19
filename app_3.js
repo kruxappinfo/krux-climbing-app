@@ -3267,7 +3267,7 @@ function switchView(viewId) {
     document.body.classList.remove('map-active');
   }
 
-  if (viewId === 'feed-view' || viewId === 'profile-view' || viewId === 'activity-view' || viewId === 'map-view' || viewId === 'search-view') {
+  if (viewId === 'feed-view' || viewId === 'profile-view' || viewId === 'activity-view' || viewId === 'map-view' || viewId === 'search-view' || viewId === 'train-view') {
     if (topBar) topBar.style.display = 'none';
     if (authContainer) authContainer.style.display = 'none';
   } else {
