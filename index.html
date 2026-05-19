@@ -3490,6 +3490,53 @@
     });
   </script>
 
+  <!-- EXERCISE EDITOR SHEET -->
+  <div id="ex-editor-sheet" class="ex-editor-sheet hidden" role="dialog" aria-modal="true">
+    <div class="ex-editor-backdrop" id="ex-editor-backdrop"></div>
+    <div class="ex-editor-panel">
+      <div class="ex-editor-handle"></div>
+      <div class="ex-editor-header">
+        <h3 class="ex-editor-title">Editar ejercicio</h3>
+        <button class="ex-editor-close" id="ex-editor-close" aria-label="Cerrar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="ex-editor-body">
+        <div class="ex-field ex-field--full">
+          <label class="ex-field-label">Nombre del ejercicio</label>
+          <input class="ex-field-input" id="ex-field-name" type="text" placeholder="Ej: Max hang · 20mm">
+        </div>
+        <div class="ex-field ex-field--full">
+          <label class="ex-field-label">Detalle (descripción corta)</label>
+          <input class="ex-field-input" id="ex-field-detail" type="text" placeholder="Ej: 4 × 10s — descanso 3 min">
+        </div>
+        <div class="ex-field-row">
+          <div class="ex-field">
+            <label class="ex-field-label">Series</label>
+            <input class="ex-field-input ex-field-num" id="ex-field-sets" type="number" min="1" max="20" inputmode="numeric">
+          </div>
+          <div class="ex-field">
+            <label class="ex-field-label">Tiempo trabajo (seg)</label>
+            <input class="ex-field-input ex-field-num" id="ex-field-work" type="number" min="0" max="600" inputmode="numeric" placeholder="0 = libre">
+          </div>
+        </div>
+        <div class="ex-field-row">
+          <div class="ex-field">
+            <label class="ex-field-label">Descanso (seg)</label>
+            <input class="ex-field-input ex-field-num" id="ex-field-rest" type="number" min="0" max="600" inputmode="numeric">
+          </div>
+          <div class="ex-field">
+            <label class="ex-field-label">RPE objetivo (0 = ninguno)</label>
+            <input class="ex-field-input ex-field-num" id="ex-field-rpe" type="number" min="0" max="10" inputmode="numeric">
+          </div>
+        </div>
+      </div>
+      <div class="ex-editor-footer">
+        <button class="ex-editor-save" id="ex-editor-save">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ACTIVE SESSION MODAL -->
   <div id="session-modal" class="session-modal hidden" aria-modal="true" role="dialog">
     <div class="session-screen" id="session-screen">

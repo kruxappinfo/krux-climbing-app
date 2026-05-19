@@ -20787,6 +20787,135 @@ body.map-active #btn-dev-editor {
 .train-start-btn:active { opacity: 0.82; }
 
 /* ================================
+   EXERCISE EDITOR BOTTOM SHEET
+   ================================ */
+.ex-editor-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50000;
+}
+.ex-editor-sheet.hidden { pointer-events: none; }
+
+.ex-editor-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0);
+  transition: background 0.25s;
+}
+.ex-editor-sheet:not(.hidden) .ex-editor-backdrop {
+  background: rgba(0,0,0,0.45);
+}
+
+.ex-editor-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-primary);
+  border-radius: 20px 20px 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.ex-editor-sheet:not(.hidden) .ex-editor-panel {
+  transform: translateY(0);
+}
+
+.ex-editor-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--border-color);
+  border-radius: 2px;
+  margin: 10px auto 0;
+}
+
+.ex-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+.ex-editor-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.ex-editor-close {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.ex-editor-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ex-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.ex-field--full { grid-column: 1 / -1; }
+
+.ex-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ex-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.ex-field-input {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: #f8f9fb;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+  font-family: inherit;
+}
+.ex-field-input:focus { border-color: #1D9E75; background: #fff; }
+.ex-field-num { text-align: center; font-weight: 600; }
+
+.ex-editor-footer {
+  padding: 4px 16px 16px;
+}
+.ex-editor-save {
+  width: 100%;
+  padding: 14px;
+  background: #1D9E75;
+  color: #E1F5EE;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.ex-editor-save:active { opacity: 0.82; }
+
+/* Cursor editable en train exercises */
+.train-ex-editable { cursor: pointer; }
+.train-ex-editable:active { opacity: 0.8; }
+
+/* ================================
    ACTIVE SESSION MODAL
    ================================ */
 .session-modal {
