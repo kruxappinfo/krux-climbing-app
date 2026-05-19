@@ -1259,13 +1259,75 @@
 
       <!-- TRAIN VIEW -->
       <div id="train-view" class="view hidden">
-        <div class="search-scroll-container">
-          <header class="search-header">
-            <h1 class="search-title">Entrenar</h1>
+        <div class="train-scroll">
+
+          <!-- Header -->
+          <header class="train-header">
+            <h1 class="train-title">Entrena</h1>
+            <button class="train-settings-btn" aria-label="Ajustes">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </button>
           </header>
-          <div class="search-body">
-            <p class="search-placeholder" style="text-align:center;padding:2rem;">Próximamente</p>
+
+          <!-- Plan activo -->
+          <div class="train-section">
+            <div class="train-section-label">Plan activo</div>
+            <div class="train-plan-chips" id="train-plan-chips">
+              <button class="train-chip active" data-plan="fuerza">Fuerza máx. 4sem</button>
+              <button class="train-chip" data-plan="resistencia">Resistencia</button>
+              <button class="train-chip" data-plan="periodizacion">Periodización lineal</button>
+              <button class="train-chip train-chip--new" data-plan="new">+ Nuevo</button>
+            </div>
           </div>
+
+          <!-- Calendario semanal -->
+          <div class="train-section">
+            <div class="train-week-header">
+              <span class="train-week-title" id="train-week-title"></span>
+              <div class="train-week-nav">
+                <button class="train-week-btn" id="train-week-prev" aria-label="Semana anterior">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+                <button class="train-week-btn" id="train-week-next" aria-label="Semana siguiente">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+              </div>
+            </div>
+            <div class="train-days-row" id="train-days-row"></div>
+
+            <!-- Auto-progresión -->
+            <div class="train-suggestion" id="train-suggestion">
+              <svg class="train-suggestion-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line>
+                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                <line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+              </svg>
+              <span class="train-suggestion-text"><strong>Sugerencia:</strong> última sesión hiciste Max Hang 4×10s +20kg · RPE 7 → prueba +22kg hoy</span>
+            </div>
+          </div>
+
+          <!-- Sesión del día -->
+          <div class="train-section">
+            <div class="train-session-card">
+              <div class="train-session-top">
+                <div>
+                  <div class="train-session-name">Fuerza en media llave</div>
+                  <div class="train-session-meta">4 ejercicios · ~60 min</div>
+                </div>
+                <span class="train-session-badge">Hoy</span>
+              </div>
+              <div class="train-exercise-list" id="train-exercise-list"></div>
+            </div>
+            <button class="train-start-btn" id="train-start-btn">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              Iniciar sesión activa ↗
+            </button>
+          </div>
+
         </div>
       </div>
     </main>
@@ -1293,7 +1355,7 @@
           <rect x="18" y="4.5" width="4" height="4" rx="1"></rect>
           <rect x="18" y="15.5" width="4" height="4" rx="1"></rect>
         </svg>
-        <span>Entrenar</span>
+        <span>Entrena</span>
       </button>
 
       <!-- Activity Button -->
