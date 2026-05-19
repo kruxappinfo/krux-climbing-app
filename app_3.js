@@ -14404,6 +14404,7 @@ function makePcCard(d, isTop) {
     minus: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
     save: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
     edit: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+    gear: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
   };
 
   const TEMPLATES = [
@@ -14495,6 +14496,8 @@ function makePcCard(d, isTop) {
   let planData = null;
   let templateIdx = 0;
   let libForSession = -1;
+  let sessEditMode = false;
+  let pendingDeleteSi = -1;
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -14511,6 +14514,8 @@ function makePcCard(d, isTop) {
 
   function open() {
     loadTemplate(0);
+    sessEditMode = false;
+    pendingDeleteSi = -1;
     const modal = document.getElementById('plan-editor-modal');
     if (!modal) return;
     renderModal();
@@ -14573,7 +14578,10 @@ function makePcCard(d, isTop) {
           </div>
 
           <div class="pe-sec">
-            <div class="pe-sec-label">SESIONES <span class="pe-sec-meta" id="pe-sess-count"></span></div>
+            <div class="pe-sec-row">
+              <div class="pe-sec-label">SESIONES <span class="pe-sec-meta" id="pe-sess-count"></span></div>
+              <button class="pe-gear-btn" id="pe-sess-gear" aria-label="Editar sesiones">${SVG.gear}</button>
+            </div>
             <div class="pe-session-list" id="pe-session-list"></div>
             <button class="pe-add-session-btn" id="pe-add-session-btn">${SVG.plus} Añadir sesión</button>
           </div>
@@ -14616,6 +14624,14 @@ function makePcCard(d, isTop) {
       }
     };
 
+    document.getElementById('pe-sess-gear').onclick = () => {
+      sessEditMode = !sessEditMode;
+      pendingDeleteSi = -1;
+      const btn = document.getElementById('pe-sess-gear');
+      if (btn) btn.classList.toggle('active', sessEditMode);
+      renderSessions();
+    };
+
     document.getElementById('pe-add-session-btn').onclick = () => {
       planData.sessions.push({ day: '?', name: 'Nueva sesión', expanded: true, exercises: [] });
       syncSessionDays();
@@ -14649,12 +14665,29 @@ function makePcCard(d, isTop) {
       return;
     }
 
-    // Delete session
+    // Cancel pending delete
+    const cancelDel = e.target.closest('.pe-del-cancel');
+    if (cancelDel) {
+      e.stopPropagation();
+      pendingDeleteSi = -1;
+      renderSessions();
+      return;
+    }
+
+    // Delete session (double confirm)
     const delSess = e.target.closest('.pe-session-del');
     if (delSess) {
       e.stopPropagation();
-      planData.sessions.splice(parseInt(delSess.dataset.si), 1);
-      renderSessions();
+      const si = parseInt(delSess.dataset.si);
+      if (pendingDeleteSi === si) {
+        planData.sessions.splice(si, 1);
+        syncSessionDays();
+        pendingDeleteSi = -1;
+        renderSessions();
+      } else {
+        pendingDeleteSi = si;
+        renderSessions();
+      }
       return;
     }
 
@@ -14747,18 +14780,28 @@ function makePcCard(d, isTop) {
           <button class="pe-add-ex-btn" data-si="${si}">${SVG.plus} Añadir ejercicio</button>
         </div>` : '';
 
+      const confirmBanner = pendingDeleteSi === si ? `
+        <div class="pe-del-confirm">
+          <span class="pe-del-confirm-text">¿Eliminar "${s.name}"?</span>
+          <button class="pe-session-del pe-del-yes" data-si="${si}">Eliminar</button>
+          <button class="pe-del-cancel">Cancelar</button>
+        </div>` : '';
+
       return `
-        <div class="pe-session-card" data-si="${si}">
+        <div class="pe-session-card${pendingDeleteSi === si ? ' pending-del' : ''}" data-si="${si}">
           <div class="pe-session-header" data-si="${si}">
             <div class="${badgeCls}">${hasDay ? s.day : '?'}</div>
             <div class="pe-session-info">
               <div class="pe-session-name">${s.name}</div>
               <div class="pe-session-count">${s.exercises.length} ejercicio${s.exercises.length !== 1 ? 's' : ''}</div>
             </div>
-            <button class="pe-session-edit" data-si="${si}" aria-label="Renombrar">${SVG.edit}</button>
-            <button class="pe-session-del" data-si="${si}" aria-label="Eliminar sesión">${SVG.x}</button>
+            ${sessEditMode ? `
+              <button class="pe-session-edit" data-si="${si}" aria-label="Renombrar">${SVG.edit}</button>
+              <button class="pe-session-del" data-si="${si}" aria-label="Eliminar sesión">${SVG.x}</button>
+            ` : ''}
             <span class="pe-session-chev">${s.expanded ? SVG.chevUp : SVG.chevDown}</span>
           </div>
+          ${confirmBanner}
           ${exHTML}
         </div>`;
     }).join('');

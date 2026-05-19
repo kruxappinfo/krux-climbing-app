@@ -21736,6 +21736,75 @@ body.map-active #btn-dev-editor {
   font-size: 12px;
   color: var(--text-muted);
 }
+/* Section row with gear */
+.pe-sec-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.pe-sec-row .pe-sec-label {
+  margin-bottom: 0;
+}
+.pe-gear-btn {
+  background: none;
+  border: 0.5px solid var(--border-color);
+  border-radius: 8px;
+  padding: 5px 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms, color 150ms, border-color 150ms;
+}
+.pe-gear-btn.active {
+  background: #E1F5EE;
+  border-color: #1D9E75;
+  color: #1D9E75;
+}
+/* Delete confirm banner */
+.pe-session-card.pending-del {
+  border-color: #E24B4A;
+}
+.pe-del-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #FCEBEB;
+  border-top: 0.5px solid #E24B4A;
+}
+.pe-del-confirm-text {
+  flex: 1;
+  font-size: 12px;
+  color: #791F1F;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pe-del-yes {
+  padding: 5px 12px !important;
+  border-radius: 8px !important;
+  background: #E24B4A !important;
+  border: none !important;
+  color: #fff !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  flex-shrink: 0;
+}
+.pe-del-cancel {
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: none;
+  border: 0.5px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+}
 /* Section meta */
 .pe-sec-meta {
   font-size: 10px;
