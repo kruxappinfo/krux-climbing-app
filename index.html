@@ -1256,6 +1256,18 @@
           </div>
         </div>
       </div>
+
+      <!-- TRAIN VIEW -->
+      <div id="train-view" class="view hidden">
+        <div class="search-scroll-container">
+          <header class="search-header">
+            <h1 class="search-title">Entrenar</h1>
+          </header>
+          <div class="search-body">
+            <p class="search-placeholder" style="text-align:center;padding:2rem;">Próximamente</p>
+          </div>
+        </div>
+      </div>
     </main>
 
     <!-- BOTTOM NAVIGATION -->
@@ -1263,18 +1275,25 @@
       <button class="nav-item active" data-target="feed-view">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
         </svg>
-        <span>Inicio</span>
+        <span>Social</span>
       </button>
-      <button class="nav-item" id="nav-search-btn" data-target="search-view">
+      <button class="nav-item" id="nav-train-btn" data-target="train-view">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          <path d="M6.5 6.5h11"></path>
+          <path d="M6.5 17.5h11"></path>
+          <line x1="12" y1="6.5" x2="12" y2="17.5"></line>
+          <rect x="2" y="4.5" width="4" height="4" rx="1"></rect>
+          <rect x="2" y="15.5" width="4" height="4" rx="1"></rect>
+          <rect x="18" y="4.5" width="4" height="4" rx="1"></rect>
+          <rect x="18" y="15.5" width="4" height="4" rx="1"></rect>
         </svg>
-        <span>Buscar</span>
+        <span>Entrenar</span>
       </button>
 
       <!-- Activity Button -->
